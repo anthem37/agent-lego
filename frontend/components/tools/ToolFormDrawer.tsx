@@ -30,6 +30,7 @@ import {
     HTTP_METHOD_OPTIONS,
     HTTP_PARAM_TYPE_OPTIONS,
     NAME_ID_RULES,
+    TOOL_NAME_AGENTSCOPE_HINT,
     toolDtoToFormValues,
     validateHttpOutputFieldRows,
     validateHttpParameterRows,
@@ -382,7 +383,16 @@ export function ToolFormDrawer(props: Props) {
                             }
                             style={{marginBottom: 16}}
                         />
-                        <Form.Item name="name" label="内置工具" rules={[{required: true, message: "请选择"}]}>
+                        <Form.Item
+                            name="name"
+                            label="内置工具"
+                            rules={[{required: true, message: "请选择"}]}
+                            extra={
+                                <Typography.Text type="secondary" style={{fontSize: 12}}>
+                                    {TOOL_NAME_AGENTSCOPE_HINT}
+                                </Typography.Text>
+                            }
+                        >
                             <Select
                                 disabled={localBuiltins.length === 0}
                                 options={localBuiltins.map((b) => ({
@@ -422,7 +432,16 @@ export function ToolFormDrawer(props: Props) {
                         <Form.Item name="httpOutputSchemaAdvancedPreserve" valuePropName="checked" hidden>
                             <Checkbox/>
                         </Form.Item>
-                        <Form.Item name="name" label="工具名称（name）" rules={NAME_ID_RULES}>
+                        <Form.Item
+                            name="name"
+                            label="工具名称（name）"
+                            rules={NAME_ID_RULES}
+                            extra={
+                                <Typography.Text type="secondary" style={{fontSize: 12}}>
+                                    {TOOL_NAME_AGENTSCOPE_HINT}
+                                </Typography.Text>
+                            }
+                        >
                             <Input placeholder="如 fetch_weather"/>
                         </Form.Item>
                         <Form.Item name="httpUrl" label="请求 URL" rules={[{required: true, message: "必填"}]}>
@@ -791,7 +810,16 @@ export function ToolFormDrawer(props: Props) {
                             }
                             style={{marginBottom: 16}}
                         />
-                        <Form.Item name="name" label="平台工具名（name）" rules={NAME_ID_RULES}>
+                        <Form.Item
+                            name="name"
+                            label="平台工具名（name）"
+                            rules={NAME_ID_RULES}
+                            extra={
+                                <Typography.Text type="secondary" style={{fontSize: 12}}>
+                                    {TOOL_NAME_AGENTSCOPE_HINT}
+                                </Typography.Text>
+                            }
+                        >
                             <Input placeholder="智能体里看到的名字；若与远端工具名不同，请填写下方「远端工具名」"/>
                         </Form.Item>
                         <Form.Item
@@ -938,7 +966,16 @@ export function ToolFormDrawer(props: Props) {
 
                 {watchedToolType === "WORKFLOW" ? (
                     <>
-                        <Form.Item name="name" label="工具名称（name）" rules={NAME_ID_RULES}>
+                        <Form.Item
+                            name="name"
+                            label="工具名称（name）"
+                            rules={NAME_ID_RULES}
+                            extra={
+                                <Typography.Text type="secondary" style={{fontSize: 12}}>
+                                    {TOOL_NAME_AGENTSCOPE_HINT}
+                                </Typography.Text>
+                            }
+                        >
                             <Input/>
                         </Form.Item>
                         <Form.Item name="workflowId" label="工作流 ID" rules={[{required: true, message: "必填"}]}>

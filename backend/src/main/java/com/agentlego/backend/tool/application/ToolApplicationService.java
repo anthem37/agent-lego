@@ -97,6 +97,15 @@ public class ToolApplicationService {
         Map<String, Object> definition = req.getDefinition() == null ? Map.of() : req.getDefinition();
         validateDefinitionForType(toolType, definition);
 
+        String trimmedName = name.trim();
+        if (toolRepository.existsOtherWithNameIgnoreCase(trimmedName, null)) {
+            throw new ApiException(
+                    "CONFLICT",
+                    "工具名称「" + trimmedName + "」已被占用。平台与 AgentScope 均以工具名为键，名称需全平台唯一（大小写不敏感）。",
+                    HttpStatus.CONFLICT
+            );
+        }
+
         if (toolRepository.existsByToolTypeAndName(toolType, name.trim())) {
             throw new ApiException(
                     "CONFLICT",
@@ -129,6 +138,15 @@ public class ToolApplicationService {
         }
         Map<String, Object> definition = req.getDefinition() == null ? Map.of() : req.getDefinition();
         validateDefinitionForType(toolType, definition);
+
+        String trimmedName = name.trim();
+        if (toolRepository.existsOtherWithNameIgnoreCase(trimmedName, id)) {
+            throw new ApiException(
+                    "CONFLICT",
+                    "工具名称「" + trimmedName + "」已被其它工具占用。平台与 AgentScope 均以工具名为键，名称需全平台唯一（大小写不敏感）。",
+                    HttpStatus.CONFLICT
+            );
+        }
 
         if (toolRepository.existsByToolTypeAndNameExcludingId(toolType, name.trim(), id)) {
             throw new ApiException(
@@ -174,9 +192,10 @@ public class ToolApplicationService {
         String localNames = localBuiltinToolCatalog.listMeta().stream()
                 .map(LocalBuiltinToolMetaDto::getName)
                 .collect(Collectors.joining("、"));
+        String asNameRule = "工具 name 将注册为 AgentScope Toolkit 中的名称，须全平台唯一（大小写不敏感），并与模型 function calling 对齐。";
         String localDescription = localNames.isBlank()
-                ? "由后端扫描 @Tool 自动生成；当前未发现内置实现。"
-                : ("内置：" + localNames + "。名称须与内置名一致，零配置联调。");
+                ? "由后端扫描 @Tool 自动生成；当前未发现内置实现。" + asNameRule
+                : ("内置：" + localNames + "。名称须与内置名一致，零配置联调。" + asNameRule);
         return List.of(
                 ToolTypeMetaDto.builder()
                         .code("LOCAL")
@@ -187,13 +206,16 @@ public class ToolApplicationService {
                 ToolTypeMetaDto.builder()
                         .code("HTTP")
                         .label("HTTP 请求")
-                        .description("按 definition 调用外部 HTTP(S) API（含 SSRF 防护）。")
+                        .description("按 definition 调用外部 HTTP(S) API；出站请求使用 Square OkHttp（可配置超时，见 agentlego.tool.*），"
+                                + "URL 经 SSRF 校验。"
+                                + "definition.parameters / inputSchema 为 JSON Schema（OpenAI tools 子集），由 AgentScope 暴露给模型。"
+                                + asNameRule)
                         .supportsTestCall(true)
                         .build(),
                 ToolTypeMetaDto.builder()
                         .code("WORKFLOW")
                         .label("工作流")
-                        .description("绑定平台 workflowId，同步执行工作流。")
+                        .description("绑定平台 workflowId，同步执行工作流；运行时映射为 AgentTool，返回 ToolResultBlock。" + asNameRule)
                         .supportsTestCall(true)
                         .build(),
                 ToolTypeMetaDto.builder()
@@ -206,6 +228,8 @@ public class ToolApplicationService {
                                         + "POST /tools/meta/mcp/batch-import 批量导入。"
                                         + "本服务同时对外暴露 MCP（见 agentlego.mcp.server.sse-path，默认同源 /mcp）。"
                                         + "SSRF：agentlego.mcp.client.strict-ssrf=true 时与 HTTP 工具一致禁止内网地址。"
+                                        + "入参 Schema 可与 AgentScope McpTool 转换逻辑对齐。"
+                                        + asNameRule
                         )
                         .supportsTestCall(true)
                         .build()
@@ -338,15 +362,17 @@ public class ToolApplicationService {
     }
 
     /**
-     * 分页列表；{@code q} 对 name / id / tool_type / definition 文本做 ilike 模糊匹配（可为 null 表示不过滤）。
+     * 分页列表；{@code q} 对 name / id / tool_type / definition 文本做 ilike 模糊匹配（可为 null 表示不过滤）；
+     * {@code toolType} 精确匹配工具类型（大小写不敏感，可为 null 表示全部类型）。
      */
-    public ToolPageDto listToolsPage(int page, int pageSize, String q) {
+    public ToolPageDto listToolsPage(int page, int pageSize, String q, String toolType) {
         int p = Math.max(1, page);
         int size = Math.min(Math.max(1, pageSize), TOOL_LIST_MAX_PAGE_SIZE);
         String qq = (q == null || q.isBlank()) ? null : q.trim();
-        long total = toolRepository.countByQuery(qq);
+        String tt = (toolType == null || toolType.isBlank()) ? null : toolType.trim();
+        long total = toolRepository.countByQuery(qq, tt);
         long offset = (long) (p - 1) * size;
-        var items = toolRepository.findPageByQuery(qq, offset, size).stream().map(ToolAssembler::toDto).toList();
+        var items = toolRepository.findPageByQuery(qq, tt, offset, size).stream().map(ToolAssembler::toDto).toList();
         return ToolPageDto.builder()
                 .items(items)
                 .total(total)

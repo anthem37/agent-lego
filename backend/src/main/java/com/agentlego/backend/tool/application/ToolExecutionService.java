@@ -1,10 +1,12 @@
 package com.agentlego.backend.tool.application;
 
+import com.agentlego.backend.api.ApiException;
 import com.agentlego.backend.common.JacksonHolder;
 import com.agentlego.backend.common.SnowflakeIdGenerator;
 import com.agentlego.backend.mcp.McpClientRegistry;
 import com.agentlego.backend.tool.domain.ToolAggregate;
 import com.agentlego.backend.tool.http.HttpProxyAgentTool;
+import com.agentlego.backend.tool.http.HttpToolRequestExecutor;
 import com.agentlego.backend.tool.local.LocalBuiltinToolCatalog;
 import com.agentlego.backend.tool.mcp.McpProxyAgentTool;
 import com.agentlego.backend.tool.workflow.WorkflowProxyAgentTool;
@@ -16,13 +18,12 @@ import io.agentscope.core.tool.ToolCallParam;
 import io.agentscope.core.tool.Toolkit;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Lazy;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import reactor.core.publisher.Mono;
 
 import java.time.Duration;
-import java.util.List;
-import java.util.Map;
-import java.util.Objects;
+import java.util.*;
 
 /**
  * 工具执行服务。
@@ -36,6 +37,7 @@ public class ToolExecutionService {
     private final WorkflowApplicationService workflowApplicationService;
     private final LocalBuiltinToolCatalog localBuiltinToolCatalog;
     private final McpClientRegistry mcpClientRegistry;
+    private final HttpToolRequestExecutor httpToolRequestExecutor;
     private final Duration httpCallTimeout;
 
     /**
@@ -45,11 +47,13 @@ public class ToolExecutionService {
             @Lazy WorkflowApplicationService workflowApplicationService,
             LocalBuiltinToolCatalog localBuiltinToolCatalog,
             McpClientRegistry mcpClientRegistry,
+            HttpToolRequestExecutor httpToolRequestExecutor,
             @Value("${agentlego.tool.http-call-timeout-seconds:120}") int httpCallTimeoutSeconds
     ) {
         this.workflowApplicationService = workflowApplicationService;
         this.localBuiltinToolCatalog = localBuiltinToolCatalog;
         this.mcpClientRegistry = mcpClientRegistry;
+        this.httpToolRequestExecutor = Objects.requireNonNull(httpToolRequestExecutor, "httpToolRequestExecutor");
         int sec = Math.max(5, Math.min(httpCallTimeoutSeconds, 600));
         this.httpCallTimeout = Duration.ofSeconds(sec);
     }
@@ -58,12 +62,27 @@ public class ToolExecutionService {
      * 构建一个只包含指定工具集合的 Toolkit，供 AgentScope Agent 挂载使用。
      */
     public Toolkit buildToolkitForToolIds(List<ToolAggregate> tools) {
+        Set<String> seenNames = new HashSet<>();
+        for (ToolAggregate t : tools) {
+            String n = t.getName();
+            if (n != null && !n.isBlank() && !seenNames.add(n)) {
+                throw new ApiException(
+                        "TOOLKIT_DUPLICATE_NAME",
+                        "挂载的工具列表中存在重名「" + n.trim()
+                                + "」，与 AgentScope Toolkit（以工具名为键）不兼容。请调整工具名称或智能体 toolIds。",
+                        HttpStatus.CONFLICT
+                );
+            }
+        }
+
         Toolkit toolkit = new Toolkit();
 
         for (ToolAggregate t : tools) {
             switch (t.getToolType()) {
                 case LOCAL -> toolkit.registerTool(resolveLocalTool(t.getName()));
-                case HTTP -> toolkit.registerAgentTool(new HttpProxyAgentTool(t, JacksonHolder.INSTANCE));
+                case HTTP -> toolkit.registerAgentTool(
+                        new HttpProxyAgentTool(t, JacksonHolder.INSTANCE, httpToolRequestExecutor)
+                );
                 case MCP -> toolkit.registerAgentTool(new McpProxyAgentTool(t, mcpClientRegistry));
                 case WORKFLOW -> toolkit.registerAgentTool(
                         new WorkflowProxyAgentTool(t, workflowApplicationService, JacksonHolder.INSTANCE)
@@ -131,7 +150,7 @@ public class ToolExecutionService {
     }
 
     private Mono<ToolResultBlock> executeHttpTool(ToolAggregate aggregate, Map<String, Object> input) {
-        HttpProxyAgentTool tool = new HttpProxyAgentTool(aggregate, JacksonHolder.INSTANCE);
+        HttpProxyAgentTool tool = new HttpProxyAgentTool(aggregate, JacksonHolder.INSTANCE, httpToolRequestExecutor);
         String toolUseId = SnowflakeIdGenerator.nextId();
         String contentJson = buildToolUseContentJson(input);
         ToolUseBlock toolUseBlock = ToolUseBlock.builder()

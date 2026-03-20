@@ -1,6 +1,7 @@
 package com.agentlego.backend.mcp;
 
 import com.agentlego.backend.tool.application.ToolExecutionService;
+import com.agentlego.backend.tool.http.HttpToolRequestExecutor;
 import com.agentlego.backend.tool.local.LocalBuiltinToolCatalog;
 import com.agentlego.backend.workflow.application.WorkflowApplicationService;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -23,13 +24,16 @@ class McpAdapterTest {
     @Mock
     private WorkflowApplicationService workflowApplicationService;
 
+    @Mock
+    private HttpToolRequestExecutor httpToolRequestExecutor;
+
     @Test
     void buildPlatformMcpServerBundle_shouldExposeBuiltinToolNames() throws Exception {
         McpAdapter adapter = new McpAdapter();
         ObjectMapper objectMapper = new ObjectMapper();
         LocalBuiltinToolCatalog catalog = new LocalBuiltinToolCatalog();
         ToolExecutionService exec = new ToolExecutionService(
-                workflowApplicationService, catalog, new McpClientRegistry(), 120);
+                workflowApplicationService, catalog, new McpClientRegistry(), httpToolRequestExecutor, 120);
 
         PlatformMcpServerBundle bundle = adapter.buildPlatformMcpServerBundle(objectMapper, "/mcp", exec, catalog);
         assertNotNull(bundle);

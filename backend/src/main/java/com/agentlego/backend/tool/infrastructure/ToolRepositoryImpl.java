@@ -63,6 +63,11 @@ public class ToolRepositoryImpl implements ToolRepository {
     }
 
     @Override
+    public boolean existsOtherWithNameIgnoreCase(String name, String excludeId) {
+        return mapper.countByNameIgnoreCaseExcluding(name, excludeId) > 0;
+    }
+
+    @Override
     public Optional<ToolAggregate> findById(String id) {
         ToolDO toolDO = mapper.findById(id);
         if (toolDO == null) {
@@ -87,13 +92,13 @@ public class ToolRepositoryImpl implements ToolRepository {
     }
 
     @Override
-    public long countByQuery(String q) {
-        return mapper.countByQuery(q);
+    public long countByQuery(String q, String toolType) {
+        return mapper.countByQuery(q, toolType);
     }
 
     @Override
-    public List<ToolAggregate> findPageByQuery(String q, long offset, int limit) {
-        List<ToolDO> rows = mapper.findPageByQuery(q, offset, limit);
+    public List<ToolAggregate> findPageByQuery(String q, String toolType, long offset, int limit) {
+        List<ToolDO> rows = mapper.findPageByQuery(q, toolType, offset, limit);
         if (rows == null) {
             return Collections.emptyList();
         }

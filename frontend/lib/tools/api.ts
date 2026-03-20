@@ -16,17 +16,21 @@ export type ListToolsPageParams = {
     pageSize?: number;
     /** 服务端模糊匹配：名称、ID、类型、definition 文本 */
     q?: string;
+    /** 按工具类型精确筛选（如 LOCAL、MCP），与后端枚举一致 */
+    toolType?: string;
 };
 
 export async function listToolsPage(params?: ListToolsPageParams): Promise<ToolPageDto> {
     const page = params?.page ?? 1;
     const pageSize = params?.pageSize ?? 50;
     const q = params?.q?.trim();
+    const toolType = params?.toolType?.trim();
     const data = await request<ToolPageDto>("/tools", {
         query: {
             page,
             pageSize,
             ...(q ? {q} : {}),
+            ...(toolType ? {toolType} : {}),
         },
     });
     return {

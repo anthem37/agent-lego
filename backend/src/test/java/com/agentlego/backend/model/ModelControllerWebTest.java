@@ -2,9 +2,9 @@ package com.agentlego.backend.model;
 
 import com.agentlego.backend.api.GlobalExceptionHandler;
 import com.agentlego.backend.model.application.ModelApplicationService;
-import com.agentlego.backend.model.dto.ModelDto;
-import com.agentlego.backend.model.dto.ModelSummaryDto;
-import com.agentlego.backend.model.dto.TestModelResponse;
+import com.agentlego.backend.model.application.dto.ModelDto;
+import com.agentlego.backend.model.application.dto.ModelSummaryDto;
+import com.agentlego.backend.model.application.dto.TestModelResponse;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;

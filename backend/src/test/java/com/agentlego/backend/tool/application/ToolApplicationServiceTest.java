@@ -237,6 +237,7 @@ class ToolApplicationServiceTest {
 
     @Test
     void createTool_duplicateName_shouldThrowConflict() {
+        when(toolRepository.existsOtherWithNameIgnoreCase("echo", null)).thenReturn(false);
         when(toolRepository.existsByToolTypeAndName(ToolType.LOCAL, "echo")).thenReturn(true);
         ToolApplicationService service = service();
 
@@ -251,7 +252,24 @@ class ToolApplicationServiceTest {
     }
 
     @Test
+    void createTool_globalNameTaken_shouldThrowConflict() {
+        when(toolRepository.existsOtherWithNameIgnoreCase("shared_name", null)).thenReturn(true);
+        ToolApplicationService service = service();
+
+        CreateToolRequest req = new CreateToolRequest();
+        req.setToolType("HTTP");
+        req.setName("shared_name");
+        req.setDefinition(Map.of("url", "https://example.com", "method", "GET"));
+
+        ApiException ex = assertThrows(ApiException.class, () -> service.createTool(req));
+        assertEquals("CONFLICT", ex.getCode());
+        assertTrue(ex.getMessage().contains("AgentScope"));
+        verify(toolRepository, never()).save(any());
+    }
+
+    @Test
     void createTool_local_ok_shouldSave() {
+        when(toolRepository.existsOtherWithNameIgnoreCase("echo", null)).thenReturn(false);
         when(toolRepository.existsByToolTypeAndName(ToolType.LOCAL, "echo")).thenReturn(false);
         when(toolRepository.save(any(ToolAggregate.class))).thenAnswer(inv -> inv.getArgument(0, ToolAggregate.class).getId());
 
@@ -288,6 +306,7 @@ class ToolApplicationServiceTest {
         existing.setDefinition(Map.of("url", "https://a.com", "method", "GET"));
 
         when(toolRepository.findById("t1")).thenReturn(Optional.of(existing));
+        when(toolRepository.existsOtherWithNameIgnoreCase("newname", "t1")).thenReturn(false);
         when(toolRepository.existsByToolTypeAndNameExcludingId(ToolType.HTTP, "newname", "t1")).thenReturn(false);
 
         ToolApplicationService service = service();
@@ -300,6 +319,27 @@ class ToolApplicationServiceTest {
         service.updateTool("t1", req);
 
         verify(toolRepository).update(any(ToolAggregate.class));
+    }
+
+    @Test
+    void updateTool_globalNameTaken_shouldThrowConflict() {
+        ToolAggregate existing = new ToolAggregate();
+        existing.setId("t1");
+        existing.setToolType(ToolType.HTTP);
+        existing.setName("a");
+        existing.setDefinition(Map.of("url", "https://a.com", "method", "GET"));
+
+        when(toolRepository.findById("t1")).thenReturn(Optional.of(existing));
+        when(toolRepository.existsOtherWithNameIgnoreCase("taken", "t1")).thenReturn(true);
+
+        UpdateToolRequest req = new UpdateToolRequest();
+        req.setToolType("HTTP");
+        req.setName("taken");
+        req.setDefinition(Map.of("url", "https://b.com", "method", "GET"));
+
+        ApiException ex = assertThrows(ApiException.class, () -> service().updateTool("t1", req));
+        assertEquals("CONFLICT", ex.getCode());
+        verify(toolRepository, never()).update(any());
     }
 
     @Test

@@ -4,6 +4,7 @@ import com.agentlego.backend.api.ApiException;
 import com.agentlego.backend.mcp.McpClientRegistry;
 import com.agentlego.backend.tool.domain.ToolAggregate;
 import com.agentlego.backend.tool.domain.ToolType;
+import com.agentlego.backend.tool.http.HttpToolRequestExecutor;
 import com.agentlego.backend.tool.local.LocalBuiltinToolCatalog;
 import com.agentlego.backend.workflow.application.WorkflowApplicationService;
 import com.agentlego.backend.workflow.application.dto.RunWorkflowRequest;
@@ -42,6 +43,9 @@ class ToolExecutionServiceTest {
     @Mock
     private McpClientRegistry mcpClientRegistry;
 
+    @Mock
+    private HttpToolRequestExecutor httpToolRequestExecutor;
+
     private static LocalBuiltinToolCatalog catalog() {
         try {
             return new LocalBuiltinToolCatalog();
@@ -51,7 +55,8 @@ class ToolExecutionServiceTest {
     }
 
     private ToolExecutionService service() {
-        return new ToolExecutionService(workflowApplicationService, catalog(), mcpClientRegistry, 120);
+        return new ToolExecutionService(
+                workflowApplicationService, catalog(), mcpClientRegistry, httpToolRequestExecutor, 120);
     }
 
     @Test
@@ -138,6 +143,24 @@ class ToolExecutionServiceTest {
         Toolkit tk = service().buildToolkitForToolIds(List.of(t));
 
         assertTrue(tk.getToolNames().contains("public_api"));
+    }
+
+    @Test
+    void buildToolkit_duplicateNames_shouldThrowConflict() {
+        ToolAggregate http = new ToolAggregate();
+        http.setToolType(ToolType.HTTP);
+        http.setName("same_name");
+        http.setDefinition(Map.of("url", "https://example.com", "method", "GET"));
+
+        ToolAggregate mcp = new ToolAggregate();
+        mcp.setToolType(ToolType.MCP);
+        mcp.setName("same_name");
+        mcp.setDefinition(Map.of("endpoint", "http://127.0.0.1:9/mcp"));
+
+        ApiException ex = assertThrows(ApiException.class, () ->
+                service().buildToolkitForToolIds(List.of(http, mcp))
+        );
+        assertEquals("TOOLKIT_DUPLICATE_NAME", ex.getCode());
     }
 
     @Test

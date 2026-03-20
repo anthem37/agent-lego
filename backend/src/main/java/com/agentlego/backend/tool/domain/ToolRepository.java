@@ -14,12 +14,17 @@ public interface ToolRepository {
 
     boolean existsByToolTypeAndNameExcludingId(ToolType toolType, String name, String excludeId);
 
+    /**
+     * 全平台工具名是否与已有记录冲突（大小写不敏感）。更新时传入 {@code excludeId} 排除自身。
+     */
+    boolean existsOtherWithNameIgnoreCase(String name, String excludeId);
+
     Optional<ToolAggregate> findById(String id);
 
     List<ToolAggregate> findAll();
 
-    long countByQuery(String q);
+    long countByQuery(String q, String toolType);
 
-    List<ToolAggregate> findPageByQuery(String q, long offset, int limit);
+    List<ToolAggregate> findPageByQuery(String q, String toolType, long offset, int limit);
 }
 

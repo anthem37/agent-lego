@@ -36,9 +36,13 @@ agentlego:
     client:
       # true 时与 HTTP 工具相同，禁止回环与解析到内网的 host（本地 127.0.0.1 联调需 false）
       strict-ssrf: false
-  # HTTP 工具 test-call / 执行超时（秒），后端限制在 5–600
+  # HTTP 工具：OkHttp 单次调用超时（秒，含连接+读写），限制在 5–600
   tool:
     http-call-timeout-seconds: 120
+    # OkHttp 连接握手超时（秒）
+    http-connect-timeout-seconds: 10
+    # true 时注册 Slf4jHttpToolOkHttpInterceptor（仅打 method/host/path/状态码/耗时，不含 query）
+    http-request-logging: false
 
 mybatis:
   mapper-locations: classpath*:mybatis/*.xml

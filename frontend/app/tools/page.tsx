@@ -1,7 +1,7 @@
 "use client";
 
-import {PlusOutlined} from "@ant-design/icons";
-import {Button, Empty, Input, message, Space, Table, Tag, Tooltip, Typography} from "antd";
+import {PlusOutlined, ReloadOutlined} from "@ant-design/icons";
+import {Button, Empty, Input, message, Select, Space, Table, Tag, Tooltip, Typography} from "antd";
 import type {ColumnsType} from "antd/es/table";
 import Link from "next/link";
 import React from "react";
@@ -31,6 +31,8 @@ export default function ToolsPage() {
     const [error, setError] = React.useState<unknown>(null);
     const [searchInput, setSearchInput] = React.useState("");
     const [debouncedQ, setDebouncedQ] = React.useState("");
+    /** 服务端按类型精确筛选；undefined 表示全部 */
+    const [filterToolType, setFilterToolType] = React.useState<string | undefined>(undefined);
 
     const [drawerOpen, setDrawerOpen] = React.useState(false);
     const [drawerMode, setDrawerMode] = React.useState<"create" | "edit">("create");
@@ -77,7 +79,12 @@ export default function ToolsPage() {
         setLoading(true);
         void (async () => {
             try {
-                const pageData = await listToolsPage({page, pageSize, q: debouncedQ || undefined});
+                const pageData = await listToolsPage({
+                    page,
+                    pageSize,
+                    q: debouncedQ || undefined,
+                    toolType: filterToolType,
+                });
                 if (!cancelled) {
                     setTools(pageData.items);
                     setTotal(pageData.total);
@@ -96,14 +103,19 @@ export default function ToolsPage() {
         return () => {
             cancelled = true;
         };
-    }, [page, pageSize, debouncedQ]);
+    }, [page, pageSize, debouncedQ, filterToolType]);
 
     async function reload() {
         setError(null);
         setLoading(true);
         try {
             const [pageData, m, builtins] = await Promise.all([
-                listToolsPage({page, pageSize, q: debouncedQ || undefined}),
+                listToolsPage({
+                    page,
+                    pageSize,
+                    q: debouncedQ || undefined,
+                    toolType: filterToolType,
+                }),
                 fetchToolTypeMeta(),
                 fetchLocalBuiltinToolsMeta(),
             ]);
@@ -116,6 +128,26 @@ export default function ToolsPage() {
         } finally {
             setLoading(false);
         }
+    }
+
+    const typeFilterOptions = React.useMemo(
+        () =>
+            [...meta]
+                .sort((a, b) => a.code.localeCompare(b.code))
+                .map((m) => ({
+                    value: m.code,
+                    label: `${m.label}（${m.code}）`,
+                })),
+        [meta],
+    );
+
+    const hasActiveListFilter = Boolean(debouncedQ || filterToolType);
+
+    function clearListFilters() {
+        setSearchInput("");
+        setDebouncedQ("");
+        setFilterToolType(undefined);
+        setPage(1);
     }
 
     function openCreate() {
@@ -229,10 +261,18 @@ export default function ToolsPage() {
             <Space orientation="vertical" size={16} style={{width: "100%"}}>
                 <PageHeaderBlock
                     title="工具管理"
-                    subtitle="完整 CRUD：列表检索、新建、编辑、删除；详情页联调。类型能力说明由后端 /tools/meta/tool-types 提供，扩展新类型时前后端可同步演进。"
+                    subtitle={
+                        <Tooltip
+                            title="支持列表检索与类型筛选、新建/编辑/删除、详情页联调与 test-call；类型说明来自 /tools/meta/tool-types，便于扩展新类型。"
+                        >
+                            <span>
+                                检索与类型筛选、CRUD、详情联调；MCP 支持批量导入。鼠标悬停查看说明。
+                            </span>
+                        </Tooltip>
+                    }
                     extra={
                         <Space wrap>
-                            <Button onClick={() => void reload()} loading={loading}>
+                            <Button icon={<ReloadOutlined/>} onClick={() => void reload()} loading={loading}>
                                 刷新
                             </Button>
                             <Button type="primary" icon={<PlusOutlined/>} onClick={openCreate}>
@@ -248,18 +288,36 @@ export default function ToolsPage() {
                 <SectionCard title="工具列表">
                     <Space orientation="vertical" size={12} style={{width: "100%"}}>
                         <Space wrap style={{width: "100%", justifyContent: "space-between", alignItems: "center"}}>
-                            <Input.Search
-                                allowClear
-                                placeholder="按名称、类型、ID、definition 文本搜索（服务端模糊匹配）…"
-                                style={{maxWidth: 400, minWidth: 240}}
-                                value={searchInput}
-                                onSearch={(v) => {
-                                    setSearchInput(v);
-                                    setDebouncedQ(v.trim());
-                                    setPage(1);
-                                }}
-                                onChange={(e) => setSearchInput(e.target.value)}
-                            />
+                            <Space wrap size={12}>
+                                <Input.Search
+                                    allowClear
+                                    placeholder="名称 / ID / 类型 / definition 关键词…"
+                                    style={{width: 320, minWidth: 200}}
+                                    value={searchInput}
+                                    onSearch={(v) => {
+                                        setSearchInput(v);
+                                        setDebouncedQ(v.trim());
+                                        setPage(1);
+                                    }}
+                                    onChange={(e) => setSearchInput(e.target.value)}
+                                />
+                                <Select
+                                    allowClear
+                                    placeholder="工具类型"
+                                    style={{minWidth: 160}}
+                                    value={filterToolType}
+                                    options={typeFilterOptions}
+                                    onChange={(v) => {
+                                        setFilterToolType(v ?? undefined);
+                                        setPage(1);
+                                    }}
+                                />
+                                {hasActiveListFilter ? (
+                                    <Button type="link" onClick={clearListFilters} style={{padding: 0}}>
+                                        清空条件
+                                    </Button>
+                                ) : null}
+                            </Space>
                             <Typography.Text type="secondary">共 {total} 条</Typography.Text>
                         </Space>
 
@@ -281,7 +339,19 @@ export default function ToolsPage() {
                                 },
                             })}
                             locale={{
-                                emptyText: (
+                                emptyText: hasActiveListFilter ? (
+                                    <Empty
+                                        image={Empty.PRESENTED_IMAGE_SIMPLE}
+                                        description="没有符合条件的工具"
+                                    >
+                                        <Space>
+                                            <Button onClick={clearListFilters}>清空筛选</Button>
+                                            <Button type="primary" onClick={openCreate}>
+                                                新建工具
+                                            </Button>
+                                        </Space>
+                                    </Empty>
+                                ) : (
                                     <Empty
                                         image={Empty.PRESENTED_IMAGE_SIMPLE}
                                         description="暂无工具，点击「新建工具」开始注册"

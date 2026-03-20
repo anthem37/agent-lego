@@ -540,3 +540,7 @@ export const NAME_ID_RULES = [
         message: "建议使用英文标识：字母开头，可含数字、下划线、短横线",
     },
 ];
+
+/** 与后端 AgentScope Toolkit 注册及全平台唯一 name 策略一致 */
+export const TOOL_NAME_AGENTSCOPE_HINT =
+    "该名称会注册为 AgentScope Toolkit 工具名并参与模型 function calling；全平台唯一（与其它类型也不能重名，大小写不敏感）。";

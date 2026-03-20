@@ -1,9 +1,7 @@
 package com.agentlego.backend.tool.http;
 
-import com.agentlego.backend.api.ApiException;
 import com.agentlego.backend.tool.domain.ToolAggregate;
 import com.agentlego.backend.tool.schema.ToolOutputSchemaDescription;
-import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.agentscope.core.message.ToolResultBlock;
 import io.agentscope.core.tool.AgentTool;
@@ -11,31 +9,16 @@ import io.agentscope.core.tool.ToolCallParam;
 import reactor.core.publisher.Mono;
 import reactor.core.scheduler.Schedulers;
 
-import java.net.URI;
-import java.net.http.HttpClient;
-import java.net.http.HttpRequest;
-import java.net.http.HttpResponse;
-import java.nio.charset.StandardCharsets;
-import java.time.Duration;
-import java.util.HashMap;
-import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 
 /**
  * 将 {@link com.agentlego.backend.tool.domain.ToolType#HTTP} 工具注册为 AgentScope {@link AgentTool}。
+ * <p>
+ * 实际 HTTP 访问委托 {@link HttpToolRequestExecutor}（默认 {@link OkHttpHttpToolRequestExecutor}，基于 Square OkHttp），
+ * 避免在业务代码中直接使用 JDK {@code HttpClient}。
  */
 public final class HttpProxyAgentTool implements AgentTool {
-
-    private static final int MAX_RESPONSE_CHARS = 256 * 1024;
-    private static final Duration CONNECT_TIMEOUT = Duration.ofSeconds(10);
-    private static final Duration REQUEST_TIMEOUT = Duration.ofSeconds(30);
-
-    private static final HttpClient HTTP_CLIENT = HttpClient.newBuilder()
-            .connectTimeout(CONNECT_TIMEOUT)
-            .followRedirects(HttpClient.Redirect.NEVER)
-            .version(HttpClient.Version.HTTP_1_1)
-            .build();
 
     private static final Map<String, Object> DEFAULT_PARAMETERS = Map.of(
             "type", "object",
@@ -48,10 +31,16 @@ public final class HttpProxyAgentTool implements AgentTool {
     private final Map<String, Object> parameters;
     private final HttpToolSpec spec;
     private final ObjectMapper objectMapper;
+    private final HttpToolRequestExecutor httpExecutor;
 
-    public HttpProxyAgentTool(ToolAggregate aggregate, ObjectMapper objectMapper) {
+    public HttpProxyAgentTool(
+            ToolAggregate aggregate,
+            ObjectMapper objectMapper,
+            HttpToolRequestExecutor httpExecutor
+    ) {
         Objects.requireNonNull(aggregate, "aggregate");
         this.objectMapper = Objects.requireNonNull(objectMapper, "objectMapper");
+        this.httpExecutor = Objects.requireNonNull(httpExecutor, "httpExecutor");
         this.name = aggregate.getName();
         Map<String, Object> def = aggregate.getDefinition() == null ? Map.of() : aggregate.getDefinition();
         this.spec = HttpToolSpec.fromDefinition(def);
@@ -85,10 +74,6 @@ public final class HttpProxyAgentTool implements AgentTool {
         return DEFAULT_PARAMETERS;
     }
 
-    private static boolean wantsEntity(String method) {
-        return "POST".equals(method) || "PUT".equals(method) || "PATCH".equals(method);
-    }
-
     @Override
     public String getName() {
         return name;
@@ -112,61 +97,7 @@ public final class HttpProxyAgentTool implements AgentTool {
     }
 
     private ToolResultBlock invokeHttp(ToolCallParam param, Map<String, Object> input) {
-        try {
-            String resolvedUrl = spec.resolveUrl(input);
-            SsrUrlGuard.validate(resolvedUrl);
-            URI uri = URI.create(resolvedUrl);
-
-            String method = spec.getMethod();
-            HttpRequest.Builder rb = HttpRequest.newBuilder(uri)
-                    .timeout(REQUEST_TIMEOUT);
-
-            for (Map.Entry<String, String> h : spec.getHeaders().entrySet()) {
-                rb.header(h.getKey(), h.getValue());
-            }
-
-            byte[] bodyBytes = null;
-            if (spec.isSendJsonBody() && wantsEntity(method)) {
-                if (!spec.getHeaders().keySet().stream().anyMatch(k -> k.equalsIgnoreCase("Content-Type"))) {
-                    rb.header("Content-Type", "application/json; charset=UTF-8");
-                }
-                try {
-                    bodyBytes = objectMapper.writeValueAsBytes(input);
-                } catch (JsonProcessingException e) {
-                    return ToolResultBlock.error("Failed to serialize JSON body: " + e.getMessage());
-                }
-            }
-
-            rb.method(method, bodyBytes == null
-                    ? HttpRequest.BodyPublishers.noBody()
-                    : HttpRequest.BodyPublishers.ofByteArray(bodyBytes));
-
-            HttpResponse<String> resp = HTTP_CLIENT.send(rb.build(), HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
-            String body = resp.body() == null ? "" : resp.body();
-            if (body.length() > MAX_RESPONSE_CHARS) {
-                body = body.substring(0, MAX_RESPONSE_CHARS) + "\n...[truncated]";
-            }
-            Map<String, Object> meta = new HashMap<>();
-            meta.put("statusCode", resp.statusCode());
-            meta.put("url", resolvedUrl);
-            meta.put("method", method);
-            List<String> contentType = resp.headers().map().getOrDefault("content-type", List.of());
-            if (!contentType.isEmpty()) {
-                meta.put("contentType", contentType.get(0));
-            }
-            return ToolResultBlock.of(
-                    param.getToolUseBlock().getId(),
-                    param.getToolUseBlock().getName(),
-                    io.agentscope.core.message.TextBlock.builder().text(body).build(),
-                    meta
-            );
-        } catch (ApiException e) {
-            return ToolResultBlock.error(e.getMessage());
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            return ToolResultBlock.error("HTTP request interrupted");
-        } catch (Exception e) {
-            return ToolResultBlock.error("HTTP request failed: " + e.getMessage());
-        }
+        HttpToolExecutionResult result = httpExecutor.execute(spec, input, objectMapper);
+        return HttpToolResultMapper.toToolResultBlock(param, result);
     }
 }

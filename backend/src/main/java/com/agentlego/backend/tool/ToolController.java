@@ -40,15 +40,17 @@ public class ToolController {
     }
 
     /**
-     * 分页列表；{@code q} 可选，模糊匹配名称、ID、类型、definition 文本。
+     * 分页列表；{@code q} 可选，模糊匹配名称、ID、类型、definition 文本；
+     * {@code toolType} 可选，按工具类型精确筛选（与枚举值一致，如 LOCAL / MCP）。
      */
     @GetMapping
     public ApiResponse<ToolPageDto> list(
             @RequestParam(defaultValue = "1") int page,
             @RequestParam(defaultValue = "50") int pageSize,
-            @RequestParam(required = false) String q
+            @RequestParam(required = false) String q,
+            @RequestParam(required = false) String toolType
     ) {
-        return ApiResponse.ok(toolService.listToolsPage(page, pageSize, q));
+        return ApiResponse.ok(toolService.listToolsPage(page, pageSize, q, toolType));
     }
 
     /**

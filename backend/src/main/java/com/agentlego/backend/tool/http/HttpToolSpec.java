@@ -1,6 +1,7 @@
 package com.agentlego.backend.tool.http;
 
 import com.agentlego.backend.api.ApiException;
+import lombok.Getter;
 import org.springframework.http.HttpStatus;
 
 import java.net.URLEncoder;
@@ -31,8 +32,11 @@ public final class HttpToolSpec {
     private static final int MAX_URL_LENGTH = 4096;
 
     private final String urlTemplate;
+    @Getter
     private final String method;
+    @Getter
     private final Map<String, String> headers;
+    @Getter
     private final boolean sendJsonBody;
 
     private HttpToolSpec(String urlTemplate, String method, Map<String, String> headers, boolean sendJsonBody) {
@@ -138,15 +142,4 @@ public final class HttpToolSpec {
         return resolved;
     }
 
-    public String getMethod() {
-        return method;
-    }
-
-    public Map<String, String> getHeaders() {
-        return headers;
-    }
-
-    public boolean isSendJsonBody() {
-        return sendJsonBody;
-    }
 }

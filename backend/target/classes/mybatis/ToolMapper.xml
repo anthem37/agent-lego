@@ -46,6 +46,16 @@
           and id != #{excludeId}
     </select>
 
+    <!-- 全平台 name 唯一（大小写不敏感），与 AgentScope Toolkit 以名为键对齐；excludeId 为空时不排除 -->
+    <select id="countByNameIgnoreCaseExcluding" resultType="int">
+        select count(*)::int
+        from platform_tools
+        where lower(trim(name)) = lower(trim(#{name}))
+        <if test="excludeId != null and excludeId != ''">
+            and id != #{excludeId}
+        </if>
+    </select>
+
     <select id="findById" parameterType="java.lang.String" resultMap="ToolDOMap">
         select id,
                tool_type,
@@ -68,6 +78,9 @@
 
     <sql id="ToolWhereQuery">
         <where>
+            <if test="toolType != null and toolType != ''">
+                and upper(trim(tool_type)) = upper(trim(#{toolType}))
+            </if>
             <if test="q != null and q != ''">
                 and (
                 name ilike concat('%', #{q}, '%')

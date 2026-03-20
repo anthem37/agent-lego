@@ -67,7 +67,7 @@ class ToolControllerWebTest {
         dto.setDefinition(Map.of());
         dto.setCreatedAt(Instant.parse("2020-01-01T00:00:00Z"));
 
-        when(toolApplicationService.listToolsPage(1, 50, null)).thenReturn(
+        when(toolApplicationService.listToolsPage(1, 50, null, null)).thenReturn(
                 ToolPageDto.builder()
                         .items(List.of(dto))
                         .total(1)
@@ -82,7 +82,26 @@ class ToolControllerWebTest {
                 .andExpect(jsonPath("$.data.items[0].id").value("t1"))
                 .andExpect(jsonPath("$.data.total").value(1));
 
-        verify(toolApplicationService).listToolsPage(eq(1), eq(50), isNull());
+        verify(toolApplicationService).listToolsPage(eq(1), eq(50), isNull(), isNull());
+    }
+
+    @Test
+    void listTools_withToolType_shouldPassParam() throws Exception {
+        when(toolApplicationService.listToolsPage(1, 20, null, "MCP")).thenReturn(
+                ToolPageDto.builder()
+                        .items(List.of())
+                        .total(0)
+                        .page(1)
+                        .pageSize(20)
+                        .build()
+        );
+
+        mockMvc.perform(get("/tools").param("page", "1").param("pageSize", "20").param("toolType", "MCP"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value("OK"))
+                .andExpect(jsonPath("$.data.total").value(0));
+
+        verify(toolApplicationService).listToolsPage(eq(1), eq(20), isNull(), eq("MCP"));
     }
 
     @Test

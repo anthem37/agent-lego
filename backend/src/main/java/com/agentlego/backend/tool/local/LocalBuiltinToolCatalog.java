@@ -86,7 +86,7 @@ public class LocalBuiltinToolCatalog {
     }
 
     private static String buildOutputDescription(String returnSimpleName, Class<?> converterClass) {
-        if (converterClass != null && PlainTextToolResultConverter.class.equals(converterClass)) {
+        if (PlainTextToolResultConverter.class.equals(converterClass)) {
             return String.format(
                     "返回类型 %s，经 %s 转为对话中的纯文本块（ToolResultBlock）。",
                     returnSimpleName,
