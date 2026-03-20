@@ -86,7 +86,8 @@ export default function AgentsPage() {
     return (
         <AppLayout>
             <Space orientation="vertical" size={16} style={{width: "100%"}}>
-                <PageHeaderBlock title="智能体" subtitle="创建时从「模型配置实例」列表中选择绑定对象（可按名称、参数摘要区分同名模型）。"/>
+                <PageHeaderBlock title="智能体"
+                                 subtitle="创建时从「模型配置实例」列表中选择绑定对象（可按名称、参数摘要区分同名模型）。"/>
 
                 <ErrorAlert error={error}/>
 
@@ -114,7 +115,7 @@ export default function AgentsPage() {
                                 options={toModelSelectOptions(modelRows)}
                                 popupMatchSelectWidth={520}
                                 filterOption={(input, option) => {
-                                    const st = (option as {searchText?: string}).searchText ?? "";
+                                    const st = (option as { searchText?: string }).searchText ?? "";
                                     const q = input.trim().toLowerCase();
                                     return !q || st.includes(q);
                                 }}

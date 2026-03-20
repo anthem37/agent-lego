@@ -202,7 +202,7 @@ export default function AgentDetailPage(props: { params: Promise<{ id: string }>
                                 options={toModelSelectOptions(modelRows)}
                                 popupMatchSelectWidth={520}
                                 filterOption={(input, option) => {
-                                    const st = (option as {searchText?: string}).searchText ?? "";
+                                    const st = (option as { searchText?: string }).searchText ?? "";
                                     const q = input.trim().toLowerCase();
                                     return !q || st.includes(q);
                                 }}

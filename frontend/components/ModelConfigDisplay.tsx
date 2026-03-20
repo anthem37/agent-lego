@@ -82,7 +82,8 @@ export function ModelConfigDisplay(props: Props) {
                     <div key={key} style={{marginBottom: 16}}>
                         <Typography.Title level={5} style={{marginBottom: 8}}>
                             {configKeyTitle(key)}
-                            <Typography.Text type="secondary" style={{marginLeft: 8, fontSize: 13, fontWeight: "normal"}}>
+                            <Typography.Text type="secondary"
+                                             style={{marginLeft: 8, fontSize: 13, fontWeight: "normal"}}>
                                 {key}
                             </Typography.Text>
                         </Typography.Title>

@@ -8,7 +8,7 @@ import java.time.Instant;
  * 工具数据对象（Data Object, DO）。
  * <p>
  * 说明：
- * - toolType 在数据库侧以字符串保存（LOCAL/MCP）；
+ * - toolType 在数据库侧以字符串保存（如 LOCAL/MCP/HTTP/WORKFLOW）；
  * - definitionJson 为工具定义 JSON（序列化后的字符串）。
  */
 @Data
@@ -18,7 +18,7 @@ public class ToolDO {
      */
     private String id;
     /**
-     * 工具类型字符串（LOCAL/MCP）。
+     * 工具类型字符串。
      */
     private String toolType;
     /**

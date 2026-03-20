@@ -161,7 +161,8 @@ export default function ModelDetailPage(props: { params: Promise<{ id: string }>
                     {model ? (
                         <Descriptions column={1} size="small">
                             <Descriptions.Item label="配置名称">{model.name}</Descriptions.Item>
-                            <Descriptions.Item label="备注">{model.description?.trim() ? model.description : "—"}</Descriptions.Item>
+                            <Descriptions.Item
+                                label="备注">{model.description?.trim() ? model.description : "—"}</Descriptions.Item>
                             <Descriptions.Item
                                 label={
                                     <span>

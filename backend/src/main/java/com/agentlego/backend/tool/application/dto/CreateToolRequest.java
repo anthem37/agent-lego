@@ -8,14 +8,14 @@ import java.util.Map;
 /**
  * 创建工具请求 DTO。
  * <p>
- * - toolType：工具类型（LOCAL/MCP）
+ * - toolType：工具类型（LOCAL | MCP | HTTP | WORKFLOW）
  * - definition：工具定义（通常是 JSON schema / MCP tool schema 的子集）
  */
 @Data
 public class CreateToolRequest {
 
     /**
-     * 工具类型：LOCAL | MCP。
+     * 工具类型：LOCAL | MCP | HTTP | WORKFLOW。
      */
     @NotBlank
     private String toolType;

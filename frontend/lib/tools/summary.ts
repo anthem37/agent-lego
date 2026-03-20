@@ -1,0 +1,105 @@
+import type {ToolDto} from "@/lib/tools/types";
+
+const URL_MAX = 52;
+const HTTP_METHODS_WITH_JSON_BODY = new Set(["POST", "PUT", "PATCH"]);
+
+function countHttpParameterProps(def: Record<string, unknown>): number {
+    const raw = def.parameters ?? def.inputSchema;
+    if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
+        return 0;
+    }
+    const props = (raw as Record<string, unknown>).properties;
+    if (!props || typeof props !== "object" || Array.isArray(props)) {
+        return 0;
+    }
+    return Object.keys(props as Record<string, unknown>).length;
+}
+
+function countHttpOutputProps(def: Record<string, unknown>): number {
+    const raw = def.outputSchema;
+    if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
+        return 0;
+    }
+    const props = (raw as Record<string, unknown>).properties;
+    if (!props || typeof props !== "object" || Array.isArray(props)) {
+        return 0;
+    }
+    return Object.keys(props as Record<string, unknown>).length;
+}
+
+function trunc(s: string, max: number): string {
+    if (s.length <= max) {
+        return s;
+    }
+    return `${s.slice(0, Math.max(0, max - 1))}…`;
+}
+
+/**
+ * 列表/检索用：从 definition 生成一行可读摘要（非 JSON）。
+ */
+export function summarizeToolDefinition(tool: ToolDto): string {
+    const t = (tool.toolType ?? "").toUpperCase();
+    const def = tool.definition ?? {};
+
+    if (t === "HTTP") {
+        const method = typeof def.method === "string" ? def.method.toUpperCase() : "GET";
+        const url = typeof def.url === "string" ? def.url : "";
+        const base = url ? `${method} ${trunc(url, URL_MAX)}` : `${method}（未配置 URL）`;
+        const hdrs = def.headers;
+        const hn =
+            hdrs && typeof hdrs === "object" && !Array.isArray(hdrs)
+                ? Object.keys(hdrs as Record<string, unknown>).length
+                : 0;
+        const pn = countHttpParameterProps(def);
+        const on = countHttpOutputProps(def);
+        const parts = [base];
+        if (pn > 0) {
+            parts.push(`${pn} 个入参`);
+        }
+        if (on > 0) {
+            parts.push(`${on} 个出参`);
+        }
+        if (hn > 0) {
+            parts.push(`${hn} 个请求头`);
+        }
+        if (HTTP_METHODS_WITH_JSON_BODY.has(method) && def.sendJsonBody === false) {
+            parts.push("不发 JSON body");
+        }
+        return parts.length > 1 ? parts.join(" · ") : base;
+    }
+
+    if (t === "WORKFLOW") {
+        const id = def.workflowId != null ? String(def.workflowId) : "";
+        return id ? `工作流 ${trunc(id, 48)}` : "工作流（未填 workflowId）";
+    }
+
+    if (t === "MCP") {
+        const ep = typeof def.endpoint === "string" ? def.endpoint : "";
+        const remote = typeof def.mcpToolName === "string" && def.mcpToolName.trim() ? def.mcpToolName.trim() : null;
+        const pn = countHttpParameterProps(def);
+        const parts: string[] = [];
+        parts.push(ep ? trunc(ep, 48) : "未填端点");
+        if (remote) {
+            parts.push(`远端:${remote}`);
+        }
+        if (pn > 0) {
+            parts.push(`${pn} 个入参`);
+        }
+        return parts.join(" · ");
+    }
+
+    if (t === "LOCAL") {
+        const d = typeof def.description === "string" ? def.description.trim() : "";
+        return d ? trunc(d, 64) : `内置 · ${tool.name}`;
+    }
+
+    const d = typeof def.description === "string" ? def.description.trim() : "";
+    const keys = Object.keys(def);
+    if (d) {
+        return trunc(d, 64);
+    }
+    if (keys.length > 0) {
+        return `已配置 ${keys.length} 个字段`;
+    }
+    return "—";
+}

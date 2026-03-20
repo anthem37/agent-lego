@@ -17,7 +17,7 @@ public class ToolDto {
      */
     private String id;
     /**
-     * 工具类型字符串（LOCAL/MCP）。
+     * 工具类型字符串。
      */
     private String toolType;
     /**

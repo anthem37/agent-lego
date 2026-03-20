@@ -121,7 +121,7 @@ function readNumber(v: unknown): number | null {
     return Number.isNaN(n) ? null : n;
 }
 
-function FieldHeading(props: {apiKey: string}) {
+function FieldHeading(props: { apiKey: string }) {
     const zh = CONFIG_KEY_TITLE[props.apiKey];
     return (
         <div style={{marginBottom: 4}}>
@@ -417,21 +417,21 @@ export function ModelConfigForm(props: Props) {
         },
         ...(endpointPanel
             ? [
-                  {
-                      key: "endpoint",
-                      label: "接口路径（兼容 OpenAI 类网关）",
-                      children: endpointPanel,
-                  },
-              ]
+                {
+                    key: "endpoint",
+                    label: "接口路径（兼容 OpenAI 类网关）",
+                    children: endpointPanel,
+                },
+            ]
             : []),
         ...(has("additionalHeaders") || has("additionalBodyParams") || has("additionalQueryParams")
             ? [
-                  {
-                      key: "extra",
-                      label: "附加参数（请求头 / 正文 / 查询串）",
-                      children: extraPanel,
-                  },
-              ]
+                {
+                    key: "extra",
+                    label: "附加参数（请求头 / 正文 / 查询串）",
+                    children: extraPanel,
+                },
+            ]
             : []),
     ];
 

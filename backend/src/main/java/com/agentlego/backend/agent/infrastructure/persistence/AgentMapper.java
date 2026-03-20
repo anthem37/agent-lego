@@ -3,6 +3,8 @@ package com.agentlego.backend.agent.infrastructure.persistence;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
 
+import java.util.List;
+
 @Mapper
 public interface AgentMapper {
     int insert(AgentDO agent);
@@ -13,5 +15,9 @@ public interface AgentMapper {
      * 统计引用指定模型 ID 的智能体数量（用于删除前冲突检测）。
      */
     int countByModelId(@Param("modelId") String modelId);
+
+    int countByToolId(@Param("toolId") String toolId);
+
+    List<String> listAgentIdsByToolId(@Param("toolId") String toolId);
 }
 

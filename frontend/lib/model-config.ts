@@ -39,7 +39,7 @@ export function normalizeModelConfig(
     return Object.keys(out).length > 0 ? out : undefined;
 }
 
-export type StringPair = {key: string; value: string};
+export type StringPair = { key: string; value: string };
 
 export function objectToPairs(obj: unknown): StringPair[] {
     if (!obj || typeof obj !== "object" || Array.isArray(obj)) {

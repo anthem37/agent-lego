@@ -43,8 +43,21 @@
     </select>
 
     <select id="countByModelId" parameterType="java.lang.String" resultType="int">
-        select count(*)::int
+        select count(*) ::int
         from platform_agents
         where model_id = #{modelId}
+    </select>
+
+    <select id="countByToolId" resultType="int">
+        select count(*) ::int
+        from platform_agents
+        where #{toolId} = any (tool_ids)
+    </select>
+
+    <select id="listAgentIdsByToolId" resultType="java.lang.String">
+        select id
+        from platform_agents
+        where #{toolId} = any (tool_ids)
+        order by created_at desc limit 20
     </select>
 </mapper>

@@ -25,6 +25,13 @@ management:
 logging:
   level:
     root: INFO
+
+# 本服务作为 MCP Server 对外暴露（SSE）；工具列表与进程内 LOCAL 内置一致
+agentlego:
+  mcp:
+    server:
+      enabled: true
+      sse-path: /mcp
 mybatis:
   mapper-locations: classpath*:mybatis/*.xml
   configuration:

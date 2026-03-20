@@ -9,7 +9,7 @@ import java.util.Map;
  * 工具聚合根（Aggregate Root）。
  * <p>
  * 说明：
- * - toolType 区分 LOCAL 与 MCP；
+ * - toolType：LOCAL / MCP / HTTP / WORKFLOW 等；
  * - definition 为工具 schema/定义（JSON object），由不同类型工具决定其结构。
  */
 @Data
@@ -19,7 +19,7 @@ public class ToolAggregate {
      */
     private String id;
     /**
-     * 工具类型（LOCAL/MCP）。
+     * 工具类型。
      */
     private ToolType toolType;
     /**

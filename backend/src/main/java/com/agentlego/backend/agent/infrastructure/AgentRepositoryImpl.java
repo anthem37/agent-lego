@@ -43,6 +43,17 @@ public class AgentRepositoryImpl implements AgentRepository {
     }
 
     @Override
+    public int countByToolId(String toolId) {
+        return mapper.countByToolId(toolId);
+    }
+
+    @Override
+    public List<String> listAgentIdsByToolId(String toolId) {
+        List<String> ids = mapper.listAgentIdsByToolId(toolId);
+        return ids == null ? List.of() : ids;
+    }
+
+    @Override
     public Optional<AgentAggregate> findById(String id) {
         AgentDO row = mapper.findById(id);
         if (row == null) {

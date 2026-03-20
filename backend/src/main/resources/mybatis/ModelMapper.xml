@@ -52,12 +52,12 @@
 
     <update id="update" parameterType="com.agentlego.backend.model.infrastructure.persistence.ModelDO">
         update platform_models
-        set name             = #{name},
-            description      = #{description},
-            model_key        = #{modelKey},
-            config           = cast(#{configJson} as jsonb),
-            api_key_cipher   = #{apiKeyCipher},
-            base_url         = #{baseUrl}
+        set name           = #{name},
+            description    = #{description},
+            model_key      = #{modelKey},
+            config         = cast(#{configJson} as jsonb),
+            api_key_cipher = #{apiKeyCipher},
+            base_url       = #{baseUrl}
         where id = #{id}
     </update>
 

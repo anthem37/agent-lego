@@ -9,7 +9,12 @@ import {AppLayout} from "@/components/AppLayout";
 export default function HomePage() {
     const quickCards = [
         {title: "模型管理", desc: "配置 provider/modelKey 并测试连通性", href: "/models", icon: <ApiOutlined/>},
-        {title: "工具管理", desc: "管理 LOCAL/MCP 工具并执行 test-call", href: "/tools", icon: <ToolOutlined/>},
+        {
+            title: "工具管理",
+            desc: "LOCAL / HTTP / MCP / WORKFLOW 等工具注册与 test-call",
+            href: "/tools",
+            icon: <ToolOutlined/>
+        },
         {title: "智能体管理", desc: "创建 agent，绑定工具与策略并运行", href: "/agents", icon: <RobotOutlined/>},
         {
             title: "工作流管理",

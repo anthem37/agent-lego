@@ -3,15 +3,19 @@ package com.agentlego.backend.tool.application;
 import com.agentlego.backend.api.ApiException;
 import com.agentlego.backend.common.SnowflakeIdGenerator;
 import com.agentlego.backend.tool.domain.ToolAggregate;
-import com.agentlego.backend.tool.domain.ToolType;
-import com.agentlego.backend.tool.local.LocalEchoTool;
-import com.agentlego.backend.tool.local.LocalNowTool;
+import com.agentlego.backend.mcp.McpClientRegistry;
+import com.agentlego.backend.tool.http.HttpProxyAgentTool;
+import com.agentlego.backend.tool.local.LocalBuiltinToolCatalog;
+import com.agentlego.backend.tool.mcp.McpProxyAgentTool;
+import com.agentlego.backend.tool.workflow.WorkflowProxyAgentTool;
+import com.agentlego.backend.workflow.application.WorkflowApplicationService;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.agentscope.core.message.ToolResultBlock;
 import io.agentscope.core.message.ToolUseBlock;
 import io.agentscope.core.tool.ToolCallParam;
 import io.agentscope.core.tool.Toolkit;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import reactor.core.publisher.Mono;
@@ -26,13 +30,10 @@ import java.util.Objects;
  * <p>
  * 作用：
  * - 把平台侧的“工具定义/工具权限”映射到 AgentScope 的 Toolkit；
- * - 执行本地工具（LOCAL），并返回 AgentScope 标准的 ToolResultBlock。
+ * - 按类型执行工具并返回 AgentScope 标准的 ToolResultBlock。
  */
 @Service
 public class ToolExecutionService {
-    private static final String TOOL_ECHO = "echo";
-    private static final String TOOL_NOW = "now";
-
     /**
      * JSON 序列化器（ObjectMapper）。
      * <p>
@@ -40,30 +41,106 @@ public class ToolExecutionService {
      */
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
 
+    private final WorkflowApplicationService workflowApplicationService;
+    private final LocalBuiltinToolCatalog localBuiltinToolCatalog;
+    private final McpClientRegistry mcpClientRegistry;
+
+    /**
+     * @param workflowApplicationService 使用 {@link Lazy} 避免与 {@link com.agentlego.backend.agent.application.AgentApplicationService} 形成构造器循环依赖。
+     */
+    public ToolExecutionService(
+            @Lazy WorkflowApplicationService workflowApplicationService,
+            LocalBuiltinToolCatalog localBuiltinToolCatalog,
+            McpClientRegistry mcpClientRegistry
+    ) {
+        this.workflowApplicationService = workflowApplicationService;
+        this.localBuiltinToolCatalog = localBuiltinToolCatalog;
+        this.mcpClientRegistry = mcpClientRegistry;
+    }
+
     /**
      * 构建一个只包含指定工具集合的 Toolkit，供 AgentScope Agent 挂载使用。
-     * <p>
-     * 约束：
-     * - 当前仅支持本地工具（LOCAL）。
-     * - MCP 工具后续由 McpAdapter 接入（这里先返回明确的 NOT_IMPLEMENTED）。
      */
     public Toolkit buildToolkitForToolIds(List<ToolAggregate> tools) {
         Toolkit toolkit = new Toolkit();
 
         for (ToolAggregate t : tools) {
-            if (t.getToolType() == ToolType.LOCAL) {
-                toolkit.registerTool(resolveLocalTool(t.getName()));
-            } else {
-                // MCP 工具需要 McpAdapter 支持，这里先保留明确的占位报错，避免静默失败。
-                throw new ApiException(
-                        "UNSUPPORTED_TOOL_TYPE",
-                        "MCP tool execution is not implemented yet: " + t.getName(),
-                        HttpStatus.NOT_IMPLEMENTED
+            switch (t.getToolType()) {
+                case LOCAL -> toolkit.registerTool(resolveLocalTool(t.getName()));
+                case HTTP -> toolkit.registerAgentTool(new HttpProxyAgentTool(t, OBJECT_MAPPER));
+                case MCP -> toolkit.registerAgentTool(new McpProxyAgentTool(t, mcpClientRegistry));
+                case WORKFLOW -> toolkit.registerAgentTool(
+                        new WorkflowProxyAgentTool(t, workflowApplicationService, OBJECT_MAPPER)
                 );
             }
         }
 
         return toolkit;
+    }
+
+    /**
+     * 根据已注册工具聚合根执行一次调用（用于 test-call 等）。
+     */
+    public Mono<ToolResultBlock> executeTool(ToolAggregate aggregate, Map<String, Object> input) {
+        Objects.requireNonNull(aggregate, "aggregate");
+        Map<String, Object> in = input == null ? Map.of() : input;
+        return switch (aggregate.getToolType()) {
+            case LOCAL -> executeLocalTool(aggregate.getName(), in);
+            case HTTP -> executeHttpTool(aggregate, in);
+            case MCP -> executeMcpTool(aggregate, in);
+            case WORKFLOW -> executeWorkflowTool(aggregate, in);
+        };
+    }
+
+    private Mono<ToolResultBlock> executeWorkflowTool(ToolAggregate aggregate, Map<String, Object> input) {
+        WorkflowProxyAgentTool tool = new WorkflowProxyAgentTool(aggregate, workflowApplicationService, OBJECT_MAPPER);
+        String toolUseId = SnowflakeIdGenerator.nextId();
+        String contentJson = buildToolUseContentJson(input);
+        ToolUseBlock toolUseBlock = ToolUseBlock.builder()
+                .id(toolUseId)
+                .name(aggregate.getName())
+                .content(contentJson)
+                .input(input)
+                .build();
+        ToolCallParam param = ToolCallParam.builder()
+                .toolUseBlock(toolUseBlock)
+                .input(toolUseBlock.getInput())
+                .build();
+        return tool.callAsync(param).timeout(Duration.ofMinutes(3));
+    }
+
+    private Mono<ToolResultBlock> executeMcpTool(ToolAggregate aggregate, Map<String, Object> input) {
+        McpProxyAgentTool tool = new McpProxyAgentTool(aggregate, mcpClientRegistry);
+        String toolUseId = SnowflakeIdGenerator.nextId();
+        String contentJson = buildToolUseContentJson(input);
+        ToolUseBlock toolUseBlock = ToolUseBlock.builder()
+                .id(toolUseId)
+                .name(aggregate.getName())
+                .content(contentJson)
+                .input(input)
+                .build();
+        ToolCallParam param = ToolCallParam.builder()
+                .toolUseBlock(toolUseBlock)
+                .input(toolUseBlock.getInput())
+                .build();
+        return tool.callAsync(param).timeout(Duration.ofMinutes(3));
+    }
+
+    private Mono<ToolResultBlock> executeHttpTool(ToolAggregate aggregate, Map<String, Object> input) {
+        HttpProxyAgentTool tool = new HttpProxyAgentTool(aggregate, OBJECT_MAPPER);
+        String toolUseId = SnowflakeIdGenerator.nextId();
+        String contentJson = buildToolUseContentJson(input);
+        ToolUseBlock toolUseBlock = ToolUseBlock.builder()
+                .id(toolUseId)
+                .name(aggregate.getName())
+                .content(contentJson)
+                .input(input)
+                .build();
+        ToolCallParam param = ToolCallParam.builder()
+                .toolUseBlock(toolUseBlock)
+                .input(toolUseBlock.getInput())
+                .build();
+        return tool.callAsync(param).timeout(Duration.ofSeconds(35));
     }
 
     public Mono<ToolResultBlock> executeLocalTool(String toolName, Map<String, Object> input) {
@@ -112,17 +189,6 @@ public class ToolExecutionService {
     }
 
     private Object resolveLocalTool(String toolName) {
-        if (TOOL_ECHO.equalsIgnoreCase(toolName)) {
-            return new LocalEchoTool();
-        }
-        if (TOOL_NOW.equalsIgnoreCase(toolName)) {
-            return new LocalNowTool();
-        }
-        throw new ApiException(
-                "UNSUPPORTED_LOCAL_TOOL",
-                "Unsupported local tool: " + toolName,
-                HttpStatus.BAD_REQUEST
-        );
+        return localBuiltinToolCatalog.newInstance(toolName);
     }
 }
-

@@ -9,6 +9,18 @@ import java.util.List;
 public interface ToolMapper {
     int insert(ToolDO tool);
 
+    int update(ToolDO tool);
+
+    int deleteById(@Param("id") String id);
+
+    int countByTypeAndName(@Param("toolType") String toolType, @Param("name") String name);
+
+    int countByTypeAndNameExcludeId(
+            @Param("toolType") String toolType,
+            @Param("name") String name,
+            @Param("excludeId") String excludeId
+    );
+
     ToolDO findById(@Param("id") String id);
 
     List<ToolDO> findAll();

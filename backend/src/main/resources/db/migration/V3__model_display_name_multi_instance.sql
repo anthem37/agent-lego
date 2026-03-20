@@ -9,9 +9,9 @@ alter table if exists platform_models
 
 -- 历史数据：用「提供方/模型标识/编号前缀」生成默认名称，避免全部叫「未命名」
 update platform_models
-set name = provider || ' / ' || model_key || ' / ' || left(id, 8)
+set name = provider || ' / ' || model_key || ' / ' || left (id, 8)
 where name is null
-   or trim(name) = '';
+   or trim (name) = '';
 
 alter table platform_models
     alter column name set not null;

@@ -3,6 +3,10 @@ package com.agentlego.backend.tool.local;
 import io.agentscope.core.tool.Tool;
 import io.agentscope.core.tool.ToolParam;
 
+@LocalBuiltinUiHint(
+        label = "echo — 回显文本",
+        hint = "联调时在「入参」里填参数名 content，取值为你想回显的句子。"
+)
 public class LocalEchoTool {
 
     @Tool(

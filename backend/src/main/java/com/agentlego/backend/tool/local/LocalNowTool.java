@@ -4,6 +4,10 @@ import io.agentscope.core.tool.Tool;
 
 import java.time.Instant;
 
+@LocalBuiltinUiHint(
+        label = "now — 当前时间",
+        hint = "联调时入参可留空。"
+)
 public class LocalNowTool {
 
     @Tool(

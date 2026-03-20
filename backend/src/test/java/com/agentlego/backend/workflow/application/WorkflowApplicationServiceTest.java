@@ -3,6 +3,7 @@ package com.agentlego.backend.workflow.application;
 import com.agentlego.backend.agent.application.AgentApplicationService;
 import com.agentlego.backend.agent.application.dto.RunAgentRequest;
 import com.agentlego.backend.agent.application.dto.RunAgentResponse;
+import com.agentlego.backend.api.ApiException;
 import com.agentlego.backend.workflow.application.dto.RunWorkflowRequest;
 import com.agentlego.backend.workflow.application.dto.RunWorkflowResponse;
 import com.agentlego.backend.workflow.domain.WorkflowAggregate;
@@ -19,6 +20,7 @@ import java.util.Map;
 import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -174,6 +176,53 @@ class WorkflowApplicationServiceTest {
         service.runWorkflow("w1", buildRunReq("input0"));
 
         verify(workflowRunRepository).markFailed(eq("run1"), anyString());
+    }
+
+    @Test
+    void runWorkflowSynchronously_singleAgent_shouldReturnBodyAndMarkSucceeded() {
+        WorkflowApplicationService service = new WorkflowApplicationService(
+                workflowRepository,
+                workflowRunRepository,
+                agentApplicationService,
+                Runnable::run
+        );
+
+        when(workflowRunRepository.createRun(eq("w1"), anyMap(), isNull())).thenReturn("run-sync-1");
+
+        WorkflowAggregate workflow = new WorkflowAggregate();
+        workflow.setId("w1");
+        workflow.setDefinition(Map.of("agentId", "a1", "modelId", "m1"));
+        when(workflowRepository.findById("w1")).thenReturn(Optional.of(workflow));
+
+        when(agentApplicationService.runAgent(eq("a1"), any(RunAgentRequest.class)))
+                .thenReturn(buildAgentResp("sync-out"));
+
+        Map<String, Object> body = service.runWorkflowSynchronously("w1", buildRunReq("hi"));
+
+        assertEquals("run-sync-1", body.get("runId"));
+        assertEquals("SUCCEEDED", body.get("status"));
+        @SuppressWarnings("unchecked")
+        Map<String, Object> out = (Map<String, Object>) body.get("output");
+        assertEquals("sync-out", out.get("output"));
+        verify(workflowRunRepository).markRunning("run-sync-1");
+        verify(workflowRunRepository).markSucceeded(eq("run-sync-1"), anyMap());
+    }
+
+    @Test
+    void runWorkflowSynchronously_whenWorkflowMissing_shouldMarkFailedAndThrow() {
+        WorkflowApplicationService service = new WorkflowApplicationService(
+                workflowRepository,
+                workflowRunRepository,
+                agentApplicationService,
+                Runnable::run
+        );
+
+        when(workflowRunRepository.createRun(eq("missing"), anyMap(), isNull())).thenReturn("run-bad");
+        when(workflowRepository.findById("missing")).thenReturn(Optional.empty());
+
+        assertThrows(ApiException.class, () -> service.runWorkflowSynchronously("missing", buildRunReq("x")));
+
+        verify(workflowRunRepository).markFailed(eq("run-bad"), anyString());
     }
 }
 

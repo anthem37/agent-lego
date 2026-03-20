@@ -28,7 +28,7 @@ export default function RootLayout({
     return (
         <html lang="zh-CN" className={`${geistSans.variable} ${geistMono.variable}`}>
         <body>
-            <AntdConfigProvider>{children}</AntdConfigProvider>
+        <AntdConfigProvider>{children}</AntdConfigProvider>
         </body>
         </html>
     );

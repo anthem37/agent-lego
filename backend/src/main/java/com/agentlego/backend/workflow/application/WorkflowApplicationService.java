@@ -13,6 +13,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 
 import java.time.Instant;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
@@ -108,6 +109,37 @@ public class WorkflowApplicationService {
         resp.setRunId(runId);
         resp.setStatus(WorkflowRunStatus.RUNNING.name());
         return resp;
+    }
+
+    /**
+     * 同步执行工作流：创建 run、执行至结束并落库，返回 runId / 状态 / 输出。
+     * <p>
+     * 用于工具调用等需要立即拿到结果的场景（与 {@link #runWorkflow} 的异步触发相对）。
+     */
+    public Map<String, Object> runWorkflowSynchronously(String workflowId, RunWorkflowRequest req) {
+        String runId = workflowRunRepository.createRun(workflowId, Map.of("input", req.getInput()), null);
+        workflowRunRepository.markRunning(runId);
+        try {
+            WorkflowAggregate workflow = workflowRepository.findById(workflowId)
+                    .orElseThrow(() -> new ApiException("NOT_FOUND", "workflow not found", HttpStatus.NOT_FOUND));
+
+            Map<String, Object> def = workflow.getDefinition() == null ? Map.of() : workflow.getDefinition();
+            Map<String, Object> output = buildWorkflowOutput(def, req);
+            workflowRunRepository.markSucceeded(runId, output);
+
+            Map<String, Object> body = new LinkedHashMap<>();
+            body.put("runId", runId);
+            body.put("status", WorkflowRunStatus.SUCCEEDED.name());
+            body.put("output", output);
+            return body;
+        } catch (Exception e) {
+            String msg = (e.getMessage() == null) ? e.getClass().getSimpleName() : e.getMessage();
+            workflowRunRepository.markFailed(runId, msg);
+            if (e instanceof ApiException ae) {
+                throw ae;
+            }
+            throw new ApiException("WORKFLOW_RUN_FAILED", msg, HttpStatus.INTERNAL_SERVER_ERROR);
+        }
     }
 
     /**

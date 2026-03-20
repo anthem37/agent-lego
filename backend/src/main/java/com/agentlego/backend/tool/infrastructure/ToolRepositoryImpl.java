@@ -38,6 +38,31 @@ public class ToolRepositoryImpl implements ToolRepository {
     }
 
     @Override
+    public void update(ToolAggregate aggregate) {
+        ToolDO toolDO = new ToolDO();
+        toolDO.setId(aggregate.getId());
+        toolDO.setToolType(aggregate.getToolType().name());
+        toolDO.setName(aggregate.getName());
+        toolDO.setDefinitionJson(JsonMaps.toJson(aggregate.getDefinition()));
+        mapper.update(toolDO);
+    }
+
+    @Override
+    public int deleteById(String id) {
+        return mapper.deleteById(id);
+    }
+
+    @Override
+    public boolean existsByToolTypeAndName(ToolType toolType, String name) {
+        return mapper.countByTypeAndName(toolType.name(), name) > 0;
+    }
+
+    @Override
+    public boolean existsByToolTypeAndNameExcludingId(ToolType toolType, String name, String excludeId) {
+        return mapper.countByTypeAndNameExcludeId(toolType.name(), name, excludeId) > 0;
+    }
+
+    @Override
     public Optional<ToolAggregate> findById(String id) {
         ToolDO toolDO = mapper.findById(id);
         if (toolDO == null) {
