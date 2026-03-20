@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.agentlego.backend.model.infrastructure.persistence.ModelMapper">
+
+    <resultMap id="ModelDOMap" type="com.agentlego.backend.model.infrastructure.persistence.ModelDO">
+        <id property="id" column="id"/>
+        <result property="provider" column="provider"/>
+        <result property="modelKey" column="model_key"/>
+        <result property="configJson" column="config_json"/>
+        <result property="apiKeyCipher" column="api_key_cipher"/>
+        <result property="baseUrl" column="base_url"/>
+        <result property="createdAt" column="created_at"/>
+    </resultMap>
+
+    <insert id="insert" parameterType="com.agentlego.backend.model.infrastructure.persistence.ModelDO">
+        insert into platform_models (id, provider, model_key, config, api_key_cipher, base_url)
+        values (#{id}, #{provider}, #{modelKey}, cast(#{configJson} as jsonb), #{apiKeyCipher}, #{baseUrl})
+    </insert>
+
+    <select id="findById" resultMap="ModelDOMap" parameterType="java.lang.String">
+        select id,
+               provider,
+               model_key,
+               cast(config as text) as config_json,
+               api_key_cipher,
+               base_url,
+               created_at
+        from platform_models
+        where id = #{id}
+    </select>
+</mapper>
+

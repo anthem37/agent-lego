@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.agentlego.backend.eval.infrastructure.persistence.EvaluationMapper">
+
+    <resultMap id="EvaluationDOMap" type="com.agentlego.backend.eval.infrastructure.persistence.EvaluationDO">
+        <id property="id" column="id"/>
+        <result property="agentId" column="agent_id"/>
+        <result property="name" column="name"/>
+        <result property="configJson" column="config_json"/>
+        <result property="createdAt" column="created_at"/>
+    </resultMap>
+
+    <insert id="insert" parameterType="com.agentlego.backend.eval.infrastructure.persistence.EvaluationDO">
+        insert into platform_evaluations (id, agent_id, name, config)
+        values (#{id}, #{agentId}, #{name}, cast(#{configJson} as jsonb))
+    </insert>
+
+    <select id="findById" parameterType="java.lang.String" resultMap="EvaluationDOMap">
+        select id,
+               agent_id,
+               name,
+               cast(config as text) as config_json,
+               created_at
+        from platform_evaluations
+        where id = #{id}
+    </select>
+</mapper>
+

@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.agentlego.backend.agent.infrastructure.persistence.AgentMapper">
+
+    <resultMap id="AgentDOMap" type="com.agentlego.backend.agent.infrastructure.persistence.AgentDO">
+        <id property="id" column="id"/>
+        <result property="name" column="name"/>
+        <result property="systemPrompt" column="system_prompt"/>
+        <result property="modelId" column="model_id"/>
+        <result property="toolIdsCsv" column="tool_ids_csv"/>
+        <result property="memoryPolicyJson" column="memory_policy_json"/>
+        <result property="knowledgeBasePolicyJson" column="knowledge_base_policy_json"/>
+        <result property="createdAt" column="created_at"/>
+    </resultMap>
+
+    <insert id="insert" parameterType="com.agentlego.backend.agent.infrastructure.persistence.AgentDO">
+        insert into platform_agents (id, name, system_prompt, model_id, tool_ids, memory_policy, knowledge_base_policy)
+        values (#{id},
+                #{name},
+                #{systemPrompt},
+                #{modelId},
+                case
+                    when #{toolIdsCsv} is null or #{toolIdsCsv} = '' then '{}'::text[]
+                    else string_to_array(#{toolIdsCsv}, ',')
+                    end,
+                cast(#{memoryPolicyJson} as jsonb),
+                cast(#{knowledgeBasePolicyJson} as jsonb))
+    </insert>
+
+    <select id="findById" parameterType="java.lang.String" resultMap="AgentDOMap">
+        select id,
+               name,
+               system_prompt,
+               model_id,
+               array_to_string(tool_ids, ',')      as tool_ids_csv,
+               cast(memory_policy as text)         as memory_policy_json,
+               cast(knowledge_base_policy as text) as knowledge_base_policy_json,
+               created_at
+        from platform_agents
+        where id = #{id}
+    </select>
+</mapper>

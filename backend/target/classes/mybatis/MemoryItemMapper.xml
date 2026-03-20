@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.agentlego.backend.memory.infrastructure.persistence.MemoryItemMapper">
+
+    <resultMap id="MemoryItemDOMap" type="com.agentlego.backend.memory.infrastructure.persistence.MemoryItemDO">
+        <id property="id" column="id"/>
+        <result property="ownerScope" column="owner_scope"/>
+        <result property="content" column="content"/>
+        <result property="metadataJson" column="metadata_json"/>
+        <result property="embeddingJson" column="embedding_json"/>
+        <result property="createdAt" column="created_at"/>
+    </resultMap>
+
+    <insert id="insert" parameterType="com.agentlego.backend.memory.infrastructure.persistence.MemoryItemDO">
+        insert into memory_items (id, owner_scope, content, metadata, embedding)
+        values (#{id}, #{ownerScope}, #{content}, cast(#{metadataJson} as jsonb), #{embeddingJson}::jsonb)
+    </insert>
+
+    <select id="search" resultMap="MemoryItemDOMap">
+        select id,
+               owner_scope,
+               content,
+               cast(metadata as text)  as metadata_json,
+               cast(embedding as text) as embedding_json,
+               created_at
+        from memory_items
+        where owner_scope = #{ownerScope}
+          and content ilike '%' || #{queryText} || '%'
+        order by created_at desc
+            limit #{topK}
+    </select>
+
+</mapper>
+

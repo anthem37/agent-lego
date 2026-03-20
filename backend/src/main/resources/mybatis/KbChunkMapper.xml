@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.agentlego.backend.kb.infrastructure.persistence.KbChunkMapper">
+
+    <resultMap id="KbChunkDOMap" type="com.agentlego.backend.kb.infrastructure.persistence.KbChunkDO">
+        <id property="id" column="id"/>
+        <result property="documentId" column="document_id"/>
+        <result property="chunkIndex" column="chunk_index"/>
+        <result property="content" column="content"/>
+        <result property="metadataJson" column="metadata_json"/>
+        <result property="createdAt" column="created_at"/>
+    </resultMap>
+
+    <insert id="insertChunk" parameterType="com.agentlego.backend.kb.infrastructure.persistence.KbChunkDO">
+        insert into kb_chunks (id, document_id, chunk_index, content, metadata)
+        values (#{id}, #{documentId}, #{chunkIndex}, #{content}, cast(#{metadataJson} as jsonb))
+    </insert>
+
+    <select id="searchChunks" resultMap="KbChunkDOMap">
+        select c.id,
+               c.document_id,
+               c.chunk_index,
+               c.content,
+               cast(c.metadata as text) as metadata_json,
+               c.created_at
+        from kb_chunks c
+                 join kb_documents d on c.document_id = d.id
+        where d.kb_key = #{kbKey}
+          and c.content ilike '%' || #{queryText} || '%'
+        order by c.created_at desc
+            limit #{topK}
+    </select>
+</mapper>
+

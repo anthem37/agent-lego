@@ -1,0 +1,65 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.agentlego.backend.workflow.infrastructure.persistence.WorkflowRunMapper">
+
+    <resultMap id="WorkflowRunDOMap" type="com.agentlego.backend.workflow.infrastructure.persistence.WorkflowRunDO">
+        <id property="id" column="id"/>
+        <result property="workflowId" column="workflow_id"/>
+        <result property="status" column="status"/>
+        <result property="idempotencyKey" column="idempotency_key"/>
+        <result property="inputJson" column="input_json"/>
+        <result property="outputJson" column="output_json"/>
+        <result property="error" column="error"/>
+        <result property="startedAt" column="started_at"/>
+        <result property="finishedAt" column="finished_at"/>
+        <result property="createdAt" column="created_at"/>
+    </resultMap>
+
+    <insert id="insert" parameterType="com.agentlego.backend.workflow.infrastructure.persistence.WorkflowRunDO">
+        insert into platform_workflow_runs (id, workflow_id, status, idempotency_key, input)
+        values (#{id}, #{workflowId}, #{status}, #{idempotencyKey}, cast(#{inputJson} as jsonb))
+    </insert>
+
+    <update id="updateStatusRunning">
+        update platform_workflow_runs
+        set status      = 'RUNNING',
+            started_at  = now(),
+            finished_at = null,
+            error       = null
+        where id = #{runId}
+    </update>
+
+    <update id="updateStatusSucceeded">
+        update platform_workflow_runs
+        set status      = 'SUCCEEDED',
+            output      = cast(#{outputJson} as jsonb),
+            finished_at = now()
+        where id = #{runId}
+    </update>
+
+    <update id="updateStatusFailed">
+        update platform_workflow_runs
+        set status      = 'FAILED',
+            error       = #{error},
+            finished_at = now()
+        where id = #{runId}
+    </update>
+
+    <select id="findById" parameterType="java.lang.String" resultMap="WorkflowRunDOMap">
+        select id,
+               workflow_id,
+               status,
+               idempotency_key,
+               cast(input as text)  as input_json,
+               cast(output as text) as output_json,
+               error,
+               started_at,
+               finished_at,
+               created_at
+        from platform_workflow_runs
+        where id = #{id}
+    </select>
+</mapper>
+

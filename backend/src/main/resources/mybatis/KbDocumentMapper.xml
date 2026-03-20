@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.agentlego.backend.kb.infrastructure.persistence.KbDocumentMapper">
+
+    <resultMap id="KbDocumentDOMap" type="com.agentlego.backend.kb.infrastructure.persistence.KbDocumentDO">
+        <id property="id" column="id"/>
+        <result property="kbKey" column="kb_key"/>
+        <result property="name" column="name"/>
+        <result property="createdAt" column="created_at"/>
+    </resultMap>
+
+    <insert id="insert" parameterType="com.agentlego.backend.kb.infrastructure.persistence.KbDocumentDO">
+        insert into kb_documents (id, kb_key, name)
+        values (#{id}, #{kbKey}, #{name})
+    </insert>
+
+    <select id="findByKbKey" parameterType="java.lang.String" resultMap="KbDocumentDOMap">
+        select id,
+               kb_key,
+               name,
+               created_at
+        from kb_documents
+        where kb_key = #{kbKey}
+    </select>
+</mapper>
+

@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.agentlego.backend.tool.infrastructure.persistence.ToolMapper">
+
+    <resultMap id="ToolDOMap" type="com.agentlego.backend.tool.infrastructure.persistence.ToolDO">
+        <id property="id" column="id"/>
+        <result property="toolType" column="tool_type"/>
+        <result property="name" column="name"/>
+        <result property="definitionJson" column="definition_json"/>
+        <result property="createdAt" column="created_at"/>
+    </resultMap>
+
+    <insert id="insert" parameterType="com.agentlego.backend.tool.infrastructure.persistence.ToolDO">
+        insert into platform_tools (id, tool_type, name, definition, created_at)
+        values (#{id}, #{toolType}, #{name}, cast(#{definitionJson} as jsonb), now())
+    </insert>
+
+    <select id="findById" parameterType="java.lang.String" resultMap="ToolDOMap">
+        select id,
+               tool_type,
+               name,
+               cast(definition as text) as definition_json,
+               created_at
+        from platform_tools
+        where id = #{id}
+    </select>
+
+    <select id="findAll" resultMap="ToolDOMap">
+        select id,
+               tool_type,
+               name,
+               cast(definition as text) as definition_json,
+               created_at
+        from platform_tools
+        order by created_at desc
+    </select>
+</mapper>
+
