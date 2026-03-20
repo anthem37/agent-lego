@@ -1,8 +1,10 @@
 package com.agentlego.backend.model.support;
 
+import cn.hutool.core.map.MapUtil;
+import cn.hutool.core.util.StrUtil;
+
 import java.util.LinkedHashMap;
 import java.util.Map;
-import java.util.Objects;
 
 /**
  * 将模型 config 压缩成短文本，用于列表/下拉中区分「同模型不同参数」的配置实例。
@@ -18,7 +20,7 @@ public final class ModelConfigSummaries {
      * 生成简短摘要（优先展示常见推理参数；过长则截断）。
      */
     public static String summarize(Map<String, Object> config) {
-        if (config == null || config.isEmpty()) {
+        if (MapUtil.isEmpty(config)) {
             return "";
         }
         Map<String, String> ordered = new LinkedHashMap<>();
@@ -69,7 +71,7 @@ public final class ModelConfigSummaries {
             return;
         }
         String s = stringify(value);
-        if (s.isBlank()) {
+        if (StrUtil.isBlank(s)) {
             return;
         }
         out.put(key, s);
@@ -77,22 +79,16 @@ public final class ModelConfigSummaries {
 
     private static String stringify(Object value) {
         if (value instanceof String s) {
-            return s.length() > 48 ? s.substring(0, 45) + "…" : s;
+            return s.length() > 48 ? StrUtil.sub(s, 0, 45) + "…" : s;
         }
-        return Objects.toString(value);
+        return StrUtil.toString(value);
     }
 
     private static boolean isNonEmptyObject(Object v) {
-        if (!(v instanceof Map<?, ?> m)) {
-            return false;
-        }
-        return !m.isEmpty();
+        return v instanceof Map<?, ?> m && !m.isEmpty();
     }
 
     private static int objectSize(Object v) {
-        if (!(v instanceof Map<?, ?> m)) {
-            return 0;
-        }
-        return m.size();
+        return v instanceof Map<?, ?> m ? m.size() : 0;
     }
 }

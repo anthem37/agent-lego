@@ -92,4 +92,9 @@ export type KbQueryBody = {
     kbKey?: string;
     queryText: string;
     topK: number;
+    /**
+     * 向量检索 embedding 模型 ID（后端：platform_models.id）。
+     * 不传则回退使用旧的关键词 ilike 检索。
+     */
+    embeddingModelId?: string;
 };

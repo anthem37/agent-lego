@@ -10,9 +10,13 @@ import lombok.Data;
  */
 @Data
 public class KbQueryRequest {
-    /** 知识库主键 */
+    /**
+     * 知识库主键
+     */
     private String baseId;
-    /** 知识库绑定键（与 baseId 二选一） */
+    /**
+     * 知识库绑定键（与 baseId 二选一）
+     */
     private String kbKey;
 
     @NotBlank
@@ -21,4 +25,12 @@ public class KbQueryRequest {
     @Min(1)
     @Max(100)
     private int topK = 5;
+
+    /**
+     * 向量检索（embedding）模型 ID（platform_models.id）。
+     * <p>
+     * - 为空：回退使用旧的 `ilike` 关键词检索；
+     * - 不为空：使用该 embedding 模型对 kb_chunks.embedding 进行向量相似度召回（必要时会懒加载补齐 embedding）。
+     */
+    private String embeddingModelId;
 }

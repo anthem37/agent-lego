@@ -5,11 +5,7 @@ import org.springframework.http.HttpStatus;
 
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
-import java.util.Collections;
-import java.util.LinkedHashMap;
-import java.util.Locale;
-import java.util.Map;
-import java.util.Objects;
+import java.util.*;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -69,36 +65,6 @@ public final class HttpToolSpec {
         return new HttpToolSpec(url.trim(), method, headers, sendJsonBody);
     }
 
-    public String resolveUrl(Map<String, Object> input) {
-        Map<String, Object> in = input == null ? Map.of() : input;
-        Matcher m = PLACEHOLDER.matcher(urlTemplate);
-        StringBuffer sb = new StringBuffer();
-        while (m.find()) {
-            String key = m.group(1);
-            Object val = in.get(key);
-            String replacement = val == null ? "" : urlEncode(String.valueOf(val));
-            m.appendReplacement(sb, Matcher.quoteReplacement(replacement));
-        }
-        m.appendTail(sb);
-        String resolved = sb.toString();
-        if (resolved.length() > MAX_URL_LENGTH) {
-            throw new ApiException("VALIDATION_ERROR", "Resolved url is too long", HttpStatus.BAD_REQUEST);
-        }
-        return resolved;
-    }
-
-    public String getMethod() {
-        return method;
-    }
-
-    public Map<String, String> getHeaders() {
-        return headers;
-    }
-
-    public boolean isSendJsonBody() {
-        return sendJsonBody;
-    }
-
     private static void validateMethod(String method) {
         switch (method) {
             case "GET", "HEAD", "POST", "PUT", "PATCH", "DELETE" -> {
@@ -153,5 +119,35 @@ public final class HttpToolSpec {
 
     private static String urlEncode(String s) {
         return URLEncoder.encode(s, StandardCharsets.UTF_8);
+    }
+
+    public String resolveUrl(Map<String, Object> input) {
+        Map<String, Object> in = input == null ? Map.of() : input;
+        Matcher m = PLACEHOLDER.matcher(urlTemplate);
+        StringBuffer sb = new StringBuffer();
+        while (m.find()) {
+            String key = m.group(1);
+            Object val = in.get(key);
+            String replacement = val == null ? "" : urlEncode(String.valueOf(val));
+            m.appendReplacement(sb, Matcher.quoteReplacement(replacement));
+        }
+        m.appendTail(sb);
+        String resolved = sb.toString();
+        if (resolved.length() > MAX_URL_LENGTH) {
+            throw new ApiException("VALIDATION_ERROR", "Resolved url is too long", HttpStatus.BAD_REQUEST);
+        }
+        return resolved;
+    }
+
+    public String getMethod() {
+        return method;
+    }
+
+    public Map<String, String> getHeaders() {
+        return headers;
+    }
+
+    public boolean isSendJsonBody() {
+        return sendJsonBody;
     }
 }

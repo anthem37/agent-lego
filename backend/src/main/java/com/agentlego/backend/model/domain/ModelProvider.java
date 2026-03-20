@@ -23,14 +23,38 @@ public enum ModelProvider {
     ANTHROPIC("ANTHROPIC", List.of(
             "temperature", "topP", "maxTokens", "seed",
             "additionalHeaders", "additionalBodyParams", "additionalQueryParams"
-    ));
+    )),
+    /**
+     * 文本嵌入（embedding）模型配置。
+     * <p>
+     * 当前后端尚未把这些配置真正接入 embedding 运行时；但模型管理已允许你保存 embedding 模型配置，
+     * 并校验 config key 白名单。
+     */
+    OPENAI_TEXT_EMBEDDING("OPENAI_TEXT_EMBEDDING", List.of(
+            "dimensions",
+            "encodingFormat",
+            "endpointPath",
+            "additionalHeaders", "additionalBodyParams", "additionalQueryParams"
+    ), false),
+    DASHSCOPE_TEXT_EMBEDDING("DASHSCOPE_TEXT_EMBEDDING", List.of(
+            "dimensions",
+            "encodingFormat",
+            "endpointPath",
+            "additionalHeaders", "additionalBodyParams", "additionalQueryParams"
+    ), false);
 
     private final String code;
     private final List<String> supportedConfigKeys;
+    private final boolean chatProvider;
 
     ModelProvider(String code, List<String> supportedConfigKeys) {
+        this(code, supportedConfigKeys, !code.endsWith("_EMBEDDING"));
+    }
+
+    ModelProvider(String code, List<String> supportedConfigKeys, boolean chatProvider) {
         this.code = code;
         this.supportedConfigKeys = supportedConfigKeys;
+        this.chatProvider = chatProvider;
     }
 
     public static ModelProvider from(String provider) {
@@ -44,6 +68,13 @@ public enum ModelProvider {
             }
         }
         throw new IllegalArgumentException("unsupported provider: " + provider);
+    }
+
+    /**
+     * 是否为可做连通性测试的聊天模型（embedding 模型返回 false）。
+     */
+    public boolean isChatProvider() {
+        return chatProvider;
     }
 
     public String code() {

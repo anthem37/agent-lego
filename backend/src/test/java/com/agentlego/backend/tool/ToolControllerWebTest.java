@@ -2,14 +2,7 @@ package com.agentlego.backend.tool;
 
 import com.agentlego.backend.api.GlobalExceptionHandler;
 import com.agentlego.backend.tool.application.ToolApplicationService;
-import com.agentlego.backend.tool.application.dto.LocalBuiltinToolMetaDto;
-import com.agentlego.backend.tool.application.dto.RemoteMcpToolMetaDto;
-import com.agentlego.backend.tool.application.dto.BatchImportMcpToolsResponse;
-import com.agentlego.backend.tool.application.dto.ToolDto;
-import com.agentlego.backend.tool.application.dto.ToolPageDto;
-import com.agentlego.backend.tool.application.dto.ToolReferencesDto;
-import com.agentlego.backend.tool.application.dto.ToolTypeMetaDto;
-import com.agentlego.backend.tool.application.dto.UpdateToolRequest;
+import com.agentlego.backend.tool.application.dto.*;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
@@ -22,9 +15,7 @@ import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.ArgumentMatchers.isNull;
+import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;

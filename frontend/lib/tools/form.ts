@@ -37,7 +37,9 @@ function buildHttpOwnedKeys(preserveParams: boolean, preserveOutput: boolean): S
     }
     return s;
 }
+
 const WORKFLOW_OWNED_KEYS = new Set(["workflowId", "description"]);
+
 function buildMcpOwnedKeys(preserveParams: boolean): Set<string> {
     const s = new Set<string>(["description", "endpoint", "mcpToolName"]);
     if (!preserveParams) {
@@ -46,6 +48,7 @@ function buildMcpOwnedKeys(preserveParams: boolean): Set<string> {
     }
     return s;
 }
+
 const LOCAL_OWNED_KEYS = new Set(["description"]);
 
 export type BuildDefinitionOptions = {
@@ -300,7 +303,7 @@ function mergeDefinition(
     return {...base, ...built};
 }
 
-function rowsFromHeaders(headers: unknown): {headerName: string; value: string}[] {
+function rowsFromHeaders(headers: unknown): { headerName: string; value: string }[] {
     if (!headers || typeof headers !== "object" || Array.isArray(headers)) {
         return [];
     }

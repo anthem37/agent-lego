@@ -16,7 +16,9 @@ public class BatchImportMcpToolsResponse {
     @Builder
     public static class Created {
         private String id;
-        /** 平台工具 name */
+        /**
+         * 平台工具 name
+         */
         private String name;
         private String remoteToolName;
     }
@@ -24,7 +26,9 @@ public class BatchImportMcpToolsResponse {
     @Data
     @Builder
     public static class Skipped {
-        /** 拟创建的平台名或远端名（便于排查） */
+        /**
+         * 拟创建的平台名或远端名（便于排查）
+         */
         private String name;
         private String reason;
     }

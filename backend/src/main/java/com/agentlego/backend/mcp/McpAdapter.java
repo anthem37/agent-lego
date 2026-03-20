@@ -30,6 +30,20 @@ public class McpAdapter {
 
     private static final Duration LOCAL_TOOL_TIMEOUT = Duration.ofSeconds(30);
 
+    private static String normalizeMcpBasePath(String path) {
+        String p = Objects.requireNonNull(path, "sseEndpointBase").trim();
+        if (p.isEmpty()) {
+            throw new IllegalArgumentException("sseEndpointBase must not be blank");
+        }
+        if (!p.startsWith("/")) {
+            p = "/" + p;
+        }
+        while (p.length() > 1 && p.endsWith("/")) {
+            p = p.substring(0, p.length() - 1);
+        }
+        return p;
+    }
+
     /**
      * 构建本进程 MCP Server：工具列表与 {@link LocalBuiltinToolCatalog} 中的 LOCAL 内置一致，执行走 {@link ToolExecutionService#executeLocalTool}。
      */
@@ -113,19 +127,5 @@ public class McpAdapter {
         return McpClientBuilder.create(clientName)
                 .sseTransport(sseEndpoint)
                 .buildAsync();
-    }
-
-    private static String normalizeMcpBasePath(String path) {
-        String p = Objects.requireNonNull(path, "sseEndpointBase").trim();
-        if (p.isEmpty()) {
-            throw new IllegalArgumentException("sseEndpointBase must not be blank");
-        }
-        if (!p.startsWith("/")) {
-            p = "/" + p;
-        }
-        while (p.length() > 1 && p.endsWith("/")) {
-            p = p.substring(0, p.length() - 1);
-        }
-        return p;
     }
 }

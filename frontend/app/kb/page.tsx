@@ -17,12 +17,13 @@ import {
     Button,
     Card,
     Col,
-    Dropdown,
     Drawer,
+    Dropdown,
     Empty,
     Form,
     Input,
     InputNumber,
+    message,
     Modal,
     Popconfirm,
     Row,
@@ -32,9 +33,8 @@ import {
     Spin,
     Table,
     Tag,
-    Typography,
-    message,
     theme,
+    Typography,
 } from "antd";
 import type {ColumnsType} from "antd/es/table";
 import type {MenuProps} from "antd/es/menu";
@@ -74,7 +74,7 @@ type KnowledgeForm = {
     overlap: number;
 };
 
-const CHUNK_STRATEGY_OPTIONS: {value: KbChunkStrategy; label: string; hint: string}[] = [
+const CHUNK_STRATEGY_OPTIONS: { value: KbChunkStrategy; label: string; hint: string }[] = [
     {value: "fixed", label: "固定滑窗", hint: "按字符滑窗 + overlap，与历史默认一致"},
     {value: "paragraph", label: "按段落", hint: "空行分段，小段合并后再切"},
     {value: "hybrid", label: "混合（推荐）", hint: "段落优先，超长时在句号等处软截断"},
@@ -474,7 +474,8 @@ export default function KbPage() {
             align: "right",
             render: (_, row) => (
                 <Space size={0} wrap={false}>
-                    <Button type="link" size="small" icon={<EyeOutlined/>} onClick={() => void openKnowledgePreview(row)}>
+                    <Button type="link" size="small" icon={<EyeOutlined/>}
+                            onClick={() => void openKnowledgePreview(row)}>
                         查看
                     </Button>
                     <Popconfirm title="删除该条知识及片段？" onConfirm={() => void onDeleteKnowledge(row)}>
@@ -562,7 +563,8 @@ export default function KbPage() {
                                             </Button>
                                         </Empty>
                                     ) : (
-                                        <Space orientation="vertical" size={4} style={{width: "100%", padding: "0 10px 12px"}}>
+                                        <Space orientation="vertical" size={4}
+                                               style={{width: "100%", padding: "0 10px 12px"}}>
                                             {bases.map((b) => {
                                                 const active = b.id === selectedBaseId;
                                                 return (
@@ -592,8 +594,10 @@ export default function KbPage() {
                                                             transition: "background 0.15s, box-shadow 0.15s",
                                                         }}
                                                     >
-                                                        <Space style={{width: "100%", justifyContent: "space-between"}} align="start">
-                                                            <Space orientation="vertical" size={2} style={{minWidth: 0}}>
+                                                        <Space style={{width: "100%", justifyContent: "space-between"}}
+                                                               align="start">
+                                                            <Space orientation="vertical" size={2}
+                                                                   style={{minWidth: 0}}>
                                                                 <Text strong ellipsis style={{maxWidth: "100%"}}>
                                                                     {b.name}
                                                                 </Text>
@@ -603,7 +607,8 @@ export default function KbPage() {
                                                                     </Text>
                                                                 </Text>
                                                                 <Space size={6} wrap style={{marginTop: 4}}>
-                                                                    <Tag color={active ? "processing" : "default"} style={{margin: 0}}>
+                                                                    <Tag color={active ? "processing" : "default"}
+                                                                         style={{margin: 0}}>
                                                                         {b.documentCount} 条知识
                                                                     </Tag>
                                                                     {b.lastIngestAt ? (
@@ -619,7 +624,8 @@ export default function KbPage() {
                                                             onClick={(e) => e.stopPropagation()}
                                                         >
                                                             <Dropdown menu={baseMoreMenu(b)} trigger={["click"]}>
-                                                                <Button type="text" size="small" icon={<MoreOutlined/>} aria-label="更多"/>
+                                                                <Button type="text" size="small" icon={<MoreOutlined/>}
+                                                                        aria-label="更多"/>
                                                             </Dropdown>
                                                         </div>
                                                     </div>
@@ -634,7 +640,13 @@ export default function KbPage() {
                         {/* 右：当前库下的知识（从） */}
                         <Col xs={24} lg={17} style={{display: "flex", flexDirection: "column", minWidth: 0}}>
                             {!selectedBaseId ? (
-                                <div style={{flex: 1, display: "flex", alignItems: "center", justifyContent: "center", padding: 32}}>
+                                <div style={{
+                                    flex: 1,
+                                    display: "flex",
+                                    alignItems: "center",
+                                    justifyContent: "center",
+                                    padding: 32
+                                }}>
                                     <Empty
                                         image={Empty.PRESENTED_IMAGE_SIMPLE}
                                         description={
@@ -676,8 +688,10 @@ export default function KbPage() {
                                                 智能体绑定键 <Text code>{selectedBase?.kbKey}</Text>
                                             </Text>
                                         </Space>
-                                        <Paragraph type="secondary" style={{margin: "10px 0 0", fontSize: 12, marginBottom: 0}}>
-                                            下方表格、添加知识、召回试用均只作用于「<Text strong>{selectedBase?.name}</Text>」这一知识库，不会串库。
+                                        <Paragraph type="secondary"
+                                                   style={{margin: "10px 0 0", fontSize: 12, marginBottom: 0}}>
+                                            下方表格、添加知识、召回试用均只作用于「<Text
+                                            strong>{selectedBase?.name}</Text>」这一知识库，不会串库。
                                         </Paragraph>
                                     </div>
 
@@ -694,7 +708,11 @@ export default function KbPage() {
                                                 marginBottom: 16,
                                             }}
                                         >
-                                            <Space wrap style={{marginBottom: 12, width: "100%", justifyContent: "space-between"}}>
+                                            <Space wrap style={{
+                                                marginBottom: 12,
+                                                width: "100%",
+                                                justifyContent: "space-between"
+                                            }}>
                                                 <Space>
                                                     <FileTextOutlined style={{fontSize: 18, color: nestAccent}}/>
                                                     <Title level={5} style={{margin: 0}}>
@@ -703,7 +721,8 @@ export default function KbPage() {
                                                     <Tag>从属于左侧所选</Tag>
                                                 </Space>
                                                 <Space wrap>
-                                                    <Button icon={<ReloadOutlined/>} onClick={() => void reloadKnowledge()}>
+                                                    <Button icon={<ReloadOutlined/>}
+                                                            onClick={() => void reloadKnowledge()}>
                                                         刷新列表
                                                     </Button>
                                                     <Button
@@ -783,7 +802,8 @@ export default function KbPage() {
                                         />
                                         <Space style={{marginTop: 12}} align="center">
                                             <Text type="secondary">topK</Text>
-                                            <InputNumber min={1} max={100} value={topK} onChange={(v) => setTopK(typeof v === "number" ? v : 8)}/>
+                                            <InputNumber min={1} max={100} value={topK}
+                                                         onChange={(v) => setTopK(typeof v === "number" ? v : 8)}/>
                                         </Space>
 
                                         <Spin spinning={querying} style={{marginTop: 16, display: "block"}}>
@@ -792,20 +812,31 @@ export default function KbPage() {
                                             ) : (
                                                 <Space orientation="vertical" size={16} style={{width: "100%"}}>
                                                     {queryChunks.map((item) => (
-                                                        <Card key={item.id} size="small" type="inner" style={{width: "100%"}}>
-                                                            <Space orientation="vertical" size={8} style={{width: "100%"}}>
+                                                        <Card key={item.id} size="small" type="inner"
+                                                              style={{width: "100%"}}>
+                                                            <Space orientation="vertical" size={8}
+                                                                   style={{width: "100%"}}>
                                                                 <Space wrap>
                                                                     <Text type="secondary">来源知识</Text>
                                                                     <Text strong>{item.documentName ?? "—"}</Text>
                                                                     <Tag>片段 #{item.chunkIndex}</Tag>
                                                                 </Space>
-                                                                <Paragraph style={{marginBottom: 0, whiteSpace: "pre-wrap"}}>
+                                                                <Paragraph
+                                                                    style={{marginBottom: 0, whiteSpace: "pre-wrap"}}>
                                                                     {highlightSnippet(item.content, lastQuery)}
                                                                 </Paragraph>
                                                                 {item.metadata && Object.keys(item.metadata).length > 0 ? (
                                                                     <details>
-                                                                        <summary style={{cursor: "pointer", fontSize: 12}}>metadata</summary>
-                                                                        <pre style={{margin: "8px 0 0", fontSize: 11, whiteSpace: "pre-wrap"}}>
+                                                                        <summary style={{
+                                                                            cursor: "pointer",
+                                                                            fontSize: 12
+                                                                        }}>metadata
+                                                                        </summary>
+                                                                        <pre style={{
+                                                                            margin: "8px 0 0",
+                                                                            fontSize: 11,
+                                                                            whiteSpace: "pre-wrap"
+                                                                        }}>
                                                                             {stringifyPretty(item.metadata)}
                                                                         </pre>
                                                                     </details>
@@ -876,7 +907,8 @@ export default function KbPage() {
                         </Title>
                         {selectedBase ? (
                             <Text type="secondary">
-                                写入到知识库：<Text strong>{selectedBase.name}</Text>（<Text code>{selectedBase.kbKey}</Text>）
+                                写入到知识库：<Text strong>{selectedBase.name}</Text>（<Text
+                                code>{selectedBase.kbKey}</Text>）
                             </Text>
                         ) : null}
                     </Space>
@@ -926,7 +958,8 @@ export default function KbPage() {
                         />
                     </Form.Item>
                     <Paragraph type="secondary" style={{marginTop: -8, fontSize: 12}}>
-                        召回与分片使用<strong>纯文本</strong>：Markdown 会先渲染再去标记；HTML 会去掉标签后再切分。正文分别按 MD / HTML 原文入库。
+                        召回与分片使用<strong>纯文本</strong>：Markdown 会先渲染再去标记；HTML 会去掉标签后再切分。正文分别按
+                        MD / HTML 原文入库。
                     </Paragraph>
                     <Form.Item
                         key={knowledgeContentFormat}

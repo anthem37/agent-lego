@@ -10,6 +10,7 @@
         <result property="chunkIndex" column="chunk_index"/>
         <result property="content" column="content"/>
         <result property="metadataJson" column="metadata_json"/>
+        <result property="embeddingJson" column="embedding_json"/>
         <result property="createdAt" column="created_at"/>
         <result property="documentName" column="document_name"/>
     </resultMap>
@@ -26,7 +27,7 @@
                c.content,
                cast(c.metadata as text) as metadata_json,
                c.created_at,
-               d.name as document_name
+               d.name                   as document_name
         from kb_chunks c
                  join kb_documents d on c.document_id = d.id
         where d.base_id = #{baseId}
@@ -34,5 +35,27 @@
         order by d.created_at desc, c.chunk_index asc
             limit #{topK}
     </select>
+
+    <select id="listChunksByBaseIdWithEmbedding" resultMap="KbChunkDOMap">
+        select c.id,
+               c.document_id,
+               c.chunk_index,
+               c.content,
+               cast(c.metadata as text)  as metadata_json,
+               cast(c.embedding as text) as embedding_json,
+               c.created_at,
+               d.name                    as document_name
+        from kb_chunks c
+                 join kb_documents d on c.document_id = d.id
+        where d.base_id = #{baseId}
+        order by d.created_at desc, c.chunk_index asc
+    </select>
+
+    <update id="updateChunkEmbedding">
+        update kb_chunks
+        set embedding = cast(#{embeddingJson} as jsonb),
+            metadata  = cast(#{metadataJson} as jsonb)
+        where id = #{chunkId}
+    </update>
 </mapper>
 

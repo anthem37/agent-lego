@@ -1,10 +1,6 @@
 package com.agentlego.backend.tool.schema;
 
-import java.util.ArrayList;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
+import java.util.*;
 
 /**
  * 将 definition 中的 {@code outputSchema}（JSON Schema 子集）格式化为自然语言，追加到 {@link io.agentscope.core.tool.AgentTool#getDescription()}。

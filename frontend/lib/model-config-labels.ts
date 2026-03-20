@@ -14,6 +14,8 @@ export const CONFIG_KEY_TITLE: Record<string, string> = {
     additionalHeaders: "额外请求头",
     additionalBodyParams: "额外请求体参数",
     additionalQueryParams: "URL 查询参数",
+    dimensions: "向量维度（dimensions）",
+    encodingFormat: "编码格式（encodingFormat）",
 };
 
 /** 提供方：中文说明 + 保留英文标识便于对照 */
@@ -21,6 +23,8 @@ export const PROVIDER_TITLE: Record<string, string> = {
     DASHSCOPE: "阿里云通义（DashScope）",
     OPENAI: "OpenAI 兼容接口",
     ANTHROPIC: "Anthropic（Claude）",
+    OPENAI_TEXT_EMBEDDING: "OpenAI 文本嵌入（Embedding）",
+    DASHSCOPE_TEXT_EMBEDDING: "通义文本嵌入（Embedding）",
 };
 
 export function configKeyTitle(key: string): string {

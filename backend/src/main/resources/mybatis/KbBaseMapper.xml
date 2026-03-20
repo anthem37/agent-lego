@@ -27,7 +27,9 @@
     </update>
 
     <delete id="deleteById" parameterType="java.lang.String">
-        delete from kb_bases where id = #{id}
+        delete
+        from kb_bases
+        where id = #{id}
     </delete>
 
     <select id="findById" resultMap="KbBaseDOMap">
@@ -48,16 +50,12 @@
                b.name,
                b.description,
                b.created_at,
-               coalesce(dc.cnt, 0)::bigint as document_count,
-               dc.last_doc_at              as last_ingest_at
+               coalesce(dc.cnt, 0)::bigint as document_count, dc.last_doc_at as last_ingest_at
         from kb_bases b
-                 left join (
-            select base_id,
-                   count(*)::bigint                as cnt,
-                   max(d.created_at)               as last_doc_at
-            from kb_documents d
-            group by base_id
-        ) dc on dc.base_id = b.id
+                 left join (select base_id,
+                                   count(*)::bigint                as cnt, max(d.created_at) as last_doc_at
+                            from kb_documents d
+                            group by base_id) dc on dc.base_id = b.id
         order by b.created_at desc
     </select>
 </mapper>

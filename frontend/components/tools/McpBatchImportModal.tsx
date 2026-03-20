@@ -1,7 +1,7 @@
 "use client";
 
 import {CloudDownloadOutlined} from "@ant-design/icons";
-import {Alert, Button, Checkbox, Input, Modal, Space, Table, Typography, message} from "antd";
+import {Alert, Button, Checkbox, Input, message, Modal, Space, Table, Typography} from "antd";
 import type {ColumnsType} from "antd/es/table";
 import React from "react";
 
@@ -165,7 +165,8 @@ export function McpBatchImportModal(props: Props) {
                     message="说明"
                     description={
                         <>
-                            填写外部 MCP 的 SSE 根 URL，先「拉取列表」再勾选导入。平台会为每条工具创建 MCP 类型记录（definition.endpoint +
+                            填写外部 MCP 的 SSE 根 URL，先「拉取列表」再勾选导入。平台会为每条工具创建 MCP
+                            类型记录（definition.endpoint +
                             mcpToolName，并尽量写入 description / inputSchema）。生产环境若需禁止访问内网地址，请将后端{" "}
                             <Typography.Text code>agentlego.mcp.client.strict-ssrf</Typography.Text> 设为 true。
                         </>

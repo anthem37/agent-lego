@@ -14,10 +14,10 @@ export default defineConfig({
     webServer: process.env.PLAYWRIGHT_SKIP_WEBSERVER
         ? undefined
         : {
-              command: "pnpm run dev",
-              url: devOrigin,
-              reuseExistingServer: true,
-              timeout: 120_000,
-          },
+            command: "pnpm run dev",
+            url: devOrigin,
+            reuseExistingServer: true,
+            timeout: 120_000,
+        },
 });
 

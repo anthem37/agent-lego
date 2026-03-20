@@ -7,5 +7,7 @@ where content_format is null
 alter table kb_documents
     alter column content_format set default 'markdown';
 
-comment on column kb_documents.content_rich is '知识全文：markdown 时为 MD 源码，html 时为富文本源码';
-comment on column kb_documents.content_format is 'markdown | html';
+comment
+on column kb_documents.content_rich is '知识全文：markdown 时为 MD 源码，html 时为富文本源码';
+comment
+on column kb_documents.content_format is 'markdown | html';

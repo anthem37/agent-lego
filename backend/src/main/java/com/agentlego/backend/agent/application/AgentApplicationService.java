@@ -10,7 +10,7 @@ import com.agentlego.backend.api.ApiException;
 import com.agentlego.backend.common.JsonMaps;
 import com.agentlego.backend.common.SnowflakeIdGenerator;
 import com.agentlego.backend.kb.application.KnowledgeBaseApplicationService;
-import com.agentlego.backend.kb.application.dto.KbQueryRequest;
+import com.agentlego.backend.kb.rag.AgentLegoKnowledge;
 import com.agentlego.backend.memory.application.MemoryApplicationService;
 import com.agentlego.backend.memory.application.dto.MemoryQueryRequest;
 import com.agentlego.backend.model.domain.ModelAggregate;
@@ -37,6 +37,7 @@ public class AgentApplicationService {
     private static final String POLICY_OWNER_SCOPE = "ownerScope";
     private static final String POLICY_TOP_K = "topK";
     private static final String POLICY_KB_KEY = "kbKey";
+    private static final String POLICY_EMBEDDING_MODEL_ID = "embeddingModelId";
 
     private final AgentRepository agentRepository;
     private final ModelRepository modelRepository;
@@ -62,6 +63,16 @@ public class AgentApplicationService {
         this.agentRuntime = agentRuntime;
         this.memoryApplicationService = memoryApplicationService;
         this.knowledgeBaseApplicationService = knowledgeBaseApplicationService;
+    }
+
+    private static int getKbTopK(AgentAggregate agentAgg) {
+        Map<String, Object> p = agentAgg.getKnowledgeBasePolicy() == null ? Map.of() : agentAgg.getKnowledgeBasePolicy();
+        return JsonMaps.getInt(p, POLICY_TOP_K, 3);
+    }
+
+    private static double getKbScoreThreshold(AgentAggregate agentAgg) {
+        Map<String, Object> p = agentAgg.getKnowledgeBasePolicy() == null ? Map.of() : agentAgg.getKnowledgeBasePolicy();
+        return JsonMaps.getDouble(p, "scoreThreshold", 0.3);
     }
 
     public String createAgent(CreateAgentRequest req) {
@@ -108,24 +119,24 @@ public class AgentApplicationService {
         Toolkit toolkit = toolExecutionService.buildToolkitForToolIds(tools);
 
         String sysPrompt = agentAgg.getSystemPrompt();
-        String extraContext = buildExtraContext(agentAgg, req.getInput());
-        if (!extraContext.isBlank()) {
-            sysPrompt = sysPrompt + "\n\n" + extraContext;
+        String memoryContext = buildMemoryContext(agentAgg, req.getInput());
+        if (!memoryContext.isBlank()) {
+            sysPrompt = sysPrompt + "\n\n" + memoryContext;
         }
         Map<String, Object> mergedModelConfig = mergeConfig(model.getConfig(), req.getOptions());
-
-        AgentDefinition agentDef = new AgentDefinition(
-                agentAgg.getName(),
-                sysPrompt,
-                new ModelDefinition(
-                        model.getProvider(),
-                        model.getModelKey(),
-                        model.getApiKeyCipher(),
-                        model.getBaseUrl(),
-                        mergedModelConfig
-                ),
-                10
+        ModelDefinition modelDef = new ModelDefinition(
+                model.getProvider(),
+                model.getModelKey(),
+                model.getApiKeyCipher(),
+                model.getBaseUrl(),
+                mergedModelConfig
         );
+
+        io.agentscope.core.rag.Knowledge knowledge = buildKnowledge(agentAgg);
+        AgentDefinition agentDef = knowledge != null
+                ? new AgentDefinition(agentAgg.getName(), sysPrompt, modelDef, 10, knowledge,
+                getKbTopK(agentAgg), getKbScoreThreshold(agentAgg))
+                : new AgentDefinition(agentAgg.getName(), sysPrompt, modelDef, 10);
 
         Msg msg = agentRuntime.call(agentDef, req.getInput(), toolkit)
                 .block(Duration.ofMinutes(2));
@@ -136,46 +147,46 @@ public class AgentApplicationService {
         return resp;
     }
 
-    private String buildExtraContext(AgentAggregate agentAgg, String input) {
-        StringBuilder sb = new StringBuilder();
-
-        // Memory retrieval (optional)
+    private String buildMemoryContext(AgentAggregate agentAgg, String input) {
         Map<String, Object> memoryPolicy = agentAgg.getMemoryPolicy() == null ? Map.of() : agentAgg.getMemoryPolicy();
         String ownerScope = JsonMaps.getString(memoryPolicy, POLICY_OWNER_SCOPE, "");
-        if (!ownerScope.isBlank()) {
-            int topK = JsonMaps.getInt(memoryPolicy, POLICY_TOP_K, 3);
-            MemoryQueryRequest mReq = new MemoryQueryRequest();
-            mReq.setOwnerScope(ownerScope);
-            mReq.setQueryText(input);
-            mReq.setTopK(topK);
-            com.agentlego.backend.memory.application.dto.MemoryQueryResponse mResp = memoryApplicationService.query(mReq);
-            if (mResp.getItems() != null && !mResp.getItems().isEmpty()) {
-                sb.append("[Memory]\n");
-                for (com.agentlego.backend.memory.application.dto.MemoryItemDto item : mResp.getItems()) {
-                    sb.append("- ").append(item.getContent()).append("\n");
-                }
-            }
+        if (ownerScope.isBlank()) {
+            return "";
         }
+        int topK = JsonMaps.getInt(memoryPolicy, POLICY_TOP_K, 3);
+        MemoryQueryRequest mReq = new MemoryQueryRequest();
+        mReq.setOwnerScope(ownerScope);
+        mReq.setQueryText(input);
+        mReq.setTopK(topK);
+        var mResp = memoryApplicationService.query(mReq);
+        if (mResp.getItems() == null || mResp.getItems().isEmpty()) {
+            return "";
+        }
+        StringBuilder sb = new StringBuilder("[Memory]\n");
+        for (var item : mResp.getItems()) {
+            sb.append("- ").append(item.getContent()).append("\n");
+        }
+        return sb.toString();
+    }
 
-        // Knowledge base retrieval (optional)
+    /**
+     * 构建 AgentScope Knowledge，启用后由 ReActAgent 的 RAG 钩子注入检索结果。
+     */
+    private io.agentscope.core.rag.Knowledge buildKnowledge(AgentAggregate agentAgg) {
         Map<String, Object> kbPolicy = agentAgg.getKnowledgeBasePolicy() == null ? Map.of() : agentAgg.getKnowledgeBasePolicy();
         String kbKey = JsonMaps.getString(kbPolicy, POLICY_KB_KEY, "");
-        if (!kbKey.isBlank()) {
-            int topK = JsonMaps.getInt(kbPolicy, POLICY_TOP_K, 3);
-            KbQueryRequest kReq = new KbQueryRequest();
-            kReq.setKbKey(kbKey);
-            kReq.setQueryText(input);
-            kReq.setTopK(topK);
-            com.agentlego.backend.kb.application.dto.KbQueryResponse kResp = knowledgeBaseApplicationService.query(kReq);
-            if (kResp.getChunks() != null && !kResp.getChunks().isEmpty()) {
-                sb.append("\n[KnowledgeBase]\n");
-                for (com.agentlego.backend.kb.application.dto.KbChunkDto c : kResp.getChunks()) {
-                    sb.append("- ").append(c.getContent()).append("\n");
-                }
-            }
+        if (kbKey.isBlank()) {
+            return null;
         }
-
-        return sb.toString();
+        int topK = getKbTopK(agentAgg);
+        String embeddingModelId = JsonMaps.getString(kbPolicy, POLICY_EMBEDDING_MODEL_ID, "");
+        return AgentLegoKnowledge.create(
+                kbKey,
+                embeddingModelId.isBlank() ? null : embeddingModelId,
+                topK,
+                getKbScoreThreshold(agentAgg),
+                knowledgeBaseApplicationService
+        );
     }
 
     private AgentDto toDto(AgentAggregate agg) {

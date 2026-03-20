@@ -333,8 +333,10 @@ export default function ToolDetailPage(props: { params: Promise<{ id: string }> 
                         {shouldPreserveHttpParameterFields(tool.definition ?? {}) ? (
                             <div>
                                 <Tag color="orange">入参高级 Schema 已保留</Tag>
-                                <Typography.Text type="secondary" style={{fontSize: 13, display: "block", marginTop: 4}}>
-                                    parameters / inputSchema 无法用表格无损表达时，保存 URL/请求头等<strong>不会覆盖</strong>
+                                <Typography.Text type="secondary"
+                                                 style={{fontSize: 13, display: "block", marginTop: 4}}>
+                                    parameters / inputSchema 无法用表格无损表达时，保存
+                                    URL/请求头等<strong>不会覆盖</strong>
                                     入参字段；可在编辑页「改为表单配置入参」切换。
                                 </Typography.Text>
                             </div>
@@ -342,7 +344,8 @@ export default function ToolDetailPage(props: { params: Promise<{ id: string }> 
                         {shouldPreserveHttpOutputFields(tool.definition ?? {}) ? (
                             <div>
                                 <Tag color="orange">出参高级 Schema 已保留</Tag>
-                                <Typography.Text type="secondary" style={{fontSize: 13, display: "block", marginTop: 4}}>
+                                <Typography.Text type="secondary"
+                                                 style={{fontSize: 13, display: "block", marginTop: 4}}>
                                     outputSchema 无法用表格无损表达时，保存其他字段<strong>不会覆盖</strong>
                                     出参定义；可在编辑页「改为表单配置出参」切换。
                                 </Typography.Text>
@@ -362,7 +365,8 @@ export default function ToolDetailPage(props: { params: Promise<{ id: string }> 
             <Typography.Paragraph type="secondary" style={{marginBottom: 0}}>
                 打开本页或刷新后，会根据工具类型<strong>自动预填参数名</strong>（LOCAL 来自内置契约，HTTP 来自
                 parameters / URL 占位符，WORKFLOW 默认 <Typography.Text code>input</Typography.Text>
-                ）。只需补全「取值」即可；若取值本身是 JSON 对象/数组，可直接粘贴到取值框。MCP 将请求发到已登记的远端 SSE Server。
+                ）。只需补全「取值」即可；若取值本身是 JSON 对象/数组，可直接粘贴到取值框。MCP 将请求发到已登记的远端 SSE
+                Server。
             </Typography.Paragraph>
             <Form<TestToolCallForm> form={form} layout="vertical" onFinish={onTest}>
                 <Form.Item label="调用入参（可选）">

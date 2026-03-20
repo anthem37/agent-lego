@@ -6,8 +6,6 @@ import com.agentlego.backend.agent.application.dto.RunAgentResponse;
 import com.agentlego.backend.agent.domain.AgentAggregate;
 import com.agentlego.backend.agent.domain.AgentRepository;
 import com.agentlego.backend.kb.application.KnowledgeBaseApplicationService;
-import com.agentlego.backend.kb.application.dto.KbChunkDto;
-import com.agentlego.backend.kb.application.dto.KbQueryResponse;
 import com.agentlego.backend.memory.application.MemoryApplicationService;
 import com.agentlego.backend.memory.application.dto.MemoryItemDto;
 import com.agentlego.backend.memory.application.dto.MemoryQueryRequest;
@@ -104,7 +102,7 @@ class AgentApplicationServiceTest {
     }
 
     @Test
-    void runAgent_shouldAppendMemoryAndKnowledgeBaseToSystemPrompt() {
+    void runAgent_shouldAppendMemoryToSystemPromptAndPassKnowledgeForRag() {
         AgentApplicationService service = new AgentApplicationService(
                 agentRepository,
                 modelRepository,
@@ -150,12 +148,6 @@ class AgentApplicationServiceTest {
 
         when(memoryApplicationService.query(any(MemoryQueryRequest.class))).thenReturn(mResp);
 
-        KbQueryResponse kbResp = new KbQueryResponse();
-        KbChunkDto chunk = new KbChunkDto();
-        chunk.setContent("kbC");
-        kbResp.setChunks(List.of(chunk));
-        when(knowledgeBaseApplicationService.query(any())).thenReturn(kbResp);
-
         when(agentRuntime.call(any(AgentDefinition.class), eq("question"), any(Toolkit.class)))
                 .thenReturn(Mono.just(Msg.builder().name("assistant").textContent("final").build()));
 
@@ -169,13 +161,13 @@ class AgentApplicationServiceTest {
 
         ArgumentCaptor<AgentDefinition> defCaptor = ArgumentCaptor.forClass(AgentDefinition.class);
         verify(agentRuntime).call(defCaptor.capture(), eq("question"), any(Toolkit.class));
-        String sysPrompt = defCaptor.getValue().systemPrompt();
+        AgentDefinition def = defCaptor.getValue();
 
-        String expectedExtra = "[Memory]\n- memA\n\n[KnowledgeBase]\n- kbC\n";
-        assertEquals("SYS\n\n" + expectedExtra, sysPrompt);
-
+        // Memory 仍拼接进 systemPrompt；KB 改为通过 AgentScope RAG 注入
+        assertEquals("SYS\n\n[Memory]\n- memA\n", def.systemPrompt());
+        assertNotNull(def.knowledge(), "knowledge 应在配置 kbKey 时注入");
+        assertEquals(3, def.knowledgeTopK());
         verify(memoryApplicationService, times(1)).query(any(MemoryQueryRequest.class));
-        verify(knowledgeBaseApplicationService, times(1)).query(any());
     }
 
     @Test

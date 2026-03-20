@@ -11,7 +11,9 @@ public class KbBaseDO {
     private String name;
     private String description;
     private Instant createdAt;
-    /** 列表统计 */
+    /**
+     * 列表统计
+     */
     private Long documentCount;
     private Instant lastIngestAt;
 }

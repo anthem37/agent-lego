@@ -18,7 +18,9 @@ public class CreateKnowledgeRequest {
     @Size(max = 500_000)
     private String content;
 
-    /** markdown：正文为 MD 源码；html：正文为 HTML（大小写不敏感，缺省 markdown）。 */
+    /**
+     * markdown：正文为 MD 源码；html：正文为 HTML（大小写不敏感，缺省 markdown）。
+     */
     private String contentFormat = "markdown";
 
     /**

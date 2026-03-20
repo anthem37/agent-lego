@@ -10,9 +10,13 @@ import java.time.Instant;
 @Data
 public class KbBaseSummary {
     private String id;
-    /** 智能体 knowledgeBasePolicy 中绑定的稳定键 */
+    /**
+     * 智能体 knowledgeBasePolicy 中绑定的稳定键
+     */
     private String kbKey;
-    /** 展示名称 */
+    /**
+     * 展示名称
+     */
     private String name;
     private String description;
     private Instant createdAt;

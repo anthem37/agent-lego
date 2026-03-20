@@ -45,6 +45,12 @@ const ENDPOINT_PATH_OPTIONS = [
     {label: "对话补全接口 · /v1/chat/completions", value: "/v1/chat/completions"},
     {label: "Responses 接口 · /v1/responses", value: "/v1/responses"},
     {label: "传统补全接口 · /v1/completions", value: "/v1/completions"},
+    {label: "Embedding 接口 · /v1/embeddings", value: "/v1/embeddings"},
+];
+
+const ENCODING_FORMAT_OPTIONS = [
+    {label: "float（向量数值）", value: "float"},
+    {label: "base64（向量 base64）", value: "base64"},
 ];
 
 type Props = {
@@ -163,7 +169,9 @@ export function ModelConfigForm(props: Props) {
     const maxTokens = readNumber(value.maxTokens);
     const maxCompletionTokens = readNumber(value.maxCompletionTokens);
     const seed = readNumber(value.seed);
+    const dimensions = readNumber(value.dimensions);
     const endpointPath = typeof value.endpointPath === "string" ? value.endpointPath : "";
+    const encodingFormat = typeof value.encodingFormat === "string" ? value.encodingFormat : undefined;
 
     const headerPairs = React.useMemo(() => objectToPairs(value.additionalHeaders), [value.additionalHeaders]);
     const bodyPairs = React.useMemo(() => objectToPairs(value.additionalBodyParams), [value.additionalBodyParams]);
@@ -183,6 +191,38 @@ export function ModelConfigForm(props: Props) {
 
     const basicPanel = (
         <Space orientation="vertical" size={16} style={{width: "100%"}}>
+            {has("dimensions") ? (
+                <div>
+                    <FieldHeading apiKey="dimensions"/>
+                    <Space.Compact style={{width: "100%", marginTop: 8}}>
+                        <InputNumber
+                            style={{width: "100%", minWidth: 120}}
+                            min={1}
+                            step={1}
+                            placeholder="例如：1536"
+                            value={dimensions ?? undefined}
+                            onChange={(v) => patch({dimensions: v === null ? undefined : v})}
+                        />
+                    </Space.Compact>
+                </div>
+            ) : null}
+
+            {has("encodingFormat") ? (
+                <div>
+                    <FieldHeading apiKey="encodingFormat"/>
+                    <Space.Compact style={{width: "100%", marginTop: 8}}>
+                        <Select
+                            allowClear
+                            placeholder="选择编码格式"
+                            style={{width: "100%"}}
+                            value={ENCODING_FORMAT_OPTIONS.some((o) => o.value === encodingFormat) ? encodingFormat : undefined}
+                            options={ENCODING_FORMAT_OPTIONS}
+                            onChange={(v) => patch({encodingFormat: v === undefined || v === null ? undefined : v})}
+                        />
+                    </Space.Compact>
+                </div>
+            ) : null}
+
             {has("temperature") ? (
                 <div>
                     <FieldHeading apiKey="temperature"/>

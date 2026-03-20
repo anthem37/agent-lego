@@ -5,11 +5,7 @@ import com.agentlego.backend.common.SnowflakeIdGenerator;
 import com.agentlego.backend.kb.application.dto.*;
 import com.agentlego.backend.kb.chunk.KbChunkSplitter;
 import com.agentlego.backend.kb.chunk.KbChunkStrategies;
-import com.agentlego.backend.kb.domain.KbBaseSummary;
-import com.agentlego.backend.kb.domain.KbChunkAggregate;
-import com.agentlego.backend.kb.domain.KbDocumentDetail;
-import com.agentlego.backend.kb.domain.KbDocumentSummary;
-import com.agentlego.backend.kb.domain.KnowledgeBaseRepository;
+import com.agentlego.backend.kb.domain.*;
 import com.agentlego.backend.kb.util.KbHtmlPlainText;
 import com.agentlego.backend.kb.util.KbMarkdownPlainText;
 import org.springframework.http.HttpStatus;
@@ -41,6 +37,20 @@ public class KnowledgeBaseApplicationService {
 
     public KnowledgeBaseApplicationService(KnowledgeBaseRepository repository) {
         this.repository = repository;
+    }
+
+    private static String resolvePlainForChunking(String richStored, String contentFormat) {
+        if ("html".equals(contentFormat)) {
+            return KbHtmlPlainText.toPlain(richStored);
+        }
+        return KbMarkdownPlainText.toPlain(richStored);
+    }
+
+    private static String normalizeDescription(String description) {
+        if (description == null || description.isBlank()) {
+            return null;
+        }
+        return description.trim();
     }
 
     public List<KbBaseDto> listBases() {
@@ -164,7 +174,12 @@ public class KnowledgeBaseApplicationService {
 
     public KbQueryResponse query(KbQueryRequest req) {
         String baseId = resolveQueryBaseId(req);
-        List<KbChunkAggregate> chunks = repository.queryChunksByBaseId(baseId, req.getQueryText(), req.getTopK());
+        List<KbChunkAggregate> chunks = repository.queryChunksByBaseId(
+                baseId,
+                req.getQueryText(),
+                req.getTopK(),
+                req.getEmbeddingModelId()
+        );
         KbQueryResponse resp = new KbQueryResponse();
         resp.setChunks(chunks.stream().map(this::toChunkDto).toList());
         return resp;
@@ -312,20 +327,6 @@ public class KnowledgeBaseApplicationService {
             throw new ApiException("VALIDATION_ERROR", "contentFormat must be markdown or html", HttpStatus.BAD_REQUEST);
         }
         return f;
-    }
-
-    private static String resolvePlainForChunking(String richStored, String contentFormat) {
-        if ("html".equals(contentFormat)) {
-            return KbHtmlPlainText.toPlain(richStored);
-        }
-        return KbMarkdownPlainText.toPlain(richStored);
-    }
-
-    private static String normalizeDescription(String description) {
-        if (description == null || description.isBlank()) {
-            return null;
-        }
-        return description.trim();
     }
 
 }

@@ -33,5 +33,5 @@ public interface KnowledgeBaseRepository {
 
     void saveChunks(String documentId, List<KbChunkAggregate> chunks);
 
-    List<KbChunkAggregate> queryChunksByBaseId(String baseId, String queryText, int topK);
+    List<KbChunkAggregate> queryChunksByBaseId(String baseId, String queryText, int topK, String embeddingModelId);
 }

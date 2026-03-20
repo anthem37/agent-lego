@@ -491,7 +491,8 @@ export function ToolFormDrawer(props: Props) {
                                             {showHttpBodySwitch ? (
                                                 <>
                                                     {" "}
-                                                    开启「发送 JSON 请求体」时，POST/PUT/PATCH 会把<strong>整份入参对象</strong>
+                                                    开启「发送 JSON 请求体」时，POST/PUT/PATCH
+                                                    会把<strong>整份入参对象</strong>
                                                     序列化为 body。
                                                 </>
                                             ) : null}
@@ -606,7 +607,8 @@ export function ToolFormDrawer(props: Props) {
                                     description={
                                         <>
                                             <Typography.Text code>definition.outputSchema</Typography.Text>{" "}
-                                            存在无法用表格无损表达的结构。保存 URL、入参、请求头等时<strong>不会覆盖</strong>
+                                            存在无法用表格无损表达的结构。保存
+                                            URL、入参、请求头等时<strong>不会覆盖</strong>
                                             出参定义；完整内容见工具详情。
                                         </>
                                     }
@@ -646,7 +648,8 @@ export function ToolFormDrawer(props: Props) {
                                         <>
                                             描述<strong>响应体</strong>（多为 JSON 文本）里有哪些字段，写入{" "}
                                             <Typography.Text code>definition.outputSchema</Typography.Text>。
-                                            运行时<strong>不校验</strong>真实 HTTP 响应；后端会把说明合并进工具 description，供模型理解接口返回含义。
+                                            运行时<strong>不校验</strong>真实 HTTP 响应；后端会把说明合并进工具
+                                            description，供模型理解接口返回含义。
                                         </>
                                     }
                                     style={{marginBottom: 16}}
@@ -754,7 +757,8 @@ export function ToolFormDrawer(props: Props) {
                                             </Space>
                                         ))}
                                         <Form.Item style={{marginBottom: 0}}>
-                                            <Button type="dashed" onClick={() => add({headerName: "", value: ""})} block icon={<PlusOutlined/>}>
+                                            <Button type="dashed" onClick={() => add({headerName: "", value: ""})} block
+                                                    icon={<PlusOutlined/>}>
                                                 添加请求头
                                             </Button>
                                         </Form.Item>
@@ -776,7 +780,8 @@ export function ToolFormDrawer(props: Props) {
                             message="MCP（外部 Server）"
                             description={
                                 <>
-                                    填写远端 MCP 的 <Typography.Text code>SSE</Typography.Text> 根地址（完整 URL，与对端文档一致；部分实现为{" "}
+                                    填写远端 MCP 的 <Typography.Text code>SSE</Typography.Text> 根地址（完整
+                                    URL，与对端文档一致；部分实现为{" "}
                                     <Typography.Text code>/sse</Typography.Text>，本服务默认在{" "}
                                     <Typography.Text code>/mcp</Typography.Text>）。本服务自身也会对外暴露 MCP（见后端{" "}
                                     <Typography.Text code>agentlego.mcp.server.sse-path</Typography.Text>
@@ -860,7 +865,8 @@ export function ToolFormDrawer(props: Props) {
                                     description={
                                         <>
                                             写入 <Typography.Text code>definition.parameters</Typography.Text>
-                                            ，与 HTTP 工具相同为 JSON Schema 子集；用于智能体侧工具描述与详情页展示。不填则运行时由后端按远端{" "}
+                                            ，与 HTTP 工具相同为 JSON Schema
+                                            子集；用于智能体侧工具描述与详情页展示。不填则运行时由后端按远端{" "}
                                             <Typography.Text code>list_tools</Typography.Text> 推断或使用宽松 object。
                                         </>
                                     }

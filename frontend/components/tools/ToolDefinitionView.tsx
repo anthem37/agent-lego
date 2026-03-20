@@ -102,12 +102,14 @@ function schemaPropertiesTable(raw: unknown, role: SchemaTableRole): React.React
                 {role === "input" ? (
                     <>
                         当前为<strong>高级入参 Schema</strong>（例如 <Typography.Text code>$ref</Typography.Text>
-                        、组合关键字等），列表无法用表格逐行展示。完整内容见下方 definition 区域或复制 JSON；在编辑工具时修改 URL/请求头
+                        、组合关键字等），列表无法用表格逐行展示。完整内容见下方 definition 区域或复制 JSON；在编辑工具时修改
+                        URL/请求头
                         <strong>不会覆盖</strong>该段配置。
                     </>
                 ) : (
                     <>
-                        当前为<strong>高级出参 Schema</strong>，无法用表格逐行展示。编辑时若处于「高级出参已保留」模式，保存不会覆盖{" "}
+                        当前为<strong>高级出参
+                        Schema</strong>，无法用表格逐行展示。编辑时若处于「高级出参已保留」模式，保存不会覆盖{" "}
                         <Typography.Text code>outputSchema</Typography.Text>。
                     </>
                 )}
@@ -146,7 +148,12 @@ function schemaPropertiesTable(raw: unknown, role: SchemaTableRole): React.React
     const fieldTitle = role === "input" ? "参数名" : "出参字段";
     const reqTitle = role === "input" ? "必填" : "必有";
     const columns: ColumnsType<ParamRow> = [
-        {title: fieldTitle, dataIndex: "name", width: "22%", render: (v) => <Typography.Text code>{v}</Typography.Text>},
+        {
+            title: fieldTitle,
+            dataIndex: "name",
+            width: "22%",
+            render: (v) => <Typography.Text code>{v}</Typography.Text>
+        },
         {title: "类型", dataIndex: "typ", width: "14%"},
         {
             title: reqTitle,

@@ -3,11 +3,7 @@ package com.agentlego.backend.mcp;
 import com.agentlego.backend.tool.application.dto.LocalBuiltinParamMetaDto;
 import io.modelcontextprotocol.spec.McpSchema;
 
-import java.util.ArrayList;
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Locale;
-import java.util.Map;
+import java.util.*;
 
 /**
  * 将平台内置工具元数据转为 MCP {@link McpSchema.JsonSchema}。

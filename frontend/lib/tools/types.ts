@@ -68,8 +68,8 @@ export type BatchImportMcpToolsRequest = {
 };
 
 export type BatchImportMcpToolsResponse = {
-    created: Array<{id: string; name: string; remoteToolName: string}>;
-    skipped: Array<{name: string; reason: string}>;
+    created: Array<{ id: string; name: string; remoteToolName: string }>;
+    skipped: Array<{ name: string; reason: string }>;
 };
 
 /** HTTP 请求头一行（表单项，非 JSON） */

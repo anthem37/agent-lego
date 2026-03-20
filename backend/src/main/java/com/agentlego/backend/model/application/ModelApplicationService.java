@@ -6,16 +6,14 @@ import com.agentlego.backend.model.domain.ModelAggregate;
 import com.agentlego.backend.model.domain.ModelProvider;
 import com.agentlego.backend.model.domain.ModelRepository;
 import com.agentlego.backend.model.dto.*;
+import com.agentlego.backend.model.support.ChatModelFactory;
 import com.agentlego.backend.model.support.ModelConfigSummaries;
-import com.agentlego.backend.runtime.AgentRuntime;
-import com.agentlego.backend.runtime.definition.AgentDefinition;
+import com.agentlego.backend.model.support.ModelConnectivityTester;
 import com.agentlego.backend.runtime.definition.ModelDefinition;
-import io.agentscope.core.message.Msg;
-import io.agentscope.core.tool.Toolkit;
+import io.agentscope.core.model.Model;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 
-import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
@@ -26,26 +24,34 @@ import java.util.Map;
  *
  * 职责：
  * - 创建/查询模型配置；
- * - 提供最小“连通性测试”（当前仅用于验证调用链是否可跑通）。
+ * - 连通性测试（通过 ChatModelFactory + ModelConnectivityTester，支持全部 chat provider）。
  *
  * 注意：
  * - apiKeyCipher 字段名表示“应保存密文/引用”，当前版本仍可能为明文（MVP）。
  */
 public class ModelApplicationService {
-    private static final String PROVIDER_DASHSCOPE = "DASHSCOPE";
-    private static final Duration MODEL_TEST_TIMEOUT = Duration.ofMinutes(2);
     private final ModelRepository modelRepository;
     private final AgentRepository agentRepository;
-    private final AgentRuntime agentRuntime;
+    private final ModelConnectivityTester connectivityTester;
 
     public ModelApplicationService(
             ModelRepository modelRepository,
             AgentRepository agentRepository,
-            AgentRuntime agentRuntime
+            ModelConnectivityTester connectivityTester
     ) {
         this.modelRepository = modelRepository;
         this.agentRepository = agentRepository;
-        this.agentRuntime = agentRuntime;
+        this.connectivityTester = connectivityTester;
+    }
+
+    private static ModelDefinition toModelDefinition(ModelAggregate agg) {
+        return new ModelDefinition(
+                agg.getProvider(),
+                agg.getModelKey(),
+                agg.getApiKeyCipher(),
+                agg.getBaseUrl(),
+                agg.getConfig() == null ? Map.of() : agg.getConfig()
+        );
     }
 
     public String createModel(CreateModelRequest req) {
@@ -154,31 +160,20 @@ public class ModelApplicationService {
         ModelAggregate agg = modelRepository.findById(id)
                 .orElseThrow(() -> new ApiException("NOT_FOUND", "model not found", HttpStatus.NOT_FOUND));
 
-        if (!PROVIDER_DASHSCOPE.equalsIgnoreCase(agg.getProvider())) {
-            throw new ApiException(
-                    "UNSUPPORTED_MODEL_PROVIDER",
-                    "only DASHSCOPE is supported in v1 test; got " + agg.getProvider(),
-                    HttpStatus.BAD_REQUEST
-            );
+        ModelProvider provider;
+        try {
+            provider = ModelProvider.from(agg.getProvider());
+        } catch (IllegalArgumentException e) {
+            throw new ApiException("UNSUPPORTED_MODEL_PROVIDER", e.getMessage(), HttpStatus.BAD_REQUEST);
         }
 
-        AgentDefinition agentDef = new AgentDefinition(
-                "ModelTester",
-                "You are a helpful assistant. Reply with a single word: OK.",
-                new ModelDefinition(
-                        agg.getProvider(),
-                        agg.getModelKey(),
-                        agg.getApiKeyCipher(),
-                        agg.getBaseUrl(),
-                        agg.getConfig()
-                ),
-                1
-        );
+        if (!provider.isChatProvider()) {
+            return new TestModelResponse("EMBEDDING_TEST_SKIPPED", "EMBEDDING_TEST_SKIPPED");
+        }
 
-        Msg msg = agentRuntime.call(agentDef, "test", new Toolkit()).block(MODEL_TEST_TIMEOUT);
-        String text = (msg == null || msg.getTextContent() == null || msg.getTextContent().isBlank())
-                ? "EMPTY_RESPONSE"
-                : msg.getTextContent().trim();
+        ModelDefinition def = toModelDefinition(agg);
+        Model model = ChatModelFactory.from(def);
+        String text = connectivityTester.test(model);
         return new TestModelResponse(text, text);
     }
 

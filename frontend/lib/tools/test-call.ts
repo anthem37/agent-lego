@@ -13,7 +13,7 @@ export type TestCallParamRow = {
  */
 export function buildDefaultTestCallParamRows(
     tool: ToolDto,
-    options?: {localBuiltinMeta?: LocalBuiltinToolMetaDto},
+    options?: { localBuiltinMeta?: LocalBuiltinToolMetaDto },
 ): TestCallParamRow[] {
     const t = tool.toolType.toUpperCase();
 

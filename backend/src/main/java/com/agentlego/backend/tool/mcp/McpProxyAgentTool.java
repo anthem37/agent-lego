@@ -12,11 +12,7 @@ import reactor.core.publisher.Mono;
 import reactor.core.scheduler.Schedulers;
 
 import java.time.Duration;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Map;
-import java.util.Objects;
-import java.util.Set;
+import java.util.*;
 
 /**
  * 将平台 MCP 工具（definition.endpoint + 可选 mcpToolName）桥接为 AgentScope {@link AgentTool}。

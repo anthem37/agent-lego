@@ -1,123 +1,125 @@
 package com.agentlego.backend.common;
 
+import cn.hutool.core.collection.CollUtil;
+import cn.hutool.core.map.MapUtil;
+import cn.hutool.core.util.StrUtil;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
-import java.util.Objects;
+import java.util.stream.Collectors;
 
 /**
- * JSON/Map 访问辅助工具。
+ * JSON/Map 访问辅助，委托 Hutool MapUtil + Jackson。
  * <p>
- * 设计目标：
- * - 统一处理从 jsonb / Map<String, Object> 中读取字段时的类型不确定性；
- * - 避免散落在各处的强制类型转换与魔法字符串，提升可读性与健壮性。
- * <p>
- * 说明：该类只做“无副作用”的转换与读取；业务校验应在 Application/Domain 层完成。
+ * 避免重复造轮子，统一从 jsonb/Map 读取字段。
  */
 public final class JsonMaps {
-    private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
+    private static final ObjectMapper OM = JacksonHolder.INSTANCE;
 
     private JsonMaps() {
     }
 
-    /**
-     * 尝试把任意对象转换成 Map（常用于 json 反序列化后的 LinkedHashMap）。
-     * 若转换失败则返回空 Map。
-     */
     public static Map<String, Object> asMap(Object value) {
         if (value == null) {
             return Map.of();
         }
         if (value instanceof Map<?, ?> raw) {
-            // normalize keys to String
             return raw.entrySet().stream()
-                    .collect(java.util.stream.Collectors.toMap(
-                            e -> String.valueOf(e.getKey()),
-                            e -> (Object) e.getValue()
-                    ));
+                    .collect(Collectors.toMap(e -> StrUtil.toString(e.getKey()), e -> (Object) e.getValue()));
         }
         return Map.of();
     }
 
-    /**
-     * 从 map 读取 String。
-     */
     public static String getString(Map<String, Object> map, String key, String defaultValue) {
-        Objects.requireNonNull(map, "map");
-        Objects.requireNonNull(key, "key");
-        Object v = map.get(key);
-        if (v == null) {
+        if (map == null || key == null) {
             return defaultValue;
         }
-        String s = String.valueOf(v);
-        return s.isBlank() ? defaultValue : s;
+        String s = MapUtil.getStr(map, key, defaultValue);
+        return StrUtil.isBlank(s) ? defaultValue : s;
     }
 
-    /**
-     * 从 map 读取 int（支持 Number / String）。
-     */
+    public static double getDouble(Map<String, Object> map, String key, double defaultValue) {
+        if (map == null || key == null) {
+            return defaultValue;
+        }
+        Double v = MapUtil.getDouble(map, key, null);
+        return v != null ? v : defaultValue;
+    }
+
     public static int getInt(Map<String, Object> map, String key, int defaultValue) {
-        Objects.requireNonNull(map, "map");
-        Objects.requireNonNull(key, "key");
-        Object v = map.get(key);
-        if (v == null) {
+        if (map == null || key == null) {
             return defaultValue;
         }
-        if (v instanceof Number n) {
-            return n.intValue();
-        }
-        try {
-            return Integer.parseInt(String.valueOf(v));
-        } catch (Exception ignored) {
-            return defaultValue;
-        }
+        Integer v = MapUtil.getInt(map, key, null);
+        return v != null ? v : defaultValue;
     }
 
-    /**
-     * 读取 List<Map<String, Object>>，并把每个元素的 key 归一化成 String。
-     */
-    public static List<Map<String, Object>> getListOfMaps(Map<String, Object> map, String key) {
-        Objects.requireNonNull(map, "map");
-        Objects.requireNonNull(key, "key");
+    @SuppressWarnings("unchecked")
+    public static Map<String, Object> getMap(Map<String, Object> map, String key) {
+        if (map == null || key == null) {
+            return Map.of();
+        }
         Object v = map.get(key);
-        if (!(v instanceof List<?> list)) {
+        if (!(v instanceof Map<?, ?> raw)) {
+            return Map.of();
+        }
+        return MapUtil.isEmpty(raw) ? Map.of() : asMap(v);
+    }
+
+    public static Map<String, String> getStringMap(Map<String, Object> map, String key) {
+        Map<String, Object> raw = getMap(map, key);
+        if (MapUtil.isEmpty(raw)) {
+            return Map.of();
+        }
+        return raw.entrySet().stream()
+                .filter(e -> e.getKey() != null && e.getValue() != null)
+                .collect(Collectors.toMap(e -> StrUtil.toString(e.getKey()), e -> StrUtil.toString(e.getValue())));
+    }
+
+    public static Integer getIntOpt(Map<String, Object> map, String key) {
+        return map == null || key == null ? null : MapUtil.getInt(map, key, null);
+    }
+
+    public static Long getLongOpt(Map<String, Object> map, String key) {
+        return map == null || key == null ? null : MapUtil.getLong(map, key, null);
+    }
+
+    public static Double getDoubleOpt(Map<String, Object> map, String key) {
+        return map == null || key == null ? null : MapUtil.getDouble(map, key, null);
+    }
+
+    public static List<Map<String, Object>> getListOfMaps(Map<String, Object> map, String key) {
+        if (map == null || key == null) {
             return List.of();
         }
-        return list.stream()
-                .map(JsonMaps::asMap)
-                .filter(m -> !m.isEmpty())
-                .toList();
+        Object v = map.get(key);
+        if (!(v instanceof List<?> list) || CollUtil.isEmpty(list)) {
+            return List.of();
+        }
+        return list.stream().map(JsonMaps::asMap).filter(m -> !MapUtil.isEmpty(m)).toList();
     }
 
-    /**
-     * JSON -> Map（用于持久化层读取 jsonb/varchar）。
-     */
     public static Map<String, Object> parseObject(String json) {
-        if (json == null || json.isBlank()) {
+        if (StrUtil.isBlank(json)) {
             return Map.of();
         }
         try {
-            Map<String, Object> raw = OBJECT_MAPPER.readValue(json, new TypeReference<Map<String, Object>>() {
-            });
-            return asMap(raw);
+            return asMap(OM.readValue(json, new TypeReference<Map<String, Object>>() {
+            }));
         } catch (Exception e) {
             return Map.of();
         }
     }
 
-    /**
-     * Map -> JSON（用于持久化层写入）。
-     */
     public static String toJson(Map<String, Object> map) {
         Map<String, Object> safe = map == null ? Collections.emptyMap() : map;
         try {
-            return OBJECT_MAPPER.writeValueAsString(safe);
+            return OM.writeValueAsString(safe);
         } catch (Exception e) {
             return "{}";
         }
     }
 }
-

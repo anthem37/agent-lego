@@ -103,17 +103,39 @@ const FALLBACK_PROVIDERS: ProviderMeta[] = [
             "additionalQueryParams",
         ],
     },
+    {
+        provider: "OPENAI_TEXT_EMBEDDING",
+        supportedConfigKeys: [
+            "dimensions",
+            "encodingFormat",
+            "endpointPath",
+            "additionalHeaders",
+            "additionalBodyParams",
+            "additionalQueryParams",
+        ],
+    },
+    {
+        provider: "DASHSCOPE_TEXT_EMBEDDING",
+        supportedConfigKeys: [
+            "dimensions",
+            "encodingFormat",
+            "endpointPath",
+            "additionalHeaders",
+            "additionalBodyParams",
+            "additionalQueryParams",
+        ],
+    },
 ];
 
 function providerColor(provider: string): string {
     const p = provider.toUpperCase();
-    if (p === "DASHSCOPE") {
+    if (p.includes("DASHSCOPE")) {
         return "purple";
     }
-    if (p === "OPENAI") {
+    if (p.includes("OPENAI")) {
         return "green";
     }
-    if (p === "ANTHROPIC") {
+    if (p.includes("ANTHROPIC")) {
         return "orange";
     }
     return "default";

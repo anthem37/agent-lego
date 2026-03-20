@@ -71,11 +71,13 @@ public class KbController {
         return ApiResponse.created(service.ingestKnowledge(baseId, req));
     }
 
-    /** 通过绑定键添加入库（无需先查 baseId） */
+    /**
+     * 通过绑定键添加入库（无需先查 baseId）
+     */
     @PostMapping("/by-key/{kbKey}/knowledge")
     @ResponseStatus(HttpStatus.CREATED)
     public ApiResponse<KbIngestResponse> addKnowledgeByKey(@PathVariable("kbKey") String kbKey,
-                                                         @Valid @RequestBody CreateKnowledgeRequest req) {
+                                                           @Valid @RequestBody CreateKnowledgeRequest req) {
         return ApiResponse.created(service.ingestKnowledgeByKbKey(kbKey, req));
     }
 

@@ -70,10 +70,10 @@
         <where>
             <if test="q != null and q != ''">
                 and (
-                    name ilike concat('%', #{q}, '%')
-                    or id ilike concat('%', #{q}, '%')
-                    or tool_type ilike concat('%', #{q}, '%')
-                    or cast(definition as text) ilike concat('%', #{q}, '%')
+                name ilike concat('%', #{q}, '%')
+                or id ilike concat('%', #{q}, '%')
+                or tool_type ilike concat('%', #{q}, '%')
+                or cast(definition as text) ilike concat('%', #{q}, '%')
                 )
             </if>
         </where>
@@ -87,10 +87,10 @@
 
     <select id="findPageByQuery" resultMap="ToolDOMap">
         select id,
-               tool_type,
-               name,
-               cast(definition as text) as definition_json,
-               created_at
+        tool_type,
+        name,
+        cast(definition as text) as definition_json,
+        created_at
         from platform_tools
         <include refid="ToolWhereQuery"/>
         order by created_at desc

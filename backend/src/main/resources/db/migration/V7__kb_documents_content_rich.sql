@@ -5,5 +5,7 @@ alter table kb_documents
 alter table kb_documents
     add column if not exists content_format text not null default 'plain';
 
-comment on column kb_documents.content_rich is '知识全文：plain 时为纯文本，html 时为富文本源码';
-comment on column kb_documents.content_format is 'plain | html';
+comment
+on column kb_documents.content_rich is '知识全文：plain 时为纯文本，html 时为富文本源码';
+comment
+on column kb_documents.content_format is 'plain | html';

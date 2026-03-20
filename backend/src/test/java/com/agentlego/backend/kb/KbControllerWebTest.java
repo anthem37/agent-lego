@@ -2,11 +2,7 @@ package com.agentlego.backend.kb;
 
 import com.agentlego.backend.api.GlobalExceptionHandler;
 import com.agentlego.backend.kb.application.KnowledgeBaseApplicationService;
-import com.agentlego.backend.kb.application.dto.KbBaseDto;
-import com.agentlego.backend.kb.application.dto.KbDocumentPageDto;
-import com.agentlego.backend.kb.application.dto.KbIngestResponse;
-import com.agentlego.backend.kb.application.dto.KbKnowledgeDetailDto;
-import com.agentlego.backend.kb.application.dto.KbQueryResponse;
+import com.agentlego.backend.kb.application.dto.*;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;

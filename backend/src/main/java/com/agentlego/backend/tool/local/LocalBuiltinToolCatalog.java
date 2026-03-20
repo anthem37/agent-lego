@@ -15,13 +15,7 @@ import org.springframework.stereotype.Component;
 
 import java.lang.reflect.Method;
 import java.lang.reflect.Parameter;
-import java.util.ArrayList;
-import java.util.Comparator;
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Locale;
-import java.util.Map;
-import java.util.Set;
+import java.util.*;
 import java.util.stream.Collectors;
 
 /**
@@ -66,43 +60,6 @@ public class LocalBuiltinToolCatalog {
         this.metaList = List.copyOf(metas);
     }
 
-    private void collectFromClass(Class<?> clazz, Map<String, Class<?>> map, List<LocalBuiltinToolMetaDto> metas) {
-        LocalBuiltinUiHint ui = clazz.getAnnotation(LocalBuiltinUiHint.class);
-        for (Method m : clazz.getDeclaredMethods()) {
-            Tool t = m.getAnnotation(Tool.class);
-            if (t == null) {
-                continue;
-            }
-            String name = t.name();
-            if (name == null || name.isBlank()) {
-                continue;
-            }
-            String key = name.trim().toLowerCase(Locale.ROOT);
-            if (map.containsKey(key)) {
-                throw new IllegalStateException("Duplicate @Tool name in local builtins: " + name);
-            }
-            map.put(key, clazz);
-            String label = (ui != null && ui.label() != null && !ui.label().isBlank()) ? ui.label() : name.trim();
-            String hint = ui != null && ui.hint() != null ? ui.hint() : "";
-            String desc = t.description() != null ? t.description() : "";
-            List<LocalBuiltinParamMetaDto> inputs = extractInputParameters(m);
-            String outType = m.getReturnType().getSimpleName();
-            Class<?> converterClass = t.converter();
-            String converterSimple = converterClass != null ? converterClass.getSimpleName() : "";
-            String outputDesc = buildOutputDescription(outType, converterClass);
-            metas.add(LocalBuiltinToolMetaDto.builder()
-                    .name(name.trim())
-                    .description(desc)
-                    .label(label)
-                    .usageHint(hint)
-                    .inputParameters(List.copyOf(inputs))
-                    .outputJavaType(outType)
-                    .resultConverterClass(converterSimple)
-                    .outputDescription(outputDesc)
-                    .build());
-        }
-    }
-
     private static List<LocalBuiltinParamMetaDto> extractInputParameters(Method m) {
         List<LocalBuiltinParamMetaDto> list = new ArrayList<>();
         Parameter[] params = m.getParameters();
@@ -140,6 +97,43 @@ public class LocalBuiltinToolCatalog {
             return String.format("返回类型 %s；结果转换器：%s。", returnSimpleName, converterClass.getSimpleName());
         }
         return "返回类型 " + returnSimpleName + "。";
+    }
+
+    private void collectFromClass(Class<?> clazz, Map<String, Class<?>> map, List<LocalBuiltinToolMetaDto> metas) {
+        LocalBuiltinUiHint ui = clazz.getAnnotation(LocalBuiltinUiHint.class);
+        for (Method m : clazz.getDeclaredMethods()) {
+            Tool t = m.getAnnotation(Tool.class);
+            if (t == null) {
+                continue;
+            }
+            String name = t.name();
+            if (name == null || name.isBlank()) {
+                continue;
+            }
+            String key = name.trim().toLowerCase(Locale.ROOT);
+            if (map.containsKey(key)) {
+                throw new IllegalStateException("Duplicate @Tool name in local builtins: " + name);
+            }
+            map.put(key, clazz);
+            String label = (ui != null && ui.label() != null && !ui.label().isBlank()) ? ui.label() : name.trim();
+            String hint = ui != null && ui.hint() != null ? ui.hint() : "";
+            String desc = t.description() != null ? t.description() : "";
+            List<LocalBuiltinParamMetaDto> inputs = extractInputParameters(m);
+            String outType = m.getReturnType().getSimpleName();
+            Class<?> converterClass = t.converter();
+            String converterSimple = converterClass != null ? converterClass.getSimpleName() : "";
+            String outputDesc = buildOutputDescription(outType, converterClass);
+            metas.add(LocalBuiltinToolMetaDto.builder()
+                    .name(name.trim())
+                    .description(desc)
+                    .label(label)
+                    .usageHint(hint)
+                    .inputParameters(List.copyOf(inputs))
+                    .outputJavaType(outType)
+                    .resultConverterClass(converterSimple)
+                    .outputDescription(outputDesc)
+                    .build());
+        }
     }
 
     public List<LocalBuiltinToolMetaDto> listMeta() {

@@ -4,7 +4,9 @@ import lombok.Data;
 
 import java.time.Instant;
 
-/** 知识详情（含全文，供预览 / 后续编辑） */
+/**
+ * 知识详情（含全文，供预览 / 后续编辑）
+ */
 @Data
 public class KbKnowledgeDetailDto {
     private String id;
@@ -12,7 +14,9 @@ public class KbKnowledgeDetailDto {
     private String kbKey;
     private String name;
     private String contentRich;
-    /** markdown | html */
+    /**
+     * markdown | html
+     */
     private String contentFormat;
     private String chunkStrategy;
     private Instant createdAt;

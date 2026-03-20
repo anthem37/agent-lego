@@ -17,7 +17,10 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
-import java.util.*;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
 
 /**
  * 将 {@link com.agentlego.backend.tool.domain.ToolType#HTTP} 工具注册为 AgentScope {@link AgentTool}。

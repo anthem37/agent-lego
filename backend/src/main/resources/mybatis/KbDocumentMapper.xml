@@ -22,11 +22,13 @@
     </insert>
 
     <delete id="deleteById" parameterType="java.lang.String">
-        delete from kb_documents where id = #{id}
+        delete
+        from kb_documents
+        where id = #{id}
     </delete>
 
     <select id="countByBaseId" resultType="long">
-        select count(*)::bigint
+        select count(*) ::bigint
         from kb_documents
         where base_id = #{baseId}
     </select>
@@ -39,14 +41,12 @@
                d.content_format,
                d.chunk_strategy,
                d.created_at,
-               coalesce(ch.cnt, 0)::int as chunk_count
+               coalesce(ch.cnt, 0) ::int as chunk_count
         from kb_documents d
                  join kb_bases b on b.id = d.base_id
-                 left join (
-            select document_id, count(*)::bigint as cnt
-            from kb_chunks
-            group by document_id
-        ) ch on ch.document_id = d.id
+                 left join (select document_id, count(*) ::bigint as cnt
+                            from kb_chunks
+                            group by document_id) ch on ch.document_id = d.id
         where d.base_id = #{baseId}
         order by d.created_at desc
         offset #{offset} limit #{limit}

@@ -13,9 +13,13 @@ public class KbDocumentSummary {
     private String baseId;
     private String kbKey;
     private String name;
-    /** markdown | html */
+    /**
+     * markdown | html
+     */
     private String contentFormat;
-    /** 入库时使用的分片策略 */
+    /**
+     * 入库时使用的分片策略
+     */
     private String chunkStrategy;
     private int chunkCount;
     private Instant createdAt;

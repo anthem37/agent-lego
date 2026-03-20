@@ -1,23 +1,21 @@
 package com.agentlego.backend.tool.application;
 
-import com.agentlego.backend.api.ApiException;
+import com.agentlego.backend.common.JacksonHolder;
 import com.agentlego.backend.common.SnowflakeIdGenerator;
-import com.agentlego.backend.tool.domain.ToolAggregate;
 import com.agentlego.backend.mcp.McpClientRegistry;
+import com.agentlego.backend.tool.domain.ToolAggregate;
 import com.agentlego.backend.tool.http.HttpProxyAgentTool;
 import com.agentlego.backend.tool.local.LocalBuiltinToolCatalog;
 import com.agentlego.backend.tool.mcp.McpProxyAgentTool;
 import com.agentlego.backend.tool.workflow.WorkflowProxyAgentTool;
 import com.agentlego.backend.workflow.application.WorkflowApplicationService;
 import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import io.agentscope.core.message.ToolResultBlock;
 import io.agentscope.core.message.ToolUseBlock;
 import io.agentscope.core.tool.ToolCallParam;
 import io.agentscope.core.tool.Toolkit;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Lazy;
-import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import reactor.core.publisher.Mono;
 
@@ -35,13 +33,6 @@ import java.util.Objects;
  */
 @Service
 public class ToolExecutionService {
-    /**
-     * JSON 序列化器（ObjectMapper）。
-     * <p>
-     * 说明：ObjectMapper 在配置完成后可安全并发使用（thread-safe for read/write operations）。
-     */
-    private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
-
     private final WorkflowApplicationService workflowApplicationService;
     private final LocalBuiltinToolCatalog localBuiltinToolCatalog;
     private final McpClientRegistry mcpClientRegistry;
@@ -72,10 +63,10 @@ public class ToolExecutionService {
         for (ToolAggregate t : tools) {
             switch (t.getToolType()) {
                 case LOCAL -> toolkit.registerTool(resolveLocalTool(t.getName()));
-                case HTTP -> toolkit.registerAgentTool(new HttpProxyAgentTool(t, OBJECT_MAPPER));
+                case HTTP -> toolkit.registerAgentTool(new HttpProxyAgentTool(t, JacksonHolder.INSTANCE));
                 case MCP -> toolkit.registerAgentTool(new McpProxyAgentTool(t, mcpClientRegistry));
                 case WORKFLOW -> toolkit.registerAgentTool(
-                        new WorkflowProxyAgentTool(t, workflowApplicationService, OBJECT_MAPPER)
+                        new WorkflowProxyAgentTool(t, workflowApplicationService, JacksonHolder.INSTANCE)
                 );
             }
         }
@@ -98,7 +89,7 @@ public class ToolExecutionService {
     }
 
     private Mono<ToolResultBlock> executeWorkflowTool(ToolAggregate aggregate, Map<String, Object> input) {
-        WorkflowProxyAgentTool tool = new WorkflowProxyAgentTool(aggregate, workflowApplicationService, OBJECT_MAPPER);
+        WorkflowProxyAgentTool tool = new WorkflowProxyAgentTool(aggregate, workflowApplicationService, JacksonHolder.INSTANCE);
         String toolUseId = SnowflakeIdGenerator.nextId();
         String contentJson = buildToolUseContentJson(input);
         ToolUseBlock toolUseBlock = ToolUseBlock.builder()
@@ -140,7 +131,7 @@ public class ToolExecutionService {
     }
 
     private Mono<ToolResultBlock> executeHttpTool(ToolAggregate aggregate, Map<String, Object> input) {
-        HttpProxyAgentTool tool = new HttpProxyAgentTool(aggregate, OBJECT_MAPPER);
+        HttpProxyAgentTool tool = new HttpProxyAgentTool(aggregate, JacksonHolder.INSTANCE);
         String toolUseId = SnowflakeIdGenerator.nextId();
         String contentJson = buildToolUseContentJson(input);
         ToolUseBlock toolUseBlock = ToolUseBlock.builder()
@@ -197,7 +188,7 @@ public class ToolExecutionService {
     private String buildToolUseContentJson(Map<String, Object> input) {
         try {
             Map<String, Object> safeInput = (input == null) ? Map.of() : input;
-            return OBJECT_MAPPER.writeValueAsString(safeInput);
+            return JacksonHolder.INSTANCE.writeValueAsString(safeInput);
         } catch (JsonProcessingException e) {
             // 兜底：保持为合法 JSON object，避免整个调用链因序列化异常中断。
             return "{}";

@@ -18,12 +18,12 @@ public final class KbChunkSplitter {
     }
 
     /**
-     * @param strategy           策略名（已小写规范化）
-     * @param plainForChunks     用于分片的全文纯文本
-     * @param rawStored          入库原文（Markdown 节策略需要 MD 源码）
-     * @param contentFormat      markdown | html
-     * @param chunkSize          目标最大块长
-     * @param overlap            滑窗重叠
+     * @param strategy       策略名（已小写规范化）
+     * @param plainForChunks 用于分片的全文纯文本
+     * @param rawStored      入库原文（Markdown 节策略需要 MD 源码）
+     * @param contentFormat  markdown | html
+     * @param chunkSize      目标最大块长
+     * @param overlap        滑窗重叠
      */
     public static List<String> split(
             String strategy,
@@ -40,7 +40,8 @@ public final class KbChunkSplitter {
             case KbChunkStrategies.FIXED -> splitFixed(plainForChunks, chunkSize, overlap);
             case KbChunkStrategies.PARAGRAPH -> splitParagraph(plainForChunks, chunkSize, overlap, false);
             case KbChunkStrategies.HYBRID -> splitParagraph(plainForChunks, chunkSize, overlap, true);
-            case KbChunkStrategies.MARKDOWN_SECTIONS -> splitMarkdownSections(plainForChunks, rawStored, contentFormat, chunkSize, overlap);
+            case KbChunkStrategies.MARKDOWN_SECTIONS ->
+                    splitMarkdownSections(plainForChunks, rawStored, contentFormat, chunkSize, overlap);
             default -> splitFixed(plainForChunks, chunkSize, overlap);
         };
     }
@@ -146,7 +147,9 @@ public final class KbChunkSplitter {
         return splitFixed(text, chunkSize, overlap);
     }
 
-    /** 固定滑窗 */
+    /**
+     * 固定滑窗
+     */
     public static List<String> splitFixed(String content, int chunkSize, int overlap) {
         if (content == null || content.isEmpty()) {
             return List.of();

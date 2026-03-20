@@ -21,12 +21,7 @@ import org.springframework.stereotype.Service;
 
 import java.time.Duration;
 import java.time.Instant;
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Objects;
+import java.util.*;
 import java.util.stream.Collectors;
 
 /**
@@ -71,6 +66,23 @@ public class ToolApplicationService {
         this.mcpClientRegistry = mcpClientRegistry;
         this.objectMapper = objectMapper;
         this.mcpClientProperties = mcpClientProperties;
+    }
+
+    /**
+     * 平台工具 name 规则与前端一致：字母开头，仅 [A-Za-z0-9_-]。
+     */
+    static String sanitizePlatformToolName(String prefix, String remoteName) {
+        String p = prefix == null ? "" : prefix.trim();
+        String raw = p + Objects.requireNonNull(remoteName, "remoteName").trim();
+        String s = raw.replaceAll("[^a-zA-Z0-9_-]", "_");
+        if (s.isEmpty()) {
+            s = "mcp_tool";
+        }
+        char c0 = s.charAt(0);
+        if (!Character.isLetter(c0)) {
+            s = "mcp_" + s;
+        }
+        return s;
     }
 
     public String createTool(CreateToolRequest req) {
@@ -321,23 +333,6 @@ public class ToolApplicationService {
                 .description(t.description())
                 .inputSchema(schema)
                 .build();
-    }
-
-    /**
-     * 平台工具 name 规则与前端一致：字母开头，仅 [A-Za-z0-9_-]。
-     */
-    static String sanitizePlatformToolName(String prefix, String remoteName) {
-        String p = prefix == null ? "" : prefix.trim();
-        String raw = p + Objects.requireNonNull(remoteName, "remoteName").trim();
-        String s = raw.replaceAll("[^a-zA-Z0-9_-]", "_");
-        if (s.isEmpty()) {
-            s = "mcp_tool";
-        }
-        char c0 = s.charAt(0);
-        if (!Character.isLetter(c0)) {
-            s = "mcp_" + s;
-        }
-        return s;
     }
 
     /**
