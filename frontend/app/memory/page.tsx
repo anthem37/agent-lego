@@ -9,6 +9,7 @@ import {JsonTextArea} from "@/components/JsonTextArea";
 import {PageHeaderBlock} from "@/components/PageHeaderBlock";
 import {SectionCard} from "@/components/SectionCard";
 import {request} from "@/lib/api/request";
+import {tablePaginationFriendly} from "@/lib/table-pagination";
 import {parseJsonObject, stringifyPretty} from "@/lib/json";
 
 type MemoryItemDto = {
@@ -146,7 +147,7 @@ export default function MemoryPage() {
                         <Table<MemoryItemDto>
                             rowKey="id"
                             dataSource={items}
-                            pagination={{pageSize: 10}}
+                            pagination={tablePaginationFriendly()}
                             columns={[
                                 {
                                     title: "id",

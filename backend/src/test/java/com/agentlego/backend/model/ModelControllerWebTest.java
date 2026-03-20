@@ -3,6 +3,7 @@ package com.agentlego.backend.model;
 import com.agentlego.backend.api.GlobalExceptionHandler;
 import com.agentlego.backend.model.application.ModelApplicationService;
 import com.agentlego.backend.model.dto.ModelDto;
+import com.agentlego.backend.model.dto.ModelSummaryDto;
 import com.agentlego.backend.model.dto.TestModelResponse;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -13,12 +14,17 @@ import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
 
 import java.time.Instant;
+import java.util.List;
 import java.util.Map;
 
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -50,7 +56,7 @@ class ModelControllerWebTest {
         mockMvc.perform(post("/models")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
-                                {"provider":"DASHSCOPE","modelKey":"qwen-max","apiKey":"k","config":{"temperature":0.1}}
+                                {"name":"通义-生产-低温度","provider":"DASHSCOPE","modelKey":"qwen-max","apiKey":"k","config":{"temperature":0.1}}
                                 """))
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.code").value("OK"))
@@ -63,6 +69,7 @@ class ModelControllerWebTest {
     void getModel_ok_shouldReturnDto() throws Exception {
         ModelDto dto = new ModelDto();
         dto.setId("m1");
+        dto.setName("通义-测试");
         dto.setProvider("DASHSCOPE");
         dto.setModelKey("qwen-max");
         dto.setConfig(Map.of("temperature", 0.1));
@@ -86,6 +93,55 @@ class ModelControllerWebTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value("OK"))
                 .andExpect(jsonPath("$.data.message").value("OK"));
+    }
+
+    @Test
+    void listModels_ok_shouldReturnArray() throws Exception {
+        ModelSummaryDto row = new ModelSummaryDto();
+        row.setId("m1");
+        row.setName("通义-生产");
+        row.setProvider("DASHSCOPE");
+        row.setModelKey("qwen-max");
+        row.setConfigSummary("temperature=0.1");
+        row.setCreatedAt(Instant.parse("2020-01-01T00:00:00Z"));
+        when(modelApplicationService.listModels()).thenReturn(List.of(row));
+
+        mockMvc.perform(get("/models"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value("OK"))
+                .andExpect(jsonPath("$.data[0].id").value("m1"))
+                .andExpect(jsonPath("$.data[0].provider").value("DASHSCOPE"));
+    }
+
+    @Test
+    void updateModel_ok_shouldCallService() throws Exception {
+        mockMvc.perform(put("/models/m1")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"modelKey":"qwen-plus"}
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value("OK"));
+
+        verify(modelApplicationService).updateModel(eq("m1"), any());
+    }
+
+    @Test
+    void deleteModel_ok_shouldCallService() throws Exception {
+        mockMvc.perform(delete("/models/m1"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value("OK"));
+
+        verify(modelApplicationService).deleteModel("m1");
+    }
+
+    @Test
+    void providers_ok_shouldReturnBuiltinProviders() throws Exception {
+        mockMvc.perform(get("/models/providers"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value("OK"))
+                .andExpect(jsonPath("$.data[0].provider").exists())
+                .andExpect(jsonPath("$.data[0].supportedConfigKeys").isArray());
     }
 }
 

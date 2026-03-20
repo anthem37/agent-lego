@@ -6,6 +6,8 @@
 
     <resultMap id="ModelDOMap" type="com.agentlego.backend.model.infrastructure.persistence.ModelDO">
         <id property="id" column="id"/>
+        <result property="name" column="name"/>
+        <result property="description" column="description"/>
         <result property="provider" column="provider"/>
         <result property="modelKey" column="model_key"/>
         <result property="configJson" column="config_json"/>
@@ -15,12 +17,15 @@
     </resultMap>
 
     <insert id="insert" parameterType="com.agentlego.backend.model.infrastructure.persistence.ModelDO">
-        insert into platform_models (id, provider, model_key, config, api_key_cipher, base_url)
-        values (#{id}, #{provider}, #{modelKey}, cast(#{configJson} as jsonb), #{apiKeyCipher}, #{baseUrl})
+        insert into platform_models (id, name, description, provider, model_key, config, api_key_cipher, base_url)
+        values (#{id}, #{name}, #{description}, #{provider}, #{modelKey}, cast(#{configJson} as jsonb), #{apiKeyCipher},
+                #{baseUrl})
     </insert>
 
     <select id="findById" resultMap="ModelDOMap" parameterType="java.lang.String">
         select id,
+               name,
+               description,
                provider,
                model_key,
                cast(config as text) as config_json,
@@ -30,5 +35,36 @@
         from platform_models
         where id = #{id}
     </select>
+
+    <select id="listAllOrderByCreatedAtDesc" resultMap="ModelDOMap">
+        select id,
+               name,
+               description,
+               provider,
+               model_key,
+               cast(config as text) as config_json,
+               api_key_cipher,
+               base_url,
+               created_at
+        from platform_models
+        order by created_at desc
+    </select>
+
+    <update id="update" parameterType="com.agentlego.backend.model.infrastructure.persistence.ModelDO">
+        update platform_models
+        set name             = #{name},
+            description      = #{description},
+            model_key        = #{modelKey},
+            config           = cast(#{configJson} as jsonb),
+            api_key_cipher   = #{apiKeyCipher},
+            base_url         = #{baseUrl}
+        where id = #{id}
+    </update>
+
+    <delete id="deleteById" parameterType="java.lang.String">
+        delete
+        from platform_models
+        where id = #{id}
+    </delete>
 </mapper>
 

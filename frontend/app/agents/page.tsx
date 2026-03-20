@@ -1,6 +1,6 @@
 "use client";
 
-import {Button, Form, Input, message, Space, Typography} from "antd";
+import {Button, Form, Input, message, Select, Space, Typography} from "antd";
 import React from "react";
 
 import {AppLayout} from "@/components/AppLayout";
@@ -8,6 +8,7 @@ import {ErrorAlert} from "@/components/ErrorAlert";
 import {JsonTextArea} from "@/components/JsonTextArea";
 import {PageHeaderBlock} from "@/components/PageHeaderBlock";
 import {SectionCard} from "@/components/SectionCard";
+import {type ModelOptionRow, toModelSelectOptions} from "@/lib/model-select-options";
 import {request} from "@/lib/api/request";
 import {parseJsonObject} from "@/lib/json";
 
@@ -24,7 +25,26 @@ export default function AgentsPage() {
     const [creating, setCreating] = React.useState(false);
     const [createdId, setCreatedId] = React.useState<string | null>(null);
     const [error, setError] = React.useState<unknown>(null);
+    const [modelRows, setModelRows] = React.useState<ModelOptionRow[]>([]);
     const [form] = Form.useForm<CreateAgentForm>();
+
+    React.useEffect(() => {
+        let cancelled = false;
+        void request<ModelOptionRow[]>("/models")
+            .then((d) => {
+                if (!cancelled) {
+                    setModelRows(Array.isArray(d) ? d : []);
+                }
+            })
+            .catch(() => {
+                if (!cancelled) {
+                    setModelRows([]);
+                }
+            });
+        return () => {
+            cancelled = true;
+        };
+    }, []);
 
     async function onCreate(values: CreateAgentForm) {
         setError(null);
@@ -66,7 +86,7 @@ export default function AgentsPage() {
     return (
         <AppLayout>
             <Space orientation="vertical" size={16} style={{width: "100%"}}>
-                <PageHeaderBlock title="智能体" subtitle="创建智能体，并在详情页用指定 modelId 运行。"/>
+                <PageHeaderBlock title="智能体" subtitle="创建时从「模型配置实例」列表中选择绑定对象（可按名称、参数摘要区分同名模型）。"/>
 
                 <ErrorAlert error={error}/>
 
@@ -82,8 +102,23 @@ export default function AgentsPage() {
                         >
                             <Input.TextArea rows={6} placeholder="写清楚角色、边界、输出格式等"/>
                         </Form.Item>
-                        <Form.Item name="modelId" label="modelId" rules={[{required: true, message: "请输入 modelId"}]}>
-                            <Input placeholder="绑定默认模型 ID（从 /models 创建后获得）"/>
+                        <Form.Item
+                            name="modelId"
+                            label="默认绑定的模型配置"
+                            rules={[{required: true, message: "请选择一条模型配置"}]}
+                        >
+                            <Select
+                                showSearch
+                                allowClear={false}
+                                placeholder="搜索配置名称、模型标识或编号"
+                                options={toModelSelectOptions(modelRows)}
+                                popupMatchSelectWidth={520}
+                                filterOption={(input, option) => {
+                                    const st = (option as {searchText?: string}).searchText ?? "";
+                                    const q = input.trim().toLowerCase();
+                                    return !q || st.includes(q);
+                                }}
+                            />
                         </Form.Item>
                         <Form.Item name="toolIdsText" label="toolIds（逗号分隔，可选）">
                             <Input placeholder="例如 123,456"/>

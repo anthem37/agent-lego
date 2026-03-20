@@ -27,6 +27,14 @@ public class ModelAggregate {
      */
     private String modelKey;
     /**
+     * 配置实例显示名称（人类可读，用于列表与智能体绑定）。
+     */
+    private String name;
+    /**
+     * 备注（可选）。
+     */
+    private String description;
+    /**
      * API Key（密钥字段，后续应存密文/引用）。
      */
     private String apiKeyCipher;

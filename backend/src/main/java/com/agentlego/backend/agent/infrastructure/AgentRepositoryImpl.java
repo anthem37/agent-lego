@@ -38,6 +38,11 @@ public class AgentRepositoryImpl implements AgentRepository {
     }
 
     @Override
+    public int countByModelId(String modelId) {
+        return mapper.countByModelId(modelId);
+    }
+
+    @Override
     public Optional<AgentAggregate> findById(String id) {
         AgentDO row = mapper.findById(id);
         if (row == null) {

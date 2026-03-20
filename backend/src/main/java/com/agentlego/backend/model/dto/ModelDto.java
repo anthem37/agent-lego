@@ -17,6 +17,14 @@ public class ModelDto {
      */
     private String id;
     /**
+     * 配置实例显示名称。
+     */
+    private String name;
+    /**
+     * 备注（可选）。
+     */
+    private String description;
+    /**
      * 模型提供方（provider）。
      */
     private String provider;
@@ -36,5 +44,10 @@ public class ModelDto {
      * 创建时间。
      */
     private Instant createdAt;
+
+    /**
+     * 是否已配置 API Key（不返回密钥内容，仅用于前端提示）。
+     */
+    private Boolean apiKeyConfigured;
 }
 

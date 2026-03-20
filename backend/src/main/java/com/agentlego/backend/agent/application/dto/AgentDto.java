@@ -30,6 +30,22 @@ public class AgentDto {
      */
     private String modelId;
     /**
+     * 绑定模型配置实例的显示名称（便于前端展示，非持久化冗余字段）。
+     */
+    private String modelDisplayName;
+    /**
+     * 绑定模型的提供方（provider）。
+     */
+    private String modelProvider;
+    /**
+     * 绑定模型的 modelKey。
+     */
+    private String modelModelKey;
+    /**
+     * 绑定模型配置的参数摘要。
+     */
+    private String modelConfigSummary;
+    /**
      * 允许使用的工具 ID 列表。
      */
     private List<String> toolIds;

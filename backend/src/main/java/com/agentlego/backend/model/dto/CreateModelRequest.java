@@ -16,6 +16,12 @@ import java.util.Map;
 public class CreateModelRequest {
 
     /**
+     * 配置实例显示名称（必填，用于区分同一模型下多套参数/密钥）。
+     */
+    @NotBlank
+    private String name;
+
+    /**
      * 模型提供方（provider），例如 "DASHSCOPE"。
      */
     @NotBlank
@@ -40,6 +46,11 @@ public class CreateModelRequest {
      * 例如 OpenAI-compatible 网关地址，便于对接私有化/代理网关。
      */
     private String baseUrl;
+
+    /**
+     * 备注（可选）。
+     */
+    private String description;
 
     /**
      * 默认推理参数（provider-specific），例如 temperature、top_p、max_tokens 等。

@@ -7,6 +7,7 @@ import com.agentlego.backend.model.infrastructure.persistence.ModelDO;
 import com.agentlego.backend.model.infrastructure.persistence.ModelMapper;
 import org.springframework.stereotype.Repository;
 
+import java.util.List;
 import java.util.Optional;
 
 /**
@@ -26,6 +27,8 @@ public class ModelRepositoryImpl implements ModelRepository {
     public String save(ModelAggregate aggregate) {
         ModelDO modelDO = new ModelDO();
         modelDO.setId(aggregate.getId());
+        modelDO.setName(aggregate.getName());
+        modelDO.setDescription(aggregate.getDescription());
         modelDO.setProvider(aggregate.getProvider());
         modelDO.setModelKey(aggregate.getModelKey());
         modelDO.setApiKeyCipher(aggregate.getApiKeyCipher());
@@ -41,15 +44,46 @@ public class ModelRepositoryImpl implements ModelRepository {
         if (modelDO == null) {
             return Optional.empty();
         }
+        return Optional.of(toAggregate(modelDO));
+    }
+
+    @Override
+    public List<ModelAggregate> findAllOrderByCreatedAtDesc() {
+        return mapper.listAllOrderByCreatedAtDesc().stream()
+                .map(this::toAggregate)
+                .toList();
+    }
+
+    @Override
+    public void update(ModelAggregate aggregate) {
+        ModelDO modelDO = new ModelDO();
+        modelDO.setId(aggregate.getId());
+        modelDO.setName(aggregate.getName());
+        modelDO.setDescription(aggregate.getDescription());
+        modelDO.setModelKey(aggregate.getModelKey());
+        modelDO.setApiKeyCipher(aggregate.getApiKeyCipher());
+        modelDO.setBaseUrl(aggregate.getBaseUrl());
+        modelDO.setConfigJson(JsonMaps.toJson(aggregate.getConfig()));
+        mapper.update(modelDO);
+    }
+
+    @Override
+    public int deleteById(String id) {
+        return mapper.deleteById(id);
+    }
+
+    private ModelAggregate toAggregate(ModelDO modelDO) {
         ModelAggregate aggregate = new ModelAggregate();
         aggregate.setId(modelDO.getId());
+        aggregate.setName(modelDO.getName());
+        aggregate.setDescription(modelDO.getDescription());
         aggregate.setProvider(modelDO.getProvider());
         aggregate.setModelKey(modelDO.getModelKey());
         aggregate.setApiKeyCipher(modelDO.getApiKeyCipher());
         aggregate.setBaseUrl(modelDO.getBaseUrl());
         aggregate.setConfig(JsonMaps.parseObject(modelDO.getConfigJson()));
         aggregate.setCreatedAt(modelDO.getCreatedAt());
-        return Optional.of(aggregate);
+        return aggregate;
     }
 }
 

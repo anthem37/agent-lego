@@ -1,12 +1,16 @@
 package com.agentlego.backend.model.application;
 
+import com.agentlego.backend.agent.domain.AgentRepository;
 import com.agentlego.backend.api.ApiException;
 import com.agentlego.backend.model.domain.ModelAggregate;
 import com.agentlego.backend.model.domain.ModelProvider;
 import com.agentlego.backend.model.domain.ModelRepository;
 import com.agentlego.backend.model.dto.CreateModelRequest;
 import com.agentlego.backend.model.dto.ModelDto;
+import com.agentlego.backend.model.dto.ModelSummaryDto;
 import com.agentlego.backend.model.dto.TestModelResponse;
+import com.agentlego.backend.model.dto.UpdateModelRequest;
+import com.agentlego.backend.model.support.ModelConfigSummaries;
 import com.agentlego.backend.runtime.AgentRuntime;
 import com.agentlego.backend.runtime.definition.AgentDefinition;
 import com.agentlego.backend.runtime.definition.ModelDefinition;
@@ -17,6 +21,7 @@ import org.springframework.stereotype.Service;
 
 import java.time.Duration;
 import java.time.Instant;
+import java.util.List;
 import java.util.Map;
 
 @Service
@@ -34,20 +39,29 @@ public class ModelApplicationService {
     private static final String PROVIDER_DASHSCOPE = "DASHSCOPE";
     private static final Duration MODEL_TEST_TIMEOUT = Duration.ofMinutes(2);
     private final ModelRepository modelRepository;
+    private final AgentRepository agentRepository;
     private final AgentRuntime agentRuntime;
 
-    public ModelApplicationService(ModelRepository modelRepository, AgentRuntime agentRuntime) {
+    public ModelApplicationService(
+            ModelRepository modelRepository,
+            AgentRepository agentRepository,
+            AgentRuntime agentRuntime
+    ) {
         this.modelRepository = modelRepository;
+        this.agentRepository = agentRepository;
         this.agentRuntime = agentRuntime;
     }
 
     public String createModel(CreateModelRequest req) {
+        String displayName = requireNonBlank(req.getName(), "name").trim();
         String provider = requireNonBlank(req.getProvider(), "provider").trim().toUpperCase();
         validateModelConfig(provider, req.getConfig());
         String modelKey = requireNonBlank(req.getModelKey(), "modelKey").trim();
 
         ModelAggregate aggregate = new ModelAggregate();
         aggregate.setId(com.agentlego.backend.common.SnowflakeIdGenerator.nextId());
+        aggregate.setName(displayName);
+        aggregate.setDescription(normalizeDescription(req.getDescription()));
         aggregate.setProvider(provider);
         aggregate.setModelKey(modelKey);
         aggregate.setApiKeyCipher(req.getApiKey());
@@ -57,17 +71,86 @@ public class ModelApplicationService {
         return modelRepository.save(aggregate);
     }
 
+    /**
+     * 模型列表（按创建时间倒序）。
+     */
+    public List<ModelSummaryDto> listModels() {
+        return modelRepository.findAllOrderByCreatedAtDesc().stream()
+                .map(this::toSummaryDto)
+                .toList();
+    }
+
+    /**
+     * 更新模型配置（provider 不可变；部分字段可按 {@link UpdateModelRequest} 语义增量更新）。
+     */
+    public void updateModel(String id, UpdateModelRequest req) {
+        ModelAggregate agg = modelRepository.findById(id)
+                .orElseThrow(() -> new ApiException("NOT_FOUND", "model not found", HttpStatus.NOT_FOUND));
+
+        String modelKey = requireNonBlank(req.getModelKey(), "modelKey").trim();
+        agg.setModelKey(modelKey);
+
+        if (req.getName() != null) {
+            agg.setName(requireNonBlank(req.getName(), "name").trim());
+        }
+
+        if (req.getDescription() != null) {
+            agg.setDescription(normalizeDescription(req.getDescription()));
+        }
+
+        if (req.getBaseUrl() != null) {
+            String bu = req.getBaseUrl().trim();
+            agg.setBaseUrl(bu.isEmpty() ? null : bu);
+        }
+
+        if (req.getConfig() != null) {
+            validateModelConfig(agg.getProvider(), req.getConfig());
+            agg.setConfig(req.getConfig());
+        }
+
+        if (req.getApiKey() != null) {
+            String key = req.getApiKey().trim();
+            agg.setApiKeyCipher(key.isEmpty() ? null : key);
+        }
+
+        modelRepository.update(agg);
+    }
+
+    /**
+     * 删除模型；若仍被智能体引用则拒绝删除。
+     */
+    public void deleteModel(String id) {
+        modelRepository.findById(id)
+                .orElseThrow(() -> new ApiException("NOT_FOUND", "model not found", HttpStatus.NOT_FOUND));
+        int refs = agentRepository.countByModelId(id);
+        if (refs > 0) {
+            throw new ApiException(
+                    "CONFLICT",
+                    "模型仍被智能体引用，请先解绑或调整智能体后再删除",
+                    HttpStatus.CONFLICT
+            );
+        }
+        int deleted = modelRepository.deleteById(id);
+        if (deleted == 0) {
+            throw new ApiException("NOT_FOUND", "model not found", HttpStatus.NOT_FOUND);
+        }
+    }
+
     public ModelDto getModel(String id) {
         ModelAggregate agg = modelRepository.findById(id)
                 .orElseThrow(() -> new ApiException("NOT_FOUND", "model not found", HttpStatus.NOT_FOUND));
 
         ModelDto dto = new ModelDto();
         dto.setId(agg.getId());
+        dto.setName(agg.getName());
+        dto.setDescription(agg.getDescription());
         dto.setProvider(agg.getProvider());
         dto.setModelKey(agg.getModelKey());
         dto.setConfig(agg.getConfig());
         dto.setBaseUrl(agg.getBaseUrl());
         dto.setCreatedAt(agg.getCreatedAt());
+        String cipher = agg.getApiKeyCipher();
+        dto.setApiKeyConfigured(cipher != null && !cipher.isBlank());
         return dto;
     }
 
@@ -128,6 +211,30 @@ public class ModelApplicationService {
         } catch (IllegalArgumentException e) {
             throw new ApiException("UNSUPPORTED_MODEL_PROVIDER", e.getMessage(), HttpStatus.BAD_REQUEST);
         }
+    }
+
+    private ModelSummaryDto toSummaryDto(ModelAggregate agg) {
+        ModelSummaryDto dto = new ModelSummaryDto();
+        dto.setId(agg.getId());
+        dto.setName(agg.getName());
+        dto.setDescription(agg.getDescription());
+        dto.setProvider(agg.getProvider());
+        dto.setModelKey(agg.getModelKey());
+        dto.setBaseUrl(agg.getBaseUrl());
+        dto.setConfigSummary(ModelConfigSummaries.summarize(agg.getConfig()));
+        dto.setCreatedAt(agg.getCreatedAt());
+        return dto;
+    }
+
+    /**
+     * 空串视为「无备注」；{@code null} 在更新语义中由调用方区分是否修改。
+     */
+    private String normalizeDescription(String raw) {
+        if (raw == null) {
+            return null;
+        }
+        String t = raw.trim();
+        return t.isEmpty() ? null : t;
     }
 }
 

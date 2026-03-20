@@ -41,4 +41,10 @@
         from platform_agents
         where id = #{id}
     </select>
+
+    <select id="countByModelId" parameterType="java.lang.String" resultType="int">
+        select count(*)::int
+        from platform_agents
+        where model_id = #{modelId}
+    </select>
 </mapper>

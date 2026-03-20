@@ -15,6 +15,7 @@ import com.agentlego.backend.memory.application.MemoryApplicationService;
 import com.agentlego.backend.memory.application.dto.MemoryQueryRequest;
 import com.agentlego.backend.model.domain.ModelAggregate;
 import com.agentlego.backend.model.domain.ModelRepository;
+import com.agentlego.backend.model.support.ModelConfigSummaries;
 import com.agentlego.backend.runtime.AgentRuntime;
 import com.agentlego.backend.runtime.definition.AgentDefinition;
 import com.agentlego.backend.runtime.definition.ModelDefinition;
@@ -187,6 +188,14 @@ public class AgentApplicationService {
         dto.setMemoryPolicy(agg.getMemoryPolicy());
         dto.setKnowledgeBasePolicy(agg.getKnowledgeBasePolicy());
         dto.setCreatedAt(agg.getCreatedAt());
+        if (agg.getModelId() != null && !agg.getModelId().isBlank()) {
+            modelRepository.findById(agg.getModelId().trim()).ifPresent(m -> {
+                dto.setModelDisplayName(m.getName());
+                dto.setModelProvider(m.getProvider());
+                dto.setModelModelKey(m.getModelKey());
+                dto.setModelConfigSummary(ModelConfigSummaries.summarize(m.getConfig()));
+            });
+        }
         return dto;
     }
 

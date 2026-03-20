@@ -5,7 +5,9 @@ import com.agentlego.backend.model.application.ModelApplicationService;
 import com.agentlego.backend.model.domain.ModelProvider;
 import com.agentlego.backend.model.dto.CreateModelRequest;
 import com.agentlego.backend.model.dto.ModelDto;
+import com.agentlego.backend.model.dto.ModelSummaryDto;
 import com.agentlego.backend.model.dto.TestModelResponse;
+import com.agentlego.backend.model.dto.UpdateModelRequest;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.*;
@@ -18,7 +20,7 @@ import java.util.Map;
  * <p>
  * 提供能力：
  * - 创建模型配置（provider/modelKey/apiKey/config）
- * - 查询模型详情
+ * - 列表 / 查询 / 更新 / 删除
  * - 触发一次连通性测试（最小可用能力）
  */
 @RestController
@@ -34,6 +36,14 @@ public class ModelController {
         this.modelService = modelService;
     }
 
+    /**
+     * 模型列表（轻量字段，按创建时间倒序）。
+     */
+    @GetMapping
+    public ApiResponse<List<ModelSummaryDto>> list() {
+        return ApiResponse.ok(modelService.listModels());
+    }
+
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
     public ApiResponse<String> create(@Valid @RequestBody CreateModelRequest req) {
@@ -41,18 +51,22 @@ public class ModelController {
         return ApiResponse.created(id);
     }
 
-    @GetMapping("/{id}")
-    public ApiResponse<ModelDto> get(@PathVariable("id") String id) {
-        return ApiResponse.ok(modelService.getModel(id));
+    @PutMapping("/{id}")
+    public ApiResponse<Void> update(@PathVariable("id") String id, @Valid @RequestBody UpdateModelRequest req) {
+        modelService.updateModel(id, req);
+        return ApiResponse.ok();
     }
 
-    @PostMapping("/{id}/test")
-    public ApiResponse<TestModelResponse> test(@PathVariable("id") String id) {
-        return ApiResponse.ok(modelService.testModel(id));
+    @DeleteMapping("/{id}")
+    public ApiResponse<Void> delete(@PathVariable("id") String id) {
+        modelService.deleteModel(id);
+        return ApiResponse.ok();
     }
 
     /**
      * 返回可用的 provider 列表与配置能力提示（用于前端动态渲染）。
+     * <p>
+     * 注意：必须声明在 {@code GET /{id}} 之前，避免路径 {@code /providers} 被当成 id。
      */
     @GetMapping("/providers")
     public ApiResponse<List<Map<String, Object>>> providers() {
@@ -63,6 +77,16 @@ public class ModelController {
                 ))
                 .toList();
         return ApiResponse.ok(data);
+    }
+
+    @GetMapping("/{id}")
+    public ApiResponse<ModelDto> get(@PathVariable("id") String id) {
+        return ApiResponse.ok(modelService.getModel(id));
+    }
+
+    @PostMapping("/{id}/test")
+    public ApiResponse<TestModelResponse> test(@PathVariable("id") String id) {
+        return ApiResponse.ok(modelService.testModel(id));
     }
 }
 

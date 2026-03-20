@@ -26,6 +26,14 @@ public class ModelDO {
      */
     private String modelKey;
     /**
+     * 配置实例显示名称（同一 provider+modelKey 可多份配置，靠此字段区分）。
+     */
+    private String name;
+    /**
+     * 备注说明（可选）。
+     */
+    private String description;
+    /**
      * 默认推理参数 JSON（序列化后的字符串）。
      */
     private String configJson;

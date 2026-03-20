@@ -8,6 +8,7 @@ import {ErrorAlert} from "@/components/ErrorAlert";
 import {PageHeaderBlock} from "@/components/PageHeaderBlock";
 import {SectionCard} from "@/components/SectionCard";
 import {request} from "@/lib/api/request";
+import {tablePaginationFriendly} from "@/lib/table-pagination";
 import {stringifyPretty} from "@/lib/json";
 
 type KbIngestResponse = { documentId: string };
@@ -148,7 +149,7 @@ export default function KbPage() {
                         <Table<KbChunkDto>
                             rowKey="id"
                             dataSource={chunks}
-                            pagination={{pageSize: 10}}
+                            pagination={tablePaginationFriendly()}
                             columns={[
                                 {
                                     title: "chunkIndex",

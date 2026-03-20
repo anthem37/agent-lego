@@ -1,11 +1,12 @@
 "use client";
 
-import {Button, Card, Descriptions, Form, Input, Space, Typography} from "antd";
+import {Button, Card, Descriptions, Form, Input, Select, Space, Typography} from "antd";
 import React from "react";
 
 import {AppLayout} from "@/components/AppLayout";
 import {ErrorAlert} from "@/components/ErrorAlert";
 import {JsonTextArea} from "@/components/JsonTextArea";
+import {type ModelOptionRow, toModelSelectOptions} from "@/lib/model-select-options";
 import {request} from "@/lib/api/request";
 import {parseJsonObject, stringifyPretty} from "@/lib/json";
 
@@ -14,6 +15,10 @@ type AgentDto = {
     name: string;
     systemPrompt: string;
     modelId: string;
+    modelDisplayName?: string;
+    modelProvider?: string;
+    modelModelKey?: string;
+    modelConfigSummary?: string;
     toolIds?: string[];
     memoryPolicy?: Record<string, unknown>;
     knowledgeBasePolicy?: Record<string, unknown>;
@@ -32,11 +37,30 @@ type RunAgentResponse = {
 
 export default function AgentDetailPage(props: { params: Promise<{ id: string }> }) {
     const [agent, setAgent] = React.useState<AgentDto | null>(null);
+    const [modelRows, setModelRows] = React.useState<ModelOptionRow[]>([]);
     const [loading, setLoading] = React.useState(false);
     const [running, setRunning] = React.useState(false);
     const [runOut, setRunOut] = React.useState<RunAgentResponse | null>(null);
     const [error, setError] = React.useState<unknown>(null);
     const [form] = Form.useForm<RunAgentForm>();
+
+    React.useEffect(() => {
+        let cancelled = false;
+        void request<ModelOptionRow[]>("/models")
+            .then((d) => {
+                if (!cancelled) {
+                    setModelRows(Array.isArray(d) ? d : []);
+                }
+            })
+            .catch(() => {
+                if (!cancelled) {
+                    setModelRows([]);
+                }
+            });
+        return () => {
+            cancelled = true;
+        };
+    }, []);
 
     React.useEffect(() => {
         let cancelled = false;
@@ -73,10 +97,19 @@ export default function AgentDetailPage(props: { params: Promise<{ id: string }>
         setRunOut(null);
         try {
             const options = values.optionsJson ? parseJsonObject(values.optionsJson) : undefined;
+            const body: Record<string, unknown> = {
+                input: values.input,
+            };
+            const mid = values.modelId?.trim();
+            if (mid) {
+                body.modelId = mid;
+            }
+            if (options !== undefined) {
+                body.options = options;
+            }
             const data = await request<RunAgentResponse>(`/agents/${agent.id}/run`, {
                 method: "POST",
-                body: values,
-                ...(options !== undefined ? {body: {modelId: values.modelId, input: values.input, options}} : {}),
+                body,
             });
             setRunOut(data);
         } catch (e) {
@@ -110,8 +143,23 @@ export default function AgentDetailPage(props: { params: Promise<{ id: string }>
                     {agent ? (
                         <Descriptions column={1} size="small">
                             <Descriptions.Item label="name">{agent.name}</Descriptions.Item>
-                            <Descriptions.Item label="modelId">
-                                <Typography.Text code>{agent.modelId}</Typography.Text>
+                            <Descriptions.Item label="默认模型配置">
+                                <Space orientation="vertical" size={4}>
+                                    <Typography.Text strong>{agent.modelDisplayName ?? "—"}</Typography.Text>
+                                    <Typography.Text type="secondary" style={{fontSize: 12}}>
+                                        {agent.modelProvider && agent.modelModelKey
+                                            ? `${agent.modelProvider} / ${agent.modelModelKey}`
+                                            : null}
+                                    </Typography.Text>
+                                    {agent.modelConfigSummary ? (
+                                        <Typography.Text type="secondary" style={{fontSize: 12}} ellipsis>
+                                            参数摘要：{agent.modelConfigSummary}
+                                        </Typography.Text>
+                                    ) : null}
+                                    <Typography.Text code copyable>
+                                        {agent.modelId}
+                                    </Typography.Text>
+                                </Space>
                             </Descriptions.Item>
                             <Descriptions.Item label="createdAt">{agent.createdAt ?? "-"}</Descriptions.Item>
                             <Descriptions.Item label="toolIds">
@@ -142,8 +190,23 @@ export default function AgentDetailPage(props: { params: Promise<{ id: string }>
 
                 <Card title="运行（同步返回 output）">
                     <Form<RunAgentForm> form={form} layout="vertical" onFinish={onRun}>
-                        <Form.Item name="modelId" label="modelId（可选覆盖）">
-                            <Input placeholder={`默认使用绑定模型：${agent?.modelId ?? "-"}`}/>
+                        <Form.Item name="modelId" label="运行时使用模型配置（可选覆盖）">
+                            <Select
+                                allowClear
+                                showSearch
+                                placeholder={
+                                    agent?.modelDisplayName
+                                        ? `默认：${agent.modelDisplayName}`
+                                        : "默认使用上方绑定配置；可在此临时切换"
+                                }
+                                options={toModelSelectOptions(modelRows)}
+                                popupMatchSelectWidth={520}
+                                filterOption={(input, option) => {
+                                    const st = (option as {searchText?: string}).searchText ?? "";
+                                    const q = input.trim().toLowerCase();
+                                    return !q || st.includes(q);
+                                }}
+                            />
                         </Form.Item>
                         <Form.Item name="optionsJson" label="options（JSON，可选覆盖）">
                             <JsonTextArea

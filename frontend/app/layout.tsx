@@ -3,6 +3,8 @@ import {Geist, Geist_Mono} from "next/font/google";
 import "antd/dist/reset.css";
 import "./globals.css";
 
+import {AntdConfigProvider} from "@/components/AntdConfigProvider";
+
 const geistSans = Geist({
     variable: "--font-geist-sans",
     subsets: ["latin"],
@@ -25,7 +27,9 @@ export default function RootLayout({
 }>) {
     return (
         <html lang="zh-CN" className={`${geistSans.variable} ${geistMono.variable}`}>
-        <body>{children}</body>
+        <body>
+            <AntdConfigProvider>{children}</AntdConfigProvider>
+        </body>
         </html>
     );
 }
