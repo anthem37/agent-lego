@@ -22,3 +22,65 @@
 # virtual machine crash logs, see http://www.java.com/en/download/help/error_hotspot.xml
 hs_err_pid*
 replay_pid*
+
+# Eclipse
+.metadata
+.project
+.settings
+bin
+target
+.classpath
+.project
+.settings
+.checkstyle
+.checkstyle-cache
+.checkstyle-suppressions.xml
+.checkstyle-suppressions.xml.orig
+.checkstyle-suppressions.xml.rej
+.checkstyle-suppressions.xml.bak
+
+# Maven
+.mvn/
+target/
+
+# Gradle
+.gradle/
+build/
+
+# NetBeans
+nbproject/private/
+
+# Code Analysis
+.codeAnalysis/
+
+# SonarQube
+.sonarqube/
+
+# Scala
+*.tgz
+*.jar
+*.lock
+
+# SBT
+project/project/target/
+project/target/
+target/
+
+# SBT
+project/project/project/target/
+project/project/target/
+project/target/
+target/
+
+# SBT
+project/project/project/project/target/
+project/project/project/target/
+project/project/target/
+
+# VS Code
+.vscode
+.vscode-test
+
+# IntelliJ IDEA
+*.iml
+.idea/
