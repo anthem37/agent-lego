@@ -8,6 +8,7 @@ import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -67,10 +68,13 @@ public class ModelController {
     @GetMapping("/providers")
     public ApiResponse<List<Map<String, Object>>> providers() {
         List<Map<String, Object>> data = java.util.Arrays.stream(ModelProvider.values())
-                .map(p -> Map.<String, Object>of(
-                        "provider", p.code(),
-                        "supportedConfigKeys", p.supportedConfigKeys()
-                ))
+                .map(p -> {
+                    Map<String, Object> row = new LinkedHashMap<>();
+                    row.put("provider", p.code());
+                    row.put("chatProvider", p.isChatProvider());
+                    row.put("supportedConfigKeys", p.supportedConfigKeys());
+                    return row;
+                })
                 .toList();
         return ApiResponse.ok(data);
     }

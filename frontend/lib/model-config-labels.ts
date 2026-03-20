@@ -10,12 +10,28 @@ export const CONFIG_KEY_TITLE: Record<string, string> = {
     maxTokens: "最大输出长度（tokens）",
     maxCompletionTokens: "补全最大长度（tokens）",
     seed: "随机种子",
+    stream: "流式输出（stream）",
+    frequencyPenalty: "频率惩罚（frequencyPenalty）",
+    presencePenalty: "存在惩罚（presencePenalty）",
+    thinkingBudget: "思考预算（thinkingBudget）",
+    reasoningEffort: "推理强度（reasoningEffort）",
+    toolChoice: "工具选择策略（toolChoice）",
+    executionConfig: "执行与重试（executionConfig）",
     endpointPath: "API 请求路径",
     additionalHeaders: "额外请求头",
     additionalBodyParams: "额外请求体参数",
     additionalQueryParams: "URL 查询参数",
     dimensions: "向量维度（dimensions）",
     encodingFormat: "编码格式（encodingFormat）",
+    /** executionConfig 内层字段（与后端白名单一致） */
+    timeoutSeconds: "超时（秒）",
+    maxAttempts: "最大尝试次数",
+    initialBackoffSeconds: "初始退避（秒）",
+    maxBackoffSeconds: "最大退避（秒）",
+    backoffMultiplier: "退避倍数",
+    /** toolChoice 对象内字段 */
+    mode: "策略模式",
+    toolName: "工具名称",
 };
 
 /** 提供方：中文说明 + 保留英文标识便于对照 */

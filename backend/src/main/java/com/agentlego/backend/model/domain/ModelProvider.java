@@ -1,5 +1,7 @@
 package com.agentlego.backend.model.domain;
 
+import lombok.Getter;
+
 import java.util.List;
 import java.util.Locale;
 
@@ -11,17 +13,30 @@ import java.util.Locale;
  * - 这里的能力描述是“平台侧约定”，不强绑定具体厂商全部参数，避免过度耦合。
  */
 public enum ModelProvider {
+    /** 与 AgentScope Chat 模型及 {@code GenerateOptions} 对齐的可序列化 config 键。 */
     DASHSCOPE("DASHSCOPE", List.of(
             "temperature", "topP", "topK", "maxTokens", "seed",
+            "frequencyPenalty", "presencePenalty",
+            "thinkingBudget", "reasoningEffort",
+            "stream",
+            "executionConfig", "toolChoice",
             "additionalHeaders", "additionalBodyParams", "additionalQueryParams"
     )),
     OPENAI("OPENAI", List.of(
             "temperature", "topP", "maxTokens", "maxCompletionTokens", "seed",
+            "frequencyPenalty", "presencePenalty",
+            "thinkingBudget", "reasoningEffort",
+            "stream",
+            "executionConfig", "toolChoice",
             "endpointPath",
             "additionalHeaders", "additionalBodyParams", "additionalQueryParams"
     )),
     ANTHROPIC("ANTHROPIC", List.of(
-            "temperature", "topP", "maxTokens", "seed",
+            "temperature", "topP", "maxTokens", "maxCompletionTokens", "seed",
+            "frequencyPenalty", "presencePenalty",
+            "thinkingBudget", "reasoningEffort",
+            "stream",
+            "executionConfig", "toolChoice",
             "additionalHeaders", "additionalBodyParams", "additionalQueryParams"
     )),
     /**
@@ -45,6 +60,11 @@ public enum ModelProvider {
 
     private final String code;
     private final List<String> supportedConfigKeys;
+    /**
+     * -- GETTER --
+     * 是否为可做连通性测试的聊天模型（embedding 模型返回 false）。
+     */
+    @Getter
     private final boolean chatProvider;
 
     ModelProvider(String code, List<String> supportedConfigKeys) {
@@ -68,13 +88,6 @@ public enum ModelProvider {
             }
         }
         throw new IllegalArgumentException("unsupported provider: " + provider);
-    }
-
-    /**
-     * 是否为可做连通性测试的聊天模型（embedding 模型返回 false）。
-     */
-    public boolean isChatProvider() {
-        return chatProvider;
     }
 
     public String code() {

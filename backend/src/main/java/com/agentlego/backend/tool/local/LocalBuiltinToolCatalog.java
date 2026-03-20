@@ -144,7 +144,7 @@ public class LocalBuiltinToolCatalog {
         if (toolName == null || toolName.isBlank()) {
             throw new ApiException(
                     "UNSUPPORTED_LOCAL_TOOL",
-                    "Unsupported local tool: " + toolName,
+                    "不支持的本地工具：" + toolName,
                     HttpStatus.BAD_REQUEST
             );
         }
@@ -152,7 +152,7 @@ public class LocalBuiltinToolCatalog {
         if (c == null) {
             throw new ApiException(
                     "UNSUPPORTED_LOCAL_TOOL",
-                    "Unsupported local tool: " + toolName,
+                    "不支持的本地工具：" + toolName,
                     HttpStatus.BAD_REQUEST
             );
         }
@@ -168,7 +168,7 @@ public class LocalBuiltinToolCatalog {
      */
     public void requireSupportedLocalName(String name) {
         if (name == null || name.isBlank()) {
-            throw new ApiException("VALIDATION_ERROR", "name is required", HttpStatus.BAD_REQUEST);
+            throw new ApiException("VALIDATION_ERROR", "name 为必填", HttpStatus.BAD_REQUEST);
         }
         String key = name.trim().toLowerCase(Locale.ROOT);
         if (!byLowerName.containsKey(key)) {

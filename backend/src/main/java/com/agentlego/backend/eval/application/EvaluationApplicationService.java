@@ -1,8 +1,9 @@
 package com.agentlego.backend.eval.application;
 
 import com.agentlego.backend.agent.application.AgentApplicationService;
-import com.agentlego.backend.agent.application.dto.RunAgentRequest;
+import com.agentlego.backend.agent.application.AgentRunRequests;
 import com.agentlego.backend.agent.application.dto.RunAgentResponse;
+import com.agentlego.backend.eval.application.assembler.EvaluationAssembler;
 import com.agentlego.backend.api.ApiException;
 import com.agentlego.backend.common.JsonMaps;
 import com.agentlego.backend.common.SnowflakeIdGenerator;
@@ -119,7 +120,7 @@ public class EvaluationApplicationService {
     private void executeEvaluationRun(String runId, String evaluationId) {
         try {
             EvaluationAggregate eval = evaluationRepository.findById(evaluationId)
-                    .orElseThrow(() -> new ApiException("NOT_FOUND", "evaluation not found", HttpStatus.NOT_FOUND));
+                    .orElseThrow(() -> new ApiException("NOT_FOUND", "评测未找到", HttpStatus.NOT_FOUND));
 
             String agentId = eval.getAgentId();
             Map<String, Object> config = eval.getConfig() == null ? Map.of() : eval.getConfig();
@@ -164,10 +165,7 @@ public class EvaluationApplicationService {
     }
 
     private String callAgent(String agentId, String modelId, String input) {
-        RunAgentRequest agentReq = new RunAgentRequest();
-        agentReq.setModelId(modelId);
-        agentReq.setInput(input);
-        RunAgentResponse agentResp = agentApplicationService.runAgent(agentId, agentReq);
+        RunAgentResponse agentResp = agentApplicationService.runAgent(agentId, AgentRunRequests.of(modelId, input));
         return agentResp == null ? null : agentResp.getOutput();
     }
 
@@ -182,26 +180,8 @@ public class EvaluationApplicationService {
 
     public RunEvaluationDto getRun(String runId) {
         EvaluationRunAggregate run = evaluationRunRepository.findById(runId)
-                .orElseThrow(() -> new ApiException("NOT_FOUND", "run not found", HttpStatus.NOT_FOUND));
-
-        RunEvaluationDto dto = new RunEvaluationDto();
-        dto.setId(run.getId());
-        dto.setEvaluationId(run.getEvaluationId());
-        dto.setStatus(run.getStatus() == null ? null : run.getStatus().name());
-        dto.setInput(run.getInput());
-        dto.setMetrics(run.getMetrics());
-        dto.setTrace(run.getTrace());
-        dto.setError(run.getError());
-        dto.setStartedAt(run.getStartedAt());
-        dto.setFinishedAt(run.getFinishedAt());
-        dto.setCreatedAt(run.getCreatedAt());
-        return dto;
-    }
-
-    /**
-     * 评测运行结果的内部承载对象（只在本类内部使用）。
-     */
-    private record EvaluationRunResult(Map<String, Object> metrics, Map<String, Object> trace) {
+                .orElseThrow(() -> new ApiException("NOT_FOUND", "运行记录未找到", HttpStatus.NOT_FOUND));
+        return EvaluationAssembler.toRunDto(run);
     }
 }
 

@@ -66,7 +66,7 @@ public final class WorkflowProxyAgentTool implements AgentTool {
         if (w == null || String.valueOf(w).isBlank()) {
             throw new ApiException(
                     "VALIDATION_ERROR",
-                    "WORKFLOW tool definition.workflowId is required",
+                    "工作流工具 definition.workflowId 为必填",
                     HttpStatus.BAD_REQUEST
             );
         }

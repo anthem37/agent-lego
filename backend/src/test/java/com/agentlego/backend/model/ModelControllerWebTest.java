@@ -138,6 +138,7 @@ class ModelControllerWebTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value("OK"))
                 .andExpect(jsonPath("$.data[0].provider").exists())
+                .andExpect(jsonPath("$.data[0].chatProvider").exists())
                 .andExpect(jsonPath("$.data[0].supportedConfigKeys").isArray());
     }
 }

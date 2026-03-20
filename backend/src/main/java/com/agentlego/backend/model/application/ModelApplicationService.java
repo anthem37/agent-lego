@@ -1,13 +1,16 @@
 package com.agentlego.backend.model.application;
 
+import cn.hutool.core.util.StrUtil;
 import com.agentlego.backend.agent.domain.AgentRepository;
 import com.agentlego.backend.api.ApiException;
+import com.agentlego.backend.api.ApiRequires;
+import com.agentlego.backend.common.JsonMaps;
+import com.agentlego.backend.model.application.assembler.ModelAssembler;
 import com.agentlego.backend.model.domain.ModelAggregate;
 import com.agentlego.backend.model.domain.ModelProvider;
 import com.agentlego.backend.model.domain.ModelRepository;
 import com.agentlego.backend.model.dto.*;
 import com.agentlego.backend.model.support.ChatModelFactory;
-import com.agentlego.backend.model.support.ModelConfigSummaries;
 import com.agentlego.backend.model.support.ModelConnectivityTester;
 import com.agentlego.backend.runtime.definition.ModelDefinition;
 import io.agentscope.core.model.Model;
@@ -16,7 +19,9 @@ import org.springframework.stereotype.Service;
 
 import java.time.Instant;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * 模型应用服务（Application Service）。
@@ -30,6 +35,15 @@ import java.util.Map;
  */
 @Service
 public class ModelApplicationService {
+
+    private static final Set<String> EXECUTION_CONFIG_KEYS = Set.of(
+            "timeoutSeconds",
+            "maxAttempts",
+            "initialBackoffSeconds",
+            "maxBackoffSeconds",
+            "backoffMultiplier"
+    );
+
     private final ModelRepository modelRepository;
     private final AgentRepository agentRepository;
     private final ModelConnectivityTester connectivityTester;
@@ -58,10 +72,10 @@ public class ModelApplicationService {
     }
 
     public String createModel(CreateModelRequest req) {
-        String displayName = requireNonBlank(req.getName(), "name").trim();
-        String provider = requireNonBlank(req.getProvider(), "provider").trim().toUpperCase();
+        String displayName = ApiRequires.nonBlank(req.getName(), "name").trim();
+        String provider = ApiRequires.nonBlank(req.getProvider(), "provider").trim().toUpperCase();
         validateModelConfig(provider, req.getConfig());
-        String modelKey = requireNonBlank(req.getModelKey(), "modelKey").trim();
+        String modelKey = ApiRequires.nonBlank(req.getModelKey(), "modelKey").trim();
 
         ModelAggregate aggregate = new ModelAggregate();
         aggregate.setId(com.agentlego.backend.common.SnowflakeIdGenerator.nextId());
@@ -81,7 +95,7 @@ public class ModelApplicationService {
      */
     public List<ModelSummaryDto> listModels() {
         return modelRepository.findAllOrderByCreatedAtDesc().stream()
-                .map(this::toSummaryDto)
+                .map(ModelAssembler::toSummaryDto)
                 .toList();
     }
 
@@ -90,13 +104,13 @@ public class ModelApplicationService {
      */
     public void updateModel(String id, UpdateModelRequest req) {
         ModelAggregate agg = modelRepository.findById(id)
-                .orElseThrow(() -> new ApiException("NOT_FOUND", "model not found", HttpStatus.NOT_FOUND));
+                .orElseThrow(() -> new ApiException("NOT_FOUND", "模型未找到", HttpStatus.NOT_FOUND));
 
-        String modelKey = requireNonBlank(req.getModelKey(), "modelKey").trim();
+        String modelKey = ApiRequires.nonBlank(req.getModelKey(), "modelKey").trim();
         agg.setModelKey(modelKey);
 
         if (req.getName() != null) {
-            agg.setName(requireNonBlank(req.getName(), "name").trim());
+            agg.setName(ApiRequires.nonBlank(req.getName(), "name").trim());
         }
 
         if (req.getDescription() != null) {
@@ -126,7 +140,7 @@ public class ModelApplicationService {
      */
     public void deleteModel(String id) {
         modelRepository.findById(id)
-                .orElseThrow(() -> new ApiException("NOT_FOUND", "model not found", HttpStatus.NOT_FOUND));
+                .orElseThrow(() -> new ApiException("NOT_FOUND", "模型未找到", HttpStatus.NOT_FOUND));
         int refs = agentRepository.countByModelId(id);
         if (refs > 0) {
             throw new ApiException(
@@ -137,37 +151,29 @@ public class ModelApplicationService {
         }
         int deleted = modelRepository.deleteById(id);
         if (deleted == 0) {
-            throw new ApiException("NOT_FOUND", "model not found", HttpStatus.NOT_FOUND);
+            throw new ApiException("NOT_FOUND", "模型未找到", HttpStatus.NOT_FOUND);
         }
     }
 
     public ModelDto getModel(String id) {
         ModelAggregate agg = modelRepository.findById(id)
-                .orElseThrow(() -> new ApiException("NOT_FOUND", "model not found", HttpStatus.NOT_FOUND));
-
-        ModelDto dto = new ModelDto();
-        dto.setId(agg.getId());
-        dto.setName(agg.getName());
-        dto.setDescription(agg.getDescription());
-        dto.setProvider(agg.getProvider());
-        dto.setModelKey(agg.getModelKey());
-        dto.setConfig(agg.getConfig());
-        dto.setBaseUrl(agg.getBaseUrl());
-        dto.setCreatedAt(agg.getCreatedAt());
-        String cipher = agg.getApiKeyCipher();
-        dto.setApiKeyConfigured(cipher != null && !cipher.isBlank());
-        return dto;
+                .orElseThrow(() -> new ApiException("NOT_FOUND", "模型未找到", HttpStatus.NOT_FOUND));
+        return ModelAssembler.toDto(agg);
     }
 
     public TestModelResponse testModel(String id) {
         ModelAggregate agg = modelRepository.findById(id)
-                .orElseThrow(() -> new ApiException("NOT_FOUND", "model not found", HttpStatus.NOT_FOUND));
+                .orElseThrow(() -> new ApiException("NOT_FOUND", "模型未找到", HttpStatus.NOT_FOUND));
 
         ModelProvider provider;
         try {
             provider = ModelProvider.from(agg.getProvider());
         } catch (IllegalArgumentException e) {
-            throw new ApiException("UNSUPPORTED_MODEL_PROVIDER", e.getMessage(), HttpStatus.BAD_REQUEST);
+            throw new ApiException(
+                    "UNSUPPORTED_MODEL_PROVIDER",
+                    "不支持的模型提供方：" + agg.getProvider(),
+                    HttpStatus.BAD_REQUEST
+            );
         }
 
         if (!provider.isChatProvider()) {
@@ -180,13 +186,6 @@ public class ModelApplicationService {
         return new TestModelResponse(text, text);
     }
 
-    private String requireNonBlank(String value, String fieldName) {
-        if (value == null || value.isBlank()) {
-            throw new ApiException("VALIDATION_ERROR", fieldName + " is required", HttpStatus.BAD_REQUEST);
-        }
-        return value;
-    }
-
     /**
      * 校验 provider 必须在 {@link ModelProvider} 内；若带 config 则键名须在提供方白名单内。
      * <p>
@@ -197,33 +196,94 @@ public class ModelApplicationService {
         try {
             p = ModelProvider.from(provider);
         } catch (IllegalArgumentException e) {
-            throw new ApiException("UNSUPPORTED_MODEL_PROVIDER", e.getMessage(), HttpStatus.BAD_REQUEST);
+            throw new ApiException(
+                    "UNSUPPORTED_MODEL_PROVIDER",
+                    "不支持的模型提供方：" + provider,
+                    HttpStatus.BAD_REQUEST
+            );
         }
         if (config == null || config.isEmpty()) {
             return;
         }
-        for (String key : config.keySet()) {
+        for (Map.Entry<String, Object> e : config.entrySet()) {
+            String key = e.getKey();
             if (!p.supportedConfigKeys().contains(key)) {
                 throw new ApiException(
                         "INVALID_MODEL_CONFIG",
-                        "unsupported config key for " + p.code() + ": " + key,
+                        "不支持的配置项：" + key + "（provider=" + p.code() + "）",
+                        HttpStatus.BAD_REQUEST
+                );
+            }
+            if ("executionConfig".equals(key)) {
+                validateExecutionConfigValue(e.getValue());
+            } else if ("toolChoice".equals(key)) {
+                validateToolChoiceValue(e.getValue());
+            }
+        }
+    }
+
+    private static void validateExecutionConfigValue(Object raw) {
+        if (raw == null) {
+            return;
+        }
+        Map<String, Object> ec = JsonMaps.asMap(raw);
+        if (ec.isEmpty()) {
+            return;
+        }
+        for (String k : ec.keySet()) {
+            if (!EXECUTION_CONFIG_KEYS.contains(k)) {
+                throw new ApiException(
+                        "INVALID_MODEL_CONFIG",
+                        "executionConfig 不支持键：" + k
+                                + "（允许：timeoutSeconds、maxAttempts、initialBackoffSeconds、maxBackoffSeconds、backoffMultiplier）",
                         HttpStatus.BAD_REQUEST
                 );
             }
         }
     }
 
-    private ModelSummaryDto toSummaryDto(ModelAggregate agg) {
-        ModelSummaryDto dto = new ModelSummaryDto();
-        dto.setId(agg.getId());
-        dto.setName(agg.getName());
-        dto.setDescription(agg.getDescription());
-        dto.setProvider(agg.getProvider());
-        dto.setModelKey(agg.getModelKey());
-        dto.setBaseUrl(agg.getBaseUrl());
-        dto.setConfigSummary(ModelConfigSummaries.summarize(agg.getConfig()));
-        dto.setCreatedAt(agg.getCreatedAt());
-        return dto;
+    private static void validateToolChoiceValue(Object raw) {
+        if (raw == null) {
+            return;
+        }
+        if (raw instanceof String s) {
+            String t = s.trim();
+            if (t.isEmpty()) {
+                return;
+            }
+            if (Set.of("auto", "none", "required").contains(t.toLowerCase(Locale.ROOT))) {
+                return;
+            }
+            throw new ApiException(
+                    "INVALID_MODEL_CONFIG",
+                    "toolChoice 字符串仅可为 auto、none、required",
+                    HttpStatus.BAD_REQUEST
+            );
+        }
+        Map<String, Object> m = JsonMaps.asMap(raw);
+        if (m.isEmpty()) {
+            return;
+        }
+        String toolName = JsonMaps.getString(m, "toolName", "").trim();
+        if (StrUtil.isNotBlank(toolName)) {
+            return;
+        }
+        String mode = JsonMaps.getString(m, "mode", "").trim().toLowerCase(Locale.ROOT);
+        if (Set.of("auto", "none", "required").contains(mode)) {
+            return;
+        }
+        if ("specific".equals(mode)) {
+            throw new ApiException(
+                    "INVALID_MODEL_CONFIG",
+                    "toolChoice.mode=specific 时必须提供 toolName",
+                    HttpStatus.BAD_REQUEST
+            );
+        }
+        throw new ApiException(
+                "INVALID_MODEL_CONFIG",
+                "toolChoice 需提供 toolName，或 mode 为 auto/none/required",
+                HttpStatus.BAD_REQUEST
+        );
     }
 
     /**

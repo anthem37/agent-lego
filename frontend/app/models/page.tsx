@@ -61,17 +61,28 @@ type ModelFormValues = {
 type ProviderMeta = {
     provider: string;
     supportedConfigKeys: string[];
+    /** 与后端 GET /models/providers 的 chatProvider 对齐；离线 fallback 时手写 */
+    chatProvider?: boolean;
 };
 
+/** 与后端 ModelProvider + AgentScope GenerateOptions 白名单保持一致（供离线 fallback） */
 const FALLBACK_PROVIDERS: ProviderMeta[] = [
     {
         provider: "DASHSCOPE",
+        chatProvider: true,
         supportedConfigKeys: [
             "temperature",
             "topP",
             "topK",
             "maxTokens",
             "seed",
+            "frequencyPenalty",
+            "presencePenalty",
+            "thinkingBudget",
+            "reasoningEffort",
+            "stream",
+            "executionConfig",
+            "toolChoice",
             "additionalHeaders",
             "additionalBodyParams",
             "additionalQueryParams",
@@ -79,12 +90,20 @@ const FALLBACK_PROVIDERS: ProviderMeta[] = [
     },
     {
         provider: "OPENAI",
+        chatProvider: true,
         supportedConfigKeys: [
             "temperature",
             "topP",
             "maxTokens",
             "maxCompletionTokens",
             "seed",
+            "frequencyPenalty",
+            "presencePenalty",
+            "thinkingBudget",
+            "reasoningEffort",
+            "stream",
+            "executionConfig",
+            "toolChoice",
             "endpointPath",
             "additionalHeaders",
             "additionalBodyParams",
@@ -93,11 +112,20 @@ const FALLBACK_PROVIDERS: ProviderMeta[] = [
     },
     {
         provider: "ANTHROPIC",
+        chatProvider: true,
         supportedConfigKeys: [
             "temperature",
             "topP",
             "maxTokens",
+            "maxCompletionTokens",
             "seed",
+            "frequencyPenalty",
+            "presencePenalty",
+            "thinkingBudget",
+            "reasoningEffort",
+            "stream",
+            "executionConfig",
+            "toolChoice",
             "additionalHeaders",
             "additionalBodyParams",
             "additionalQueryParams",
@@ -105,6 +133,7 @@ const FALLBACK_PROVIDERS: ProviderMeta[] = [
     },
     {
         provider: "OPENAI_TEXT_EMBEDDING",
+        chatProvider: false,
         supportedConfigKeys: [
             "dimensions",
             "encodingFormat",
@@ -116,6 +145,7 @@ const FALLBACK_PROVIDERS: ProviderMeta[] = [
     },
     {
         provider: "DASHSCOPE_TEXT_EMBEDDING",
+        chatProvider: false,
         supportedConfigKeys: [
             "dimensions",
             "encodingFormat",
@@ -418,7 +448,7 @@ function ModelsPageContent() {
             <Space orientation="vertical" size={16} style={{width: "100%"}}>
                 <PageHeaderBlock
                     title="模型管理"
-                    subtitle="同一提供方、同一模型标识可保存多套「配置实例」（名称 + 不同参数/密钥）；智能体绑定请按配置名称选择。"
+                    subtitle="同一提供方、同一模型标识可保存多套「配置实例」。聊天模型 config 与 AgentScope GenerateOptions 对齐（采样、流式、惩罚、toolChoice、executionConfig 等）；Embedding 用于知识库向量化。"
                     extra={
                         <Space wrap>
                             <Button onClick={() => void loadList()} loading={listLoading}>
@@ -452,7 +482,9 @@ function ModelsPageContent() {
                                     onChange={(v) => setProviderFilter(v)}
                                     options={providers.map((p) => ({
                                         value: p.provider,
-                                        label: `${providerDisplayName(p.provider)}（${p.provider}）`,
+                                        label: `${providerDisplayName(p.provider)}（${p.provider}）${
+                                            p.chatProvider === false ? " · Embedding" : ""
+                                        }`,
                                     }))}
                                 />
                             </Space>
@@ -513,7 +545,9 @@ function ModelsPageContent() {
                                         placeholder="请选择提供方"
                                         options={providers.map((p) => ({
                                             value: p.provider,
-                                            label: `${providerDisplayName(p.provider)}（${p.provider}）`,
+                                            label: `${providerDisplayName(p.provider)}（${p.provider}）${
+                                                p.chatProvider === false ? " · Embedding" : ""
+                                            }`,
                                         }))}
                                         filterOption={(input, option) =>
                                             (option?.value ?? "").toString().toLowerCase().includes(input.toLowerCase())

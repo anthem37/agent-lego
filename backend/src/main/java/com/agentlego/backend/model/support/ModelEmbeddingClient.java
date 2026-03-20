@@ -41,7 +41,7 @@ public class ModelEmbeddingClient {
         ModelAggregate model = modelRepository.findById(embeddingModelId)
                 .orElseThrow(() -> new ApiException(
                         "NOT_FOUND",
-                        "embeddingModel not found: " + embeddingModelId,
+                        "embedding 模型未找到：" + embeddingModelId,
                         HttpStatus.NOT_FOUND
                 ));
 
@@ -55,7 +55,7 @@ public class ModelEmbeddingClient {
                 if (vec == null || vec.length == 0) {
                     throw new ApiException(
                             "UPSTREAM_ERROR",
-                            "embedding empty result from modelId=" + embeddingModelId,
+                            "embedding 返回空结果，modelId=" + embeddingModelId,
                             HttpStatus.BAD_GATEWAY
                     );
                 }
@@ -67,7 +67,7 @@ public class ModelEmbeddingClient {
             } catch (Exception e) {
                 throw new ApiException(
                         "UPSTREAM_ERROR",
-                        "embedding failed: " + (e.getMessage() == null || e.getMessage().isBlank()
+                        "embedding 失败：" + (e.getMessage() == null || e.getMessage().isBlank()
                                 ? e.getClass().getSimpleName()
                                 : e.getMessage()),
                         HttpStatus.BAD_GATEWAY

@@ -25,6 +25,8 @@ import java.util.Objects;
 @Component
 public class AgentRuntime {
 
+    private static final String USER_MESSAGE_NAME = "user";
+
     private final ChatModelFactory chatModelFactory;
 
     public AgentRuntime(ChatModelFactory chatModelFactory) {
@@ -36,13 +38,7 @@ public class AgentRuntime {
         Objects.requireNonNull(userText, "userText");
 
         ReActAgent agent = buildAgent(agentDef, toolkit);
-
-        Msg userMsg = Msg.builder()
-                .name("user")
-                .textContent(userText)
-                .build();
-
-        return agent.call(userMsg);
+        return agent.call(userMessage(userText));
     }
 
     public Flux<Event> stream(AgentDefinition agentDef, String userText, Toolkit toolkit) {
@@ -50,13 +46,14 @@ public class AgentRuntime {
         Objects.requireNonNull(userText, "userText");
 
         ReActAgent agent = buildAgent(agentDef, toolkit);
+        return agent.stream(userMessage(userText));
+    }
 
-        Msg userMsg = Msg.builder()
-                .name("user")
+    private static Msg userMessage(String userText) {
+        return Msg.builder()
+                .name(USER_MESSAGE_NAME)
                 .textContent(userText)
                 .build();
-
-        return agent.stream(userMsg);
     }
 
     private ReActAgent buildAgent(AgentDefinition agentDef, Toolkit toolkit) {

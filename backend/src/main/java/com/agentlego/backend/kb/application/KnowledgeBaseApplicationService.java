@@ -2,6 +2,7 @@ package com.agentlego.backend.kb.application;
 
 import com.agentlego.backend.api.ApiException;
 import com.agentlego.backend.common.SnowflakeIdGenerator;
+import com.agentlego.backend.kb.application.assembler.KnowledgeBaseAssembler;
 import com.agentlego.backend.kb.application.dto.*;
 import com.agentlego.backend.kb.chunk.KbChunkSplitter;
 import com.agentlego.backend.kb.chunk.KbChunkStrategies;
@@ -54,21 +55,21 @@ public class KnowledgeBaseApplicationService {
     }
 
     public List<KbBaseDto> listBases() {
-        return repository.listBasesWithStats().stream().map(this::toBaseDto).toList();
+        return repository.listBasesWithStats().stream().map(KnowledgeBaseAssembler::toBaseDto).toList();
     }
 
     public KbBaseDto getBase(String id) {
         return repository.listBasesWithStats().stream()
                 .filter(b -> id.equals(b.getId()))
                 .findFirst()
-                .map(this::toBaseDto)
-                .orElseThrow(() -> new ApiException("NOT_FOUND", "knowledge base not found", HttpStatus.NOT_FOUND));
+                .map(KnowledgeBaseAssembler::toBaseDto)
+                .orElseThrow(() -> new ApiException("NOT_FOUND", "知识库未找到", HttpStatus.NOT_FOUND));
     }
 
     public KbBaseDto createBase(CreateKbBaseRequest req) {
         String kbKey = req.getKbKey().trim();
         if (repository.findBaseByKbKey(kbKey).isPresent()) {
-            throw new ApiException("CONFLICT", "kbKey already exists", HttpStatus.CONFLICT);
+            throw new ApiException("CONFLICT", "kbKey 已存在", HttpStatus.CONFLICT);
         }
         String id = repository.insertBase(kbKey, req.getName().trim(), normalizeDescription(req.getDescription()));
         return getBase(id);
@@ -76,12 +77,12 @@ public class KnowledgeBaseApplicationService {
 
     public KbBaseDto updateBase(String id, UpdateKbBaseRequest req) {
         KbBaseSummary cur = repository.findBaseById(id)
-                .orElseThrow(() -> new ApiException("NOT_FOUND", "knowledge base not found", HttpStatus.NOT_FOUND));
+                .orElseThrow(() -> new ApiException("NOT_FOUND", "知识库未找到", HttpStatus.NOT_FOUND));
         String name = req.getName().trim();
         String desc = req.getDescription() != null ? normalizeDescription(req.getDescription()) : cur.getDescription();
         int n = repository.updateBase(id, name, desc);
         if (n == 0) {
-            throw new ApiException("NOT_FOUND", "knowledge base not found", HttpStatus.NOT_FOUND);
+            throw new ApiException("NOT_FOUND", "知识库未找到", HttpStatus.NOT_FOUND);
         }
         return getBase(id);
     }
@@ -89,21 +90,21 @@ public class KnowledgeBaseApplicationService {
     public void deleteBase(String id) {
         int n = repository.deleteBase(id.trim());
         if (n == 0) {
-            throw new ApiException("NOT_FOUND", "knowledge base not found", HttpStatus.NOT_FOUND);
+            throw new ApiException("NOT_FOUND", "知识库未找到", HttpStatus.NOT_FOUND);
         }
     }
 
     public KbDocumentPageDto listKnowledge(String baseId, int page, int pageSize) {
         String bid = baseId.trim();
         if (repository.findBaseById(bid).isEmpty()) {
-            throw new ApiException("NOT_FOUND", "knowledge base not found", HttpStatus.NOT_FOUND);
+            throw new ApiException("NOT_FOUND", "知识库未找到", HttpStatus.NOT_FOUND);
         }
         int p = Math.max(1, page);
         int ps = Math.min(Math.max(1, pageSize), MAX_PAGE_SIZE);
         long offset = (long) (p - 1) * ps;
         long total = repository.countDocumentsByBaseId(bid);
         List<KbDocumentSummaryDto> items = repository.listDocumentsByBaseId(bid, offset, ps).stream()
-                .map(this::toDocumentDto)
+                .map(KnowledgeBaseAssembler::toDocumentDto)
                 .toList();
         return KbDocumentPageDto.builder()
                 .items(items)
@@ -116,7 +117,7 @@ public class KnowledgeBaseApplicationService {
     public KbIngestResponse ingestKnowledge(String baseId, CreateKnowledgeRequest req) {
         String bid = baseId.trim();
         if (repository.findBaseById(bid).isEmpty()) {
-            throw new ApiException("NOT_FOUND", "knowledge base not found", HttpStatus.NOT_FOUND);
+            throw new ApiException("NOT_FOUND", "知识库未找到", HttpStatus.NOT_FOUND);
         }
         validateChunkParams(req);
         String contentFormat = normalizeAndValidateContentFormat(req.getContentFormat());
@@ -124,7 +125,7 @@ public class KnowledgeBaseApplicationService {
         String richStored = req.getContent();
         String plainForChunks = resolvePlainForChunking(richStored, contentFormat);
         if (plainForChunks.isEmpty()) {
-            throw new ApiException("VALIDATION_ERROR", "content is empty (no visible text after markdown/html processing)", HttpStatus.BAD_REQUEST);
+            throw new ApiException("VALIDATION_ERROR", "内容为空（markdown/html 处理后无可见文本）", HttpStatus.BAD_REQUEST);
         }
         String documentId = repository.createDocument(bid, req.getName().trim(), richStored, contentFormat, chunkStrategy);
         List<KbChunkAggregate> chunks = buildChunks(
@@ -149,27 +150,27 @@ public class KnowledgeBaseApplicationService {
     public KbIngestResponse ingestKnowledgeByKbKey(String kbKey, CreateKnowledgeRequest req) {
         String resolved = repository.findBaseByKbKey(kbKey.trim())
                 .map(KbBaseSummary::getId)
-                .orElseThrow(() -> new ApiException("NOT_FOUND", "knowledge base not found for kbKey", HttpStatus.NOT_FOUND));
+                .orElseThrow(() -> new ApiException("NOT_FOUND", "对应 kbKey 的知识库未找到", HttpStatus.NOT_FOUND));
         return ingestKnowledge(resolved, req);
     }
 
     public void deleteDocument(String documentId) {
         if (documentId == null || documentId.isBlank()) {
-            throw new ApiException("VALIDATION_ERROR", "documentId is required", HttpStatus.BAD_REQUEST);
+            throw new ApiException("VALIDATION_ERROR", "documentId 为必填", HttpStatus.BAD_REQUEST);
         }
         int n = repository.deleteDocument(documentId.trim());
         if (n == 0) {
-            throw new ApiException("NOT_FOUND", "document not found", HttpStatus.NOT_FOUND);
+            throw new ApiException("NOT_FOUND", "文档未找到", HttpStatus.NOT_FOUND);
         }
     }
 
     public KbKnowledgeDetailDto getKnowledge(String documentId) {
         if (documentId == null || documentId.isBlank()) {
-            throw new ApiException("VALIDATION_ERROR", "documentId is required", HttpStatus.BAD_REQUEST);
+            throw new ApiException("VALIDATION_ERROR", "documentId 为必填", HttpStatus.BAD_REQUEST);
         }
         KbDocumentDetail d = repository.findDocumentById(documentId.trim())
-                .orElseThrow(() -> new ApiException("NOT_FOUND", "document not found", HttpStatus.NOT_FOUND));
-        return toKnowledgeDetailDto(d);
+                .orElseThrow(() -> new ApiException("NOT_FOUND", "文档未找到", HttpStatus.NOT_FOUND));
+        return KnowledgeBaseAssembler.toKnowledgeDetailDto(d);
     }
 
     public KbQueryResponse query(KbQueryRequest req) {
@@ -181,7 +182,7 @@ public class KnowledgeBaseApplicationService {
                 req.getEmbeddingModelId()
         );
         KbQueryResponse resp = new KbQueryResponse();
-        resp.setChunks(chunks.stream().map(this::toChunkDto).toList());
+        resp.setChunks(chunks.stream().map(KnowledgeBaseAssembler::toChunkDto).toList());
         return resp;
     }
 
@@ -189,21 +190,21 @@ public class KnowledgeBaseApplicationService {
         if (req.getBaseId() != null && !req.getBaseId().isBlank()) {
             String id = req.getBaseId().trim();
             if (repository.findBaseById(id).isEmpty()) {
-                throw new ApiException("NOT_FOUND", "knowledge base not found", HttpStatus.NOT_FOUND);
+                throw new ApiException("NOT_FOUND", "知识库未找到", HttpStatus.NOT_FOUND);
             }
             return id;
         }
         if (req.getKbKey() != null && !req.getKbKey().isBlank()) {
             return repository.findBaseByKbKey(req.getKbKey().trim())
                     .map(KbBaseSummary::getId)
-                    .orElseThrow(() -> new ApiException("NOT_FOUND", "knowledge base not found for kbKey", HttpStatus.NOT_FOUND));
+                    .orElseThrow(() -> new ApiException("NOT_FOUND", "对应 kbKey 的知识库未找到", HttpStatus.NOT_FOUND));
         }
-        throw new ApiException("VALIDATION_ERROR", "baseId or kbKey is required", HttpStatus.BAD_REQUEST);
+        throw new ApiException("VALIDATION_ERROR", "baseId 或 kbKey 为必填", HttpStatus.BAD_REQUEST);
     }
 
     private void validateChunkParams(CreateKnowledgeRequest req) {
         if (req.getChunkSize() <= req.getOverlap()) {
-            throw new ApiException("VALIDATION_ERROR", "chunkSize must be greater than overlap", HttpStatus.BAD_REQUEST);
+            throw new ApiException("VALIDATION_ERROR", "chunkSize 必须大于 overlap", HttpStatus.BAD_REQUEST);
         }
     }
 
@@ -250,56 +251,6 @@ public class KnowledgeBaseApplicationService {
         return c;
     }
 
-    private KbChunkDto toChunkDto(KbChunkAggregate agg) {
-        KbChunkDto dto = new KbChunkDto();
-        dto.setId(agg.getId());
-        dto.setDocumentId(agg.getDocumentId());
-        dto.setDocumentName(agg.getDocumentName());
-        dto.setChunkIndex(agg.getChunkIndex());
-        dto.setContent(agg.getContent());
-        dto.setMetadata(agg.getMetadata());
-        dto.setCreatedAt(agg.getCreatedAt());
-        return dto;
-    }
-
-    private KbBaseDto toBaseDto(KbBaseSummary s) {
-        KbBaseDto dto = new KbBaseDto();
-        dto.setId(s.getId());
-        dto.setKbKey(s.getKbKey());
-        dto.setName(s.getName());
-        dto.setDescription(s.getDescription());
-        dto.setCreatedAt(s.getCreatedAt());
-        dto.setDocumentCount(s.getDocumentCount());
-        dto.setLastIngestAt(s.getLastIngestAt());
-        return dto;
-    }
-
-    private KbDocumentSummaryDto toDocumentDto(KbDocumentSummary s) {
-        KbDocumentSummaryDto dto = new KbDocumentSummaryDto();
-        dto.setId(s.getId());
-        dto.setBaseId(s.getBaseId());
-        dto.setKbKey(s.getKbKey());
-        dto.setName(s.getName());
-        dto.setContentFormat(s.getContentFormat());
-        dto.setChunkStrategy(s.getChunkStrategy());
-        dto.setChunkCount(s.getChunkCount());
-        dto.setCreatedAt(s.getCreatedAt());
-        return dto;
-    }
-
-    private KbKnowledgeDetailDto toKnowledgeDetailDto(KbDocumentDetail d) {
-        KbKnowledgeDetailDto dto = new KbKnowledgeDetailDto();
-        dto.setId(d.getId());
-        dto.setBaseId(d.getBaseId());
-        dto.setKbKey(d.getKbKey());
-        dto.setName(d.getName());
-        dto.setContentRich(d.getContentRich());
-        dto.setContentFormat(d.getContentFormat());
-        dto.setChunkStrategy(d.getChunkStrategy());
-        dto.setCreatedAt(d.getCreatedAt());
-        return dto;
-    }
-
     private String normalizeChunkStrategy(String raw) {
         if (raw == null || raw.isBlank()) {
             return KbChunkStrategies.FIXED;
@@ -308,7 +259,7 @@ public class KnowledgeBaseApplicationService {
         if (!KbChunkStrategies.isKnown(s)) {
             throw new ApiException(
                     "VALIDATION_ERROR",
-                    "chunkStrategy must be one of: fixed, paragraph, hybrid, markdown_sections",
+                    "chunkStrategy 必须是下列之一：fixed、paragraph、hybrid、markdown_sections",
                     HttpStatus.BAD_REQUEST
             );
         }
@@ -321,10 +272,10 @@ public class KnowledgeBaseApplicationService {
         }
         String f = raw.trim().toLowerCase();
         if ("plain".equals(f)) {
-            throw new ApiException("VALIDATION_ERROR", "contentFormat plain is no longer supported; use markdown or html", HttpStatus.BAD_REQUEST);
+            throw new ApiException("VALIDATION_ERROR", "不再支持 contentFormat=plain；请使用 markdown 或 html", HttpStatus.BAD_REQUEST);
         }
         if (!"markdown".equals(f) && !"html".equals(f)) {
-            throw new ApiException("VALIDATION_ERROR", "contentFormat must be markdown or html", HttpStatus.BAD_REQUEST);
+            throw new ApiException("VALIDATION_ERROR", "contentFormat 必须是 markdown 或 html", HttpStatus.BAD_REQUEST);
         }
         return f;
     }

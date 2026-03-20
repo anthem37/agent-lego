@@ -30,6 +30,15 @@ public final class ModelConfigSummaries {
         putIfPresent(ordered, "maxTokens", config.get("maxTokens"));
         putIfPresent(ordered, "maxCompletionTokens", config.get("maxCompletionTokens"));
         putIfPresent(ordered, "seed", config.get("seed"));
+        putIfPresent(ordered, "stream", config.get("stream"));
+        putIfPresent(ordered, "frequencyPenalty", config.get("frequencyPenalty"));
+        putIfPresent(ordered, "presencePenalty", config.get("presencePenalty"));
+        putIfPresent(ordered, "thinkingBudget", config.get("thinkingBudget"));
+        putIfPresent(ordered, "reasoningEffort", config.get("reasoningEffort"));
+        putIfPresent(ordered, "toolChoice", config.get("toolChoice"));
+        if (config.containsKey("executionConfig") && config.get("executionConfig") instanceof Map<?, ?> m && !m.isEmpty()) {
+            ordered.put("executionConfig", "+" + m.size() + "项");
+        }
         putIfPresent(ordered, "endpointPath", config.get("endpointPath"));
         // 其余 key 按字典序少量附带，避免摘要爆炸
         for (Map.Entry<String, Object> e : config.entrySet()) {

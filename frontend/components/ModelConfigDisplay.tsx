@@ -6,10 +6,13 @@ import React from "react";
 import {CONFIG_KEY_TITLE, configKeyTitle, formatScalarForDisplay} from "@/lib/model-config-labels";
 import {stringifyPretty} from "@/lib/json";
 
+/** 以键值表格展示的嵌套对象（含 AgentScope executionConfig） */
 const OBJECT_KEYS = new Set([
     "additionalHeaders",
     "additionalBodyParams",
     "additionalQueryParams",
+    "executionConfig",
+    "toolChoice",
 ]);
 
 type Props = {
@@ -75,7 +78,14 @@ export function ModelConfigDisplay(props: Props) {
             {objectEntries.map(([key, obj]) => {
                 const rows = Object.entries(obj).map(([k, v]) => ({
                     key: k,
-                    name: k,
+                    paramLabel: (
+                        <span>
+                            {configKeyTitle(k)}
+                            <Typography.Text type="secondary" style={{marginLeft: 6, fontSize: 12}}>
+                                {k}
+                            </Typography.Text>
+                        </span>
+                    ),
                     value: formatScalarForDisplay(v),
                 }));
                 return (
@@ -95,8 +105,8 @@ export function ModelConfigDisplay(props: Props) {
                                 pagination={false}
                                 rowKey="key"
                                 columns={[
-                                    {title: "参数名", dataIndex: "name", width: "36%"},
-                                    {title: "参数值", dataIndex: "value"},
+                                    {title: "参数", dataIndex: "paramLabel", width: "42%"},
+                                    {title: "值", dataIndex: "value"},
                                 ]}
                                 dataSource={rows}
                             />

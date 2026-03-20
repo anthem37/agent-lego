@@ -119,5 +119,62 @@ class ModelApplicationServiceTest {
 
         verify(modelRepository, never()).save(any());
     }
+
+    @Test
+    void createModel_withAgentScopeExtendedConfig_shouldSucceed() {
+        CreateModelRequest req = new CreateModelRequest();
+        req.setName("n");
+        req.setProvider("OPENAI");
+        req.setModelKey("gpt-4o-mini");
+        req.setApiKey("k");
+        req.setConfig(Map.of(
+                "stream", true,
+                "frequencyPenalty", 0.1,
+                "presencePenalty", 0.0,
+                "toolChoice", "auto",
+                "executionConfig", Map.of(
+                        "timeoutSeconds", 60.0,
+                        "maxAttempts", 3,
+                        "initialBackoffSeconds", 0.5,
+                        "maxBackoffSeconds", 8.0,
+                        "backoffMultiplier", 2.0
+                )
+        ));
+
+        when(modelRepository.save(any(ModelAggregate.class))).thenReturn("id1");
+
+        String id = service.createModel(req);
+        assertEquals("id1", id);
+        verify(modelRepository).save(any(ModelAggregate.class));
+    }
+
+    @Test
+    void createModel_invalidExecutionConfigKey_shouldThrowApiException() {
+        CreateModelRequest req = new CreateModelRequest();
+        req.setName("n");
+        req.setProvider("OPENAI");
+        req.setModelKey("gpt-4o-mini");
+        req.setApiKey("k");
+        req.setConfig(Map.of("executionConfig", Map.of("unknownKey", 1)));
+
+        ApiException ex = assertThrows(ApiException.class, () -> service.createModel(req));
+        assertEquals("INVALID_MODEL_CONFIG", ex.getCode());
+        assertEquals(HttpStatus.BAD_REQUEST, ex.getStatus());
+        verify(modelRepository, never()).save(any());
+    }
+
+    @Test
+    void createModel_toolChoiceSpecificWithoutToolName_shouldThrowApiException() {
+        CreateModelRequest req = new CreateModelRequest();
+        req.setName("n");
+        req.setProvider("OPENAI");
+        req.setModelKey("gpt-4o-mini");
+        req.setApiKey("k");
+        req.setConfig(Map.of("toolChoice", Map.of("mode", "specific")));
+
+        ApiException ex = assertThrows(ApiException.class, () -> service.createModel(req));
+        assertEquals("INVALID_MODEL_CONFIG", ex.getCode());
+        verify(modelRepository, never()).save(any());
+    }
 }
 

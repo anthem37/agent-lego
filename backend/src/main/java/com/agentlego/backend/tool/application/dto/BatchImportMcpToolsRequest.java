@@ -14,7 +14,7 @@ public class BatchImportMcpToolsRequest {
     /**
      * 外部 MCP SSE 根 URL。
      */
-    @NotBlank(message = "endpoint is required")
+    @NotBlank(message = "endpoint 为必填")
     private String endpoint;
 
     /**

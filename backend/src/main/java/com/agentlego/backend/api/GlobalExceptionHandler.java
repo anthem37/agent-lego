@@ -45,7 +45,8 @@ public class GlobalExceptionHandler {
                 .stream()
                 .map(err -> err.getField() + ": " + err.getDefaultMessage())
                 .collect(Collectors.joining("; "));
-        writeJson(response, HttpStatus.BAD_REQUEST.value(), ApiResponse.error("VALIDATION_ERROR", message));
+        String zh = message.isBlank() ? "参数校验未通过" : "参数校验未通过：" + message;
+        writeJson(response, HttpStatus.BAD_REQUEST.value(), ApiResponse.error("VALIDATION_ERROR", zh));
     }
 
     @ExceptionHandler(HttpMessageNotReadableException.class)
@@ -53,7 +54,7 @@ public class GlobalExceptionHandler {
         writeJson(
                 response,
                 HttpStatus.BAD_REQUEST.value(),
-                ApiResponse.error("VALIDATION_ERROR", "request body is required or invalid JSON")
+                ApiResponse.error("VALIDATION_ERROR", "请求体不能为空或 JSON 无效")
         );
     }
 
@@ -63,7 +64,7 @@ public class GlobalExceptionHandler {
         writeJson(
                 response,
                 HttpStatus.INTERNAL_SERVER_ERROR.value(),
-                ApiResponse.error("INTERNAL_ERROR", "internal error")
+                ApiResponse.error("INTERNAL_ERROR", "服务器内部错误")
         );
     }
 

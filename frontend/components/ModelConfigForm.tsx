@@ -1,6 +1,6 @@
 "use client";
 
-import {Button, Collapse, Input, InputNumber, Select, Space, Typography} from "antd";
+import {Button, Collapse, Input, InputNumber, Select, Space, Switch, Typography} from "antd";
 import React from "react";
 
 import {objectToPairs, pairsToObject, type StringPair} from "@/lib/model-config";
@@ -51,6 +51,16 @@ const ENDPOINT_PATH_OPTIONS = [
 const ENCODING_FORMAT_OPTIONS = [
     {label: "float（向量数值）", value: "float"},
     {label: "base64（向量 base64）", value: "base64"},
+];
+
+const AGENTSCOPE_ADVANCED_KEYS = [
+    "stream",
+    "frequencyPenalty",
+    "presencePenalty",
+    "thinkingBudget",
+    "reasoningEffort",
+    "toolChoice",
+    "executionConfig",
 ];
 
 type Props = {
@@ -172,6 +182,72 @@ export function ModelConfigForm(props: Props) {
     const dimensions = readNumber(value.dimensions);
     const endpointPath = typeof value.endpointPath === "string" ? value.endpointPath : "";
     const encodingFormat = typeof value.encodingFormat === "string" ? value.encodingFormat : undefined;
+
+    const frequencyPenalty = readNumber(value.frequencyPenalty);
+    const presencePenalty = readNumber(value.presencePenalty);
+    const thinkingBudget = readNumber(value.thinkingBudget);
+    const reasoningEffort =
+        typeof value.reasoningEffort === "string" && value.reasoningEffort.trim() !== ""
+            ? value.reasoningEffort.trim()
+            : undefined;
+
+    const executionConfigObj =
+        value.executionConfig && typeof value.executionConfig === "object" && !Array.isArray(value.executionConfig)
+            ? (value.executionConfig as Record<string, unknown>)
+            : {};
+
+    const toolChoiceState = React.useMemo(() => {
+        const tc = value.toolChoice;
+        if (tc === undefined || tc === null) {
+            return {mode: "unset" as const, toolName: ""};
+        }
+        if (typeof tc === "string") {
+            const t = tc.trim().toLowerCase();
+            if (t === "auto" || t === "none" || t === "required") {
+                return {mode: t as "auto" | "none" | "required", toolName: ""};
+            }
+            return {mode: "unset" as const, toolName: ""};
+        }
+        if (typeof tc === "object" && !Array.isArray(tc)) {
+            const o = tc as Record<string, unknown>;
+            const tn = typeof o.toolName === "string" ? o.toolName : "";
+            if (tn.trim()) {
+                return {mode: "specific" as const, toolName: tn.trim()};
+            }
+            const m = typeof o.mode === "string" ? o.mode.trim().toLowerCase() : "";
+            if (m === "auto" || m === "none" || m === "required") {
+                return {mode: m as "auto" | "none" | "required", toolName: ""};
+            }
+        }
+        return {mode: "unset" as const, toolName: ""};
+    }, [value.toolChoice]);
+
+    function patchExecution(key: string, v: number | null | undefined) {
+        const next: Record<string, unknown> = {...executionConfigObj};
+        if (v === null || v === undefined) {
+            delete next[key];
+        } else {
+            next[key] = v;
+        }
+        if (Object.keys(next).length === 0) {
+            patch({executionConfig: undefined});
+        } else {
+            patch({executionConfig: next});
+        }
+    }
+
+    function setToolChoice(mode: string, toolName: string) {
+        if (mode === "unset") {
+            patch({toolChoice: undefined});
+        } else if (mode === "specific") {
+            const t = toolName.trim();
+            patch({toolChoice: t ? {mode: "specific", toolName: t} : undefined});
+        } else {
+            patch({toolChoice: mode});
+        }
+    }
+
+    const hasAdvanced = AGENTSCOPE_ADVANCED_KEYS.some((k) => has(k));
 
     const headerPairs = React.useMemo(() => objectToPairs(value.additionalHeaders), [value.additionalHeaders]);
     const bodyPairs = React.useMemo(() => objectToPairs(value.additionalBodyParams), [value.additionalBodyParams]);
@@ -397,6 +473,201 @@ export function ModelConfigForm(props: Props) {
         </Space>
     );
 
+    const advancedPanel = (
+        <Space orientation="vertical" size={16} style={{width: "100%"}}>
+            {has("stream") ? (
+                <div>
+                    <FieldHeading apiKey="stream"/>
+                    <Typography.Paragraph type="secondary" style={{marginBottom: 8, marginTop: 0}}>
+                        对应 AgentScope <Typography.Text code>GenerateOptions.stream</Typography.Text>
+                        ；关闭时不传该字段，由模型默认行为决定。
+                    </Typography.Paragraph>
+                    <Switch
+                        checked={value.stream === true}
+                        checkedChildren="流式"
+                        unCheckedChildren="默认"
+                        onChange={(checked) => patch({stream: checked ? true : undefined})}
+                    />
+                </div>
+            ) : null}
+
+            {has("frequencyPenalty") ? (
+                <div>
+                    <FieldHeading apiKey="frequencyPenalty"/>
+                    <InputNumber
+                        style={{width: "100%", maxWidth: 280, marginTop: 8}}
+                        min={-2}
+                        max={2}
+                        step={0.05}
+                        placeholder="例如 0.0（OpenAI 等常用范围约 -2～2）"
+                        value={frequencyPenalty ?? undefined}
+                        onChange={(v) => patch({frequencyPenalty: v === null ? undefined : v})}
+                    />
+                </div>
+            ) : null}
+
+            {has("presencePenalty") ? (
+                <div>
+                    <FieldHeading apiKey="presencePenalty"/>
+                    <InputNumber
+                        style={{width: "100%", maxWidth: 280, marginTop: 8}}
+                        min={-2}
+                        max={2}
+                        step={0.05}
+                        placeholder="例如 0.0"
+                        value={presencePenalty ?? undefined}
+                        onChange={(v) => patch({presencePenalty: v === null ? undefined : v})}
+                    />
+                </div>
+            ) : null}
+
+            {has("thinkingBudget") ? (
+                <div>
+                    <FieldHeading apiKey="thinkingBudget"/>
+                    <Typography.Paragraph type="secondary" style={{marginBottom: 8, marginTop: 0}}>
+                        部分推理模型使用的思考资源上限（具体含义以厂商文档为准）。
+                    </Typography.Paragraph>
+                    <InputNumber
+                        style={{width: "100%", maxWidth: 280}}
+                        min={0}
+                        step={1}
+                        placeholder="正整数，可选"
+                        value={thinkingBudget ?? undefined}
+                        onChange={(v) => patch({thinkingBudget: v === null ? undefined : v})}
+                    />
+                </div>
+            ) : null}
+
+            {has("reasoningEffort") ? (
+                <div>
+                    <FieldHeading apiKey="reasoningEffort"/>
+                    <Typography.Paragraph type="secondary" style={{marginBottom: 8, marginTop: 0}}>
+                        常见取值如 <Typography.Text code>minimal</Typography.Text>、
+                        <Typography.Text code>low</Typography.Text>、
+                        <Typography.Text code>medium</Typography.Text>、
+                        <Typography.Text code>high</Typography.Text>（以厂商文档为准）。
+                    </Typography.Paragraph>
+                    <Input
+                        allowClear
+                        style={{maxWidth: 360}}
+                        placeholder="留空表示不传该字段"
+                        value={reasoningEffort ?? ""}
+                        onChange={(e) => {
+                            const t = e.target.value.trim();
+                            patch({reasoningEffort: t === "" ? undefined : t});
+                        }}
+                    />
+                </div>
+            ) : null}
+
+            {has("toolChoice") ? (
+                <div>
+                    <FieldHeading apiKey="toolChoice"/>
+                    <Typography.Paragraph type="secondary" style={{marginBottom: 8, marginTop: 0}}>
+                        映射 AgentScope <Typography.Text code>ToolChoice</Typography.Text>
+                        （Auto / None / Required / Specific）。
+                    </Typography.Paragraph>
+                    <Select
+                        style={{width: "100%", maxWidth: 360, marginBottom: 8}}
+                        value={toolChoiceState.mode}
+                        options={[
+                            {label: "不指定", value: "unset"},
+                            {label: "auto（自动）", value: "auto"},
+                            {label: "none（禁用工具）", value: "none"},
+                            {label: "required（必须调用工具）", value: "required"},
+                            {label: "specific（指定工具名）", value: "specific"},
+                        ]}
+                        onChange={(v) => setToolChoice(v ?? "unset", toolChoiceState.toolName)}
+                    />
+                    {toolChoiceState.mode === "specific" ? (
+                        <Input
+                            placeholder="工具名称 toolName，需与注册到 Toolkit 的名称一致"
+                            value={toolChoiceState.toolName}
+                            onChange={(e) => setToolChoice("specific", e.target.value)}
+                        />
+                    ) : null}
+                </div>
+            ) : null}
+
+            {has("executionConfig") ? (
+                <div>
+                    <FieldHeading apiKey="executionConfig"/>
+                    <Typography.Paragraph type="secondary" style={{marginBottom: 8, marginTop: 0}}>
+                        对应 AgentScope <Typography.Text code>ExecutionConfig</Typography.Text>
+                        ：HTTP 调用超时与重试退避（retryOn Predicate 无法 JSON 序列化，需在代码侧扩展）。
+                    </Typography.Paragraph>
+                    <Space orientation="vertical" size={12} style={{width: "100%"}}>
+                        <Space.Compact style={{width: "100%", maxWidth: 400}}>
+                            <Typography.Text style={{width: 140, lineHeight: "32px"}}>
+                                {CONFIG_KEY_TITLE.timeoutSeconds}
+                            </Typography.Text>
+                            <InputNumber
+                                style={{width: "100%"}}
+                                min={0.1}
+                                step={0.5}
+                                placeholder="秒"
+                                value={readNumber(executionConfigObj.timeoutSeconds) ?? undefined}
+                                onChange={(v) => patchExecution("timeoutSeconds", v === null ? undefined : v)}
+                            />
+                        </Space.Compact>
+                        <Space.Compact style={{width: "100%", maxWidth: 400}}>
+                            <Typography.Text style={{width: 140, lineHeight: "32px"}}>
+                                {CONFIG_KEY_TITLE.maxAttempts}
+                            </Typography.Text>
+                            <InputNumber
+                                style={{width: "100%"}}
+                                min={1}
+                                step={1}
+                                placeholder="次数"
+                                value={readNumber(executionConfigObj.maxAttempts) ?? undefined}
+                                onChange={(v) => patchExecution("maxAttempts", v === null ? undefined : v)}
+                            />
+                        </Space.Compact>
+                        <Space.Compact style={{width: "100%", maxWidth: 400}}>
+                            <Typography.Text style={{width: 140, lineHeight: "32px"}}>
+                                {CONFIG_KEY_TITLE.initialBackoffSeconds}
+                            </Typography.Text>
+                            <InputNumber
+                                style={{width: "100%"}}
+                                min={0}
+                                step={0.1}
+                                placeholder="秒"
+                                value={readNumber(executionConfigObj.initialBackoffSeconds) ?? undefined}
+                                onChange={(v) => patchExecution("initialBackoffSeconds", v === null ? undefined : v)}
+                            />
+                        </Space.Compact>
+                        <Space.Compact style={{width: "100%", maxWidth: 400}}>
+                            <Typography.Text style={{width: 140, lineHeight: "32px"}}>
+                                {CONFIG_KEY_TITLE.maxBackoffSeconds}
+                            </Typography.Text>
+                            <InputNumber
+                                style={{width: "100%"}}
+                                min={0}
+                                step={0.5}
+                                placeholder="秒"
+                                value={readNumber(executionConfigObj.maxBackoffSeconds) ?? undefined}
+                                onChange={(v) => patchExecution("maxBackoffSeconds", v === null ? undefined : v)}
+                            />
+                        </Space.Compact>
+                        <Space.Compact style={{width: "100%", maxWidth: 400}}>
+                            <Typography.Text style={{width: 140, lineHeight: "32px"}}>
+                                {CONFIG_KEY_TITLE.backoffMultiplier}
+                            </Typography.Text>
+                            <InputNumber
+                                style={{width: "100%"}}
+                                min={0.1}
+                                step={0.1}
+                                placeholder="倍数"
+                                value={readNumber(executionConfigObj.backoffMultiplier) ?? undefined}
+                                onChange={(v) => patchExecution("backoffMultiplier", v === null ? undefined : v)}
+                            />
+                        </Space.Compact>
+                    </Space>
+                </div>
+            ) : null}
+        </Space>
+    );
+
     const endpointPanel = has("endpointPath") ? (
         <Space orientation="vertical" size={12} style={{width: "100%"}}>
             <FieldHeading apiKey="endpointPath"/>
@@ -455,6 +726,15 @@ export function ModelConfigForm(props: Props) {
             label: "采样与输出长度",
             children: basicPanel,
         },
+        ...(hasAdvanced
+            ? [
+                {
+                    key: "agentscope",
+                    label: "AgentScope 高级（惩罚 / 流式 / 工具 / 重试）",
+                    children: advancedPanel,
+                },
+            ]
+            : []),
         ...(endpointPanel
             ? [
                 {

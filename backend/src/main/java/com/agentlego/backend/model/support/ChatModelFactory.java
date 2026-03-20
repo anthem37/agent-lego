@@ -1,5 +1,6 @@
 package com.agentlego.backend.model.support;
 
+import cn.hutool.core.map.MapUtil;
 import cn.hutool.core.util.StrUtil;
 import com.agentlego.backend.api.ApiException;
 import com.agentlego.backend.common.JsonMaps;
@@ -9,12 +10,20 @@ import com.agentlego.backend.runtime.definition.ModelDefinition;
 import io.agentscope.core.embedding.EmbeddingModel;
 import io.agentscope.core.embedding.dashscope.DashScopeTextEmbedding;
 import io.agentscope.core.embedding.openai.OpenAITextEmbedding;
-import io.agentscope.core.model.*;
+import io.agentscope.core.model.AnthropicChatModel;
+import io.agentscope.core.model.DashScopeChatModel;
+import io.agentscope.core.model.ExecutionConfig;
+import io.agentscope.core.model.GenerateOptions;
+import io.agentscope.core.model.Model;
+import io.agentscope.core.model.OpenAIChatModel;
+import io.agentscope.core.model.ToolChoice;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Component;
 
+import java.time.Duration;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Optional;
 
 /**
  * 模型构建工厂：将平台侧定义转为 AgentScope 运行时模型。
@@ -180,7 +189,113 @@ public class ChatModelFactory {
         if (!additionalQueryParams.isEmpty()) {
             b.additionalQueryParams(additionalQueryParams);
         }
+
+        Boolean stream = JsonMaps.getBooleanOpt(safe, "stream");
+        if (stream != null) {
+            b.stream(stream);
+        }
+        Double frequencyPenalty = JsonMaps.getDoubleOpt(safe, "frequencyPenalty");
+        if (frequencyPenalty != null) {
+            b.frequencyPenalty(frequencyPenalty);
+        }
+        Double presencePenalty = JsonMaps.getDoubleOpt(safe, "presencePenalty");
+        if (presencePenalty != null) {
+            b.presencePenalty(presencePenalty);
+        }
+        Integer thinkingBudget = JsonMaps.getIntOpt(safe, "thinkingBudget");
+        if (thinkingBudget != null) {
+            b.thinkingBudget(thinkingBudget);
+        }
+        String reasoningEffort = JsonMaps.getString(safe, "reasoningEffort", "");
+        if (StrUtil.isNotBlank(reasoningEffort)) {
+            b.reasoningEffort(reasoningEffort.trim());
+        }
+        buildExecutionConfigFromRoot(safe).ifPresent(b::executionConfig);
+        ToolChoice toolChoice = parseToolChoice(safe.get("toolChoice"));
+        if (toolChoice != null) {
+            b.toolChoice(toolChoice);
+        }
         return b.build();
+    }
+
+    private static Optional<ExecutionConfig> buildExecutionConfigFromRoot(Map<String, Object> rootConfig) {
+        Map<String, Object> ec = JsonMaps.getMap(rootConfig, "executionConfig");
+        if (MapUtil.isEmpty(ec)) {
+            return Optional.empty();
+        }
+        ExecutionConfig.Builder eb = ExecutionConfig.builder();
+        boolean any = false;
+        Double timeoutSec = JsonMaps.getDoubleOpt(ec, "timeoutSeconds");
+        if (timeoutSec != null && timeoutSec > 0) {
+            eb.timeout(Duration.ofMillis(Math.round(timeoutSec * 1000d)));
+            any = true;
+        }
+        Integer maxAttempts = JsonMaps.getIntOpt(ec, "maxAttempts");
+        if (maxAttempts != null && maxAttempts > 0) {
+            eb.maxAttempts(maxAttempts);
+            any = true;
+        }
+        Double initialBackoffSec = JsonMaps.getDoubleOpt(ec, "initialBackoffSeconds");
+        if (initialBackoffSec != null && initialBackoffSec >= 0) {
+            eb.initialBackoff(Duration.ofMillis(Math.round(initialBackoffSec * 1000d)));
+            any = true;
+        }
+        Double maxBackoffSec = JsonMaps.getDoubleOpt(ec, "maxBackoffSeconds");
+        if (maxBackoffSec != null && maxBackoffSec >= 0) {
+            eb.maxBackoff(Duration.ofMillis(Math.round(maxBackoffSec * 1000d)));
+            any = true;
+        }
+        Double backoffMultiplier = JsonMaps.getDoubleOpt(ec, "backoffMultiplier");
+        if (backoffMultiplier != null && backoffMultiplier > 0) {
+            eb.backoffMultiplier(backoffMultiplier);
+            any = true;
+        }
+        return any ? Optional.of(eb.build()) : Optional.empty();
+    }
+
+    /**
+     * 将平台 config 中的 {@code toolChoice} 转为 AgentScope {@link ToolChoice}。
+     * <ul>
+     *     <li>字符串：{@code auto} / {@code none} / {@code required}</li>
+     *     <li>对象：{@code { "toolName": "x" }} 或 {@code { "mode": "specific", "toolName": "x" }}</li>
+     *     <li>对象：{@code { "mode": "auto" | "none" | "required" }}</li>
+     * </ul>
+     */
+    private static ToolChoice parseToolChoice(Object raw) {
+        if (raw == null) {
+            return null;
+        }
+        if (raw instanceof String s) {
+            String t = s.trim().toLowerCase(Locale.ROOT);
+            return switch (t) {
+                case "auto" -> new ToolChoice.Auto();
+                case "none" -> new ToolChoice.None();
+                case "required" -> new ToolChoice.Required();
+                default -> null;
+            };
+        }
+        Map<String, Object> m = JsonMaps.asMap(raw);
+        if (m.isEmpty()) {
+            return null;
+        }
+        String toolNameDirect = JsonMaps.getString(m, "toolName", "").trim();
+        if (StrUtil.isNotBlank(toolNameDirect)) {
+            return new ToolChoice.Specific(toolNameDirect);
+        }
+        String mode = JsonMaps.getString(m, "mode", "").trim().toLowerCase(Locale.ROOT);
+        if ("specific".equals(mode)) {
+            String tn = JsonMaps.getString(m, "toolName", "").trim();
+            if (StrUtil.isNotBlank(tn)) {
+                return new ToolChoice.Specific(tn);
+            }
+            return null;
+        }
+        return switch (mode) {
+            case "auto" -> new ToolChoice.Auto();
+            case "none" -> new ToolChoice.None();
+            case "required" -> new ToolChoice.Required();
+            default -> null;
+        };
     }
 
     /**
@@ -188,7 +303,7 @@ public class ChatModelFactory {
      */
     public EmbeddingModel createEmbeddingModel(ModelAggregate model) {
         if (model == null) {
-            throw new ApiException("VALIDATION_ERROR", "model aggregate is required", HttpStatus.BAD_REQUEST);
+            throw new ApiException("VALIDATION_ERROR", "模型聚合不能为空", HttpStatus.BAD_REQUEST);
         }
         String providerRaw = StrUtil.blankToDefault(StrUtil.trim(model.getProvider()), "")
                 .toUpperCase(Locale.ROOT);
@@ -214,7 +329,7 @@ public class ChatModelFactory {
             if (StrUtil.isNotBlank(encodingFormat) && !"float".equalsIgnoreCase(encodingFormat)) {
                 throw new ApiException(
                         "VALIDATION_ERROR",
-                        "OpenAITextEmbedding only supports encodingFormat=float for KB search",
+                        "OpenAITextEmbedding 仅支持 encodingFormat=float 用于 KB 检索",
                         HttpStatus.BAD_REQUEST
                 );
             }
@@ -227,7 +342,7 @@ public class ChatModelFactory {
         }
         throw new ApiException(
                 "UNSUPPORTED_MODEL_PROVIDER",
-                "unsupported embedding provider: " + providerRaw,
+                "不支持的 embedding 提供方：" + providerRaw,
                 HttpStatus.BAD_REQUEST
         );
     }

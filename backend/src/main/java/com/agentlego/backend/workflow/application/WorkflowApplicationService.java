@@ -1,11 +1,12 @@
 package com.agentlego.backend.workflow.application;
 
 import com.agentlego.backend.agent.application.AgentApplicationService;
-import com.agentlego.backend.agent.application.dto.RunAgentRequest;
+import com.agentlego.backend.agent.application.AgentRunRequests;
 import com.agentlego.backend.agent.application.dto.RunAgentResponse;
 import com.agentlego.backend.api.ApiException;
 import com.agentlego.backend.common.JsonMaps;
 import com.agentlego.backend.common.SnowflakeIdGenerator;
+import com.agentlego.backend.workflow.application.assembler.WorkflowAssembler;
 import com.agentlego.backend.workflow.application.dto.*;
 import com.agentlego.backend.workflow.domain.*;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -85,13 +86,9 @@ public class WorkflowApplicationService {
     }
 
     public WorkflowDto getWorkflow(String workflowId) {
-        WorkflowAggregate agg = workflowRepository.findById(workflowId).orElseThrow(() -> new ApiException("NOT_FOUND", "workflow not found", HttpStatus.NOT_FOUND));
-        WorkflowDto dto = new WorkflowDto();
-        dto.setId(agg.getId());
-        dto.setName(agg.getName());
-        dto.setDefinition(agg.getDefinition());
-        dto.setCreatedAt(agg.getCreatedAt());
-        return dto;
+        WorkflowAggregate agg = workflowRepository.findById(workflowId)
+                .orElseThrow(() -> new ApiException("NOT_FOUND", "工作流未找到", HttpStatus.NOT_FOUND));
+        return WorkflowAssembler.toWorkflowDto(agg);
     }
 
     public RunWorkflowResponse runWorkflow(String workflowId, RunWorkflowRequest req) {
@@ -120,11 +117,7 @@ public class WorkflowApplicationService {
         String runId = workflowRunRepository.createRun(workflowId, Map.of("input", req.getInput()), null);
         workflowRunRepository.markRunning(runId);
         try {
-            WorkflowAggregate workflow = workflowRepository.findById(workflowId)
-                    .orElseThrow(() -> new ApiException("NOT_FOUND", "workflow not found", HttpStatus.NOT_FOUND));
-
-            Map<String, Object> def = workflow.getDefinition() == null ? Map.of() : workflow.getDefinition();
-            Map<String, Object> output = buildWorkflowOutput(def, req);
+            Map<String, Object> output = computeWorkflowOutputOrThrow(workflowId, req);
             workflowRunRepository.markSucceeded(runId, output);
 
             Map<String, Object> body = new LinkedHashMap<>();
@@ -133,12 +126,12 @@ public class WorkflowApplicationService {
             body.put("output", output);
             return body;
         } catch (Exception e) {
-            String msg = (e.getMessage() == null) ? e.getClass().getSimpleName() : e.getMessage();
+            String msg = exceptionMessage(e);
             workflowRunRepository.markFailed(runId, msg);
             if (e instanceof ApiException ae) {
                 throw ae;
             }
-            throw new ApiException("WORKFLOW_RUN_FAILED", msg, HttpStatus.INTERNAL_SERVER_ERROR);
+            throw new ApiException("WORKFLOW_RUN_FAILED", "工作流执行失败：" + msg, HttpStatus.INTERNAL_SERVER_ERROR);
         }
     }
 
@@ -149,16 +142,26 @@ public class WorkflowApplicationService {
      */
     private void executeWorkflowRun(String runId, String workflowId, RunWorkflowRequest req) {
         try {
-            WorkflowAggregate workflow = workflowRepository.findById(workflowId)
-                    .orElseThrow(() -> new ApiException("NOT_FOUND", "workflow not found", HttpStatus.NOT_FOUND));
-
-            Map<String, Object> def = workflow.getDefinition() == null ? Map.of() : workflow.getDefinition();
-            Map<String, Object> output = buildWorkflowOutput(def, req);
+            Map<String, Object> output = computeWorkflowOutputOrThrow(workflowId, req);
             workflowRunRepository.markSucceeded(runId, output);
         } catch (Exception e) {
-            String msg = (e.getMessage() == null) ? e.getClass().getSimpleName() : e.getMessage();
-            workflowRunRepository.markFailed(runId, msg);
+            workflowRunRepository.markFailed(runId, exceptionMessage(e));
         }
+    }
+
+    /**
+     * 加载工作流定义并计算输出；失败时抛出异常（由同步/异步调用方分别处理落库与包装）。
+     */
+    private Map<String, Object> computeWorkflowOutputOrThrow(String workflowId, RunWorkflowRequest req) {
+        WorkflowAggregate workflow = workflowRepository.findById(workflowId)
+                .orElseThrow(() -> new ApiException("NOT_FOUND", "工作流未找到", HttpStatus.NOT_FOUND));
+        Map<String, Object> def = workflow.getDefinition() == null ? Map.of() : workflow.getDefinition();
+        return buildWorkflowOutput(def, req);
+    }
+
+    private static String exceptionMessage(Throwable e) {
+        String m = e.getMessage();
+        return (m == null || m.isBlank()) ? e.getClass().getSimpleName() : m;
     }
 
     /**
@@ -211,40 +214,24 @@ public class WorkflowApplicationService {
         String agentId = JsonMaps.getString(def, DEF_AGENT_ID, "");
         String modelId = JsonMaps.getString(def, DEF_MODEL_ID, "");
         if (agentId.isBlank() || modelId.isBlank()) {
-            throw new ApiException("INVALID_WORKFLOW_DEF", "definition must contain either steps[] or agentId/modelId", HttpStatus.BAD_REQUEST);
+            throw new ApiException("INVALID_WORKFLOW_DEF", "definition 必须包含 steps[] 或 agentId/modelId", HttpStatus.BAD_REQUEST);
         }
-        RunAgentRequest agentReq = new RunAgentRequest();
-        agentReq.setModelId(modelId);
-        agentReq.setInput(req.getInput());
-        RunAgentResponse agentResp = agentApplicationService.runAgent(agentId, agentReq);
+        RunAgentResponse agentResp = agentApplicationService.runAgent(agentId, AgentRunRequests.of(modelId, req.getInput()));
         return Map.of("output", agentResp.getOutput());
     }
 
     private String runOneStep(Map<String, Object> step, String input) {
         String agentId = JsonMaps.getString(step, DEF_AGENT_ID, "");
         String modelId = JsonMaps.getString(step, DEF_MODEL_ID, "");
-        RunAgentRequest agentReq = new RunAgentRequest();
-        agentReq.setModelId(modelId);
-        agentReq.setInput(input);
-        return agentApplicationService.runAgent(agentId, agentReq).getOutput();
+        return agentApplicationService.runAgent(agentId, AgentRunRequests.of(modelId, input)).getOutput();
     }
 
     public WorkflowRunDto getRun(String runId) {
         WorkflowRunAggregate run = workflowRunRepository.findById(runId);
         if (run == null) {
-            throw new ApiException("NOT_FOUND", "run not found", HttpStatus.NOT_FOUND);
+            throw new ApiException("NOT_FOUND", "运行记录未找到", HttpStatus.NOT_FOUND);
         }
-        WorkflowRunDto dto = new WorkflowRunDto();
-        dto.setId(run.getId());
-        dto.setWorkflowId(run.getWorkflowId());
-        dto.setStatus(run.getStatus() == null ? null : run.getStatus().name());
-        dto.setInput(run.getInput());
-        dto.setOutput(run.getOutput());
-        dto.setError(run.getError());
-        dto.setStartedAt(run.getStartedAt());
-        dto.setFinishedAt(run.getFinishedAt());
-        dto.setCreatedAt(run.getCreatedAt());
-        return dto;
+        return WorkflowAssembler.toRunDto(run);
     }
 }
 

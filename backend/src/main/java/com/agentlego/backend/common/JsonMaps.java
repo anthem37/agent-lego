@@ -7,6 +7,7 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
@@ -91,6 +92,29 @@ public final class JsonMaps {
         return map == null || key == null ? null : MapUtil.getDouble(map, key, null);
     }
 
+    /**
+     * 读取布尔（支持 JSON 反序列化的 {@link Boolean} 或 "true"/"false" 字符串）。
+     */
+    public static Boolean getBooleanOpt(Map<String, Object> map, String key) {
+        if (map == null || key == null) {
+            return null;
+        }
+        Object v = map.get(key);
+        if (v instanceof Boolean b) {
+            return b;
+        }
+        if (v instanceof String s) {
+            String t = StrUtil.trim(s);
+            if ("true".equalsIgnoreCase(t)) {
+                return true;
+            }
+            if ("false".equalsIgnoreCase(t)) {
+                return false;
+            }
+        }
+        return MapUtil.getBool(map, key, null);
+    }
+
     public static List<Map<String, Object>> getListOfMaps(Map<String, Object> map, String key) {
         if (map == null || key == null) {
             return List.of();
@@ -121,5 +145,21 @@ public final class JsonMaps {
         } catch (Exception e) {
             return "{}";
         }
+    }
+
+    /**
+     * 浅合并：{@code override} 覆盖 {@code base} 同名键；任一为空则返回另一方（不可变视图语义与 Hutool 一致：返回引用或新 Map）。
+     * <p>
+     * 用于运行时模型 config 与单次请求 options 合并等场景。
+     */
+    public static Map<String, Object> shallowMerge(Map<String, Object> base, Map<String, Object> override) {
+        Map<String, Object> b = base == null || MapUtil.isEmpty(base) ? Map.of() : base;
+        Map<String, Object> o = override == null || MapUtil.isEmpty(override) ? Map.of() : override;
+        if (MapUtil.isEmpty(o)) {
+            return b;
+        }
+        HashMap<String, Object> merged = new HashMap<>(b);
+        merged.putAll(o);
+        return merged;
     }
 }

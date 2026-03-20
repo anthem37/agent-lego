@@ -17,24 +17,24 @@ public final class SsrUrlGuard {
 
     public static void validate(String urlString) {
         if (urlString == null || urlString.isBlank()) {
-            throw new ApiException("VALIDATION_ERROR", "url is blank", HttpStatus.BAD_REQUEST);
+            throw new ApiException("VALIDATION_ERROR", "url 为空", HttpStatus.BAD_REQUEST);
         }
         URI uri;
         try {
             uri = URI.create(urlString.trim());
         } catch (IllegalArgumentException e) {
-            throw new ApiException("VALIDATION_ERROR", "invalid url: " + e.getMessage(), HttpStatus.BAD_REQUEST);
+            throw new ApiException("VALIDATION_ERROR", "无效的 url：" + e.getMessage(), HttpStatus.BAD_REQUEST);
         }
         String scheme = uri.getScheme();
         if (scheme == null || (!"https".equalsIgnoreCase(scheme) && !"http".equalsIgnoreCase(scheme))) {
-            throw new ApiException("VALIDATION_ERROR", "Only http/https URLs are allowed", HttpStatus.BAD_REQUEST);
+            throw new ApiException("VALIDATION_ERROR", "仅允许 http/https URL", HttpStatus.BAD_REQUEST);
         }
         String host = uri.getHost();
         if (host == null || host.isBlank()) {
-            throw new ApiException("VALIDATION_ERROR", "url must include a host", HttpStatus.BAD_REQUEST);
+            throw new ApiException("VALIDATION_ERROR", "url 必须包含 host", HttpStatus.BAD_REQUEST);
         }
         if (isBlockedHostLiteral(host)) {
-            throw new ApiException("VALIDATION_ERROR", "Target host is not allowed: " + host, HttpStatus.BAD_REQUEST);
+            throw new ApiException("VALIDATION_ERROR", "目标 host 不允许：" + host, HttpStatus.BAD_REQUEST);
         }
         try {
             InetAddress addr = InetAddress.getByName(host);
@@ -44,12 +44,12 @@ public final class SsrUrlGuard {
                     || addr.isSiteLocalAddress()) {
                 throw new ApiException(
                         "VALIDATION_ERROR",
-                        "Target host resolves to a disallowed (local/private) address",
+                        "目标 host 解析到被禁止的地址（本地/内网/私网）",
                         HttpStatus.BAD_REQUEST
                 );
             }
         } catch (UnknownHostException e) {
-            throw new ApiException("VALIDATION_ERROR", "Cannot resolve host: " + host, HttpStatus.BAD_REQUEST);
+            throw new ApiException("VALIDATION_ERROR", "无法解析 host：" + host, HttpStatus.BAD_REQUEST);
         }
     }
 

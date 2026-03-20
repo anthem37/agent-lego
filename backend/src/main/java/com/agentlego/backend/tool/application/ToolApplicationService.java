@@ -2,9 +2,11 @@ package com.agentlego.backend.tool.application;
 
 import com.agentlego.backend.agent.domain.AgentRepository;
 import com.agentlego.backend.api.ApiException;
+import com.agentlego.backend.api.ApiRequires;
 import com.agentlego.backend.common.SnowflakeIdGenerator;
 import com.agentlego.backend.mcp.McpClientProperties;
 import com.agentlego.backend.mcp.McpClientRegistry;
+import com.agentlego.backend.tool.application.assembler.ToolAssembler;
 import com.agentlego.backend.tool.application.dto.*;
 import com.agentlego.backend.tool.domain.ToolAggregate;
 import com.agentlego.backend.tool.domain.ToolRepository;
@@ -87,7 +89,7 @@ public class ToolApplicationService {
 
     public String createTool(CreateToolRequest req) {
         ToolType toolType = parseToolType(req.getToolType());
-        String name = requireNonBlank(req.getName(), "name");
+        String name = ApiRequires.nonBlank(req.getName(), "name");
         if (toolType == ToolType.LOCAL) {
             localBuiltinToolCatalog.requireSupportedLocalName(name);
         }
@@ -118,10 +120,10 @@ public class ToolApplicationService {
      */
     public void updateTool(String id, UpdateToolRequest req) {
         ToolAggregate existing = toolRepository.findById(id)
-                .orElseThrow(() -> new ApiException("NOT_FOUND", "tool not found", HttpStatus.NOT_FOUND));
+                .orElseThrow(() -> new ApiException("NOT_FOUND", "工具未找到", HttpStatus.NOT_FOUND));
 
         ToolType toolType = parseToolType(req.getToolType());
-        String name = requireNonBlank(req.getName(), "name");
+        String name = ApiRequires.nonBlank(req.getName(), "name");
         if (toolType == ToolType.LOCAL) {
             localBuiltinToolCatalog.requireSupportedLocalName(name);
         }
@@ -147,7 +149,7 @@ public class ToolApplicationService {
      */
     public void deleteTool(String id) {
         toolRepository.findById(id)
-                .orElseThrow(() -> new ApiException("NOT_FOUND", "tool not found", HttpStatus.NOT_FOUND));
+                .orElseThrow(() -> new ApiException("NOT_FOUND", "工具未找到", HttpStatus.NOT_FOUND));
         if (agentRepository.countByToolId(id) > 0) {
             throw new ApiException(
                     "CONFLICT",
@@ -214,7 +216,7 @@ public class ToolApplicationService {
      * 连接外部 MCP 并返回 {@code tools/list}（可选刷新缓存）。
      */
     public List<RemoteMcpToolMetaDto> listRemoteMcpTools(String endpoint, boolean refresh) {
-        String ep = requireNonBlank(endpoint, "endpoint");
+        String ep = ApiRequires.nonBlank(endpoint, "endpoint");
         McpEndpointSecurity.validateEndpoint(ep, mcpClientProperties.isStrictSsrf());
         if (refresh) {
             mcpClientRegistry.invalidateRemoteToolsCache(ep);
@@ -228,9 +230,9 @@ public class ToolApplicationService {
      */
     public BatchImportMcpToolsResponse batchImportMcpTools(BatchImportMcpToolsRequest req) {
         if (req == null) {
-            throw new ApiException("VALIDATION_ERROR", "request body is required", HttpStatus.BAD_REQUEST);
+            throw new ApiException("VALIDATION_ERROR", "请求体不能为空", HttpStatus.BAD_REQUEST);
         }
-        String endpoint = requireNonBlank(req.getEndpoint(), "endpoint");
+        String endpoint = ApiRequires.nonBlank(req.getEndpoint(), "endpoint");
         McpEndpointSecurity.validateEndpoint(endpoint, mcpClientProperties.isStrictSsrf());
         mcpClientRegistry.invalidateRemoteToolsCache(endpoint);
         List<McpSchema.Tool> remote = mcpClientRegistry.listRemoteTools(endpoint);
@@ -344,7 +346,7 @@ public class ToolApplicationService {
         String qq = (q == null || q.isBlank()) ? null : q.trim();
         long total = toolRepository.countByQuery(qq);
         long offset = (long) (p - 1) * size;
-        var items = toolRepository.findPageByQuery(qq, offset, size).stream().map(this::toDto).toList();
+        var items = toolRepository.findPageByQuery(qq, offset, size).stream().map(ToolAssembler::toDto).toList();
         return ToolPageDto.builder()
                 .items(items)
                 .total(total)
@@ -355,8 +357,8 @@ public class ToolApplicationService {
 
     public ToolDto getTool(String id) {
         ToolAggregate agg = toolRepository.findById(id)
-                .orElseThrow(() -> new ApiException("NOT_FOUND", "tool not found", HttpStatus.NOT_FOUND));
-        return toDto(agg);
+                .orElseThrow(() -> new ApiException("NOT_FOUND", "工具未找到", HttpStatus.NOT_FOUND));
+        return ToolAssembler.toDto(agg);
     }
 
     /**
@@ -364,17 +366,14 @@ public class ToolApplicationService {
      */
     public ToolReferencesDto getToolReferences(String id) {
         toolRepository.findById(id)
-                .orElseThrow(() -> new ApiException("NOT_FOUND", "tool not found", HttpStatus.NOT_FOUND));
-        ToolReferencesDto dto = new ToolReferencesDto();
+                .orElseThrow(() -> new ApiException("NOT_FOUND", "工具未找到", HttpStatus.NOT_FOUND));
         int n = agentRepository.countByToolId(id);
-        dto.setReferencingAgentCount(n);
-        dto.setReferencingAgentIds(agentRepository.listAgentIdsByToolId(id));
-        return dto;
+        return ToolAssembler.toReferencesDto(n, agentRepository.listAgentIdsByToolId(id));
     }
 
     public TestToolCallResponse testToolCall(String id, TestToolCallRequest req) {
         ToolAggregate agg = toolRepository.findById(id)
-                .orElseThrow(() -> new ApiException("NOT_FOUND", "tool not found", HttpStatus.NOT_FOUND));
+                .orElseThrow(() -> new ApiException("NOT_FOUND", "工具未找到", HttpStatus.NOT_FOUND));
 
         Map<String, Object> input = (req == null || req.getInput() == null) ? Collections.emptyMap() : req.getInput();
 
@@ -400,7 +399,7 @@ public class ToolApplicationService {
             if (wf == null || String.valueOf(wf).isBlank()) {
                 throw new ApiException(
                         "VALIDATION_ERROR",
-                        "WORKFLOW tool requires definition.workflowId",
+                        "工作流工具需要 definition.workflowId",
                         HttpStatus.BAD_REQUEST
                 );
             }
@@ -410,29 +409,13 @@ public class ToolApplicationService {
     }
 
     private ToolType parseToolType(String toolTypeRaw) {
-        String t = requireNonBlank(toolTypeRaw, "toolType");
+        String t = ApiRequires.nonBlank(toolTypeRaw, "toolType");
         try {
             return ToolType.valueOf(t.trim().toUpperCase());
         } catch (IllegalArgumentException e) {
-            throw new ApiException("VALIDATION_ERROR", "invalid toolType: " + toolTypeRaw, HttpStatus.BAD_REQUEST);
+            throw new ApiException("VALIDATION_ERROR", "无效的 toolType：" + toolTypeRaw, HttpStatus.BAD_REQUEST);
         }
     }
 
-    private String requireNonBlank(String value, String fieldName) {
-        if (value == null || value.isBlank()) {
-            throw new ApiException("VALIDATION_ERROR", fieldName + " is required", HttpStatus.BAD_REQUEST);
-        }
-        return value;
-    }
-
-    private ToolDto toDto(ToolAggregate agg) {
-        ToolDto dto = new ToolDto();
-        dto.setId(agg.getId());
-        dto.setToolType(agg.getToolType().name());
-        dto.setName(agg.getName());
-        dto.setDefinition(agg.getDefinition());
-        dto.setCreatedAt(agg.getCreatedAt());
-        return dto;
-    }
 }
 

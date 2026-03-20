@@ -27,25 +27,25 @@ public final class McpEndpointSecurity {
 
     private static void relaxedValidate(String urlString) {
         if (urlString == null || urlString.isBlank()) {
-            throw new ApiException("VALIDATION_ERROR", "MCP endpoint is blank", HttpStatus.BAD_REQUEST);
+            throw new ApiException("VALIDATION_ERROR", "MCP endpoint 为空", HttpStatus.BAD_REQUEST);
         }
         URI uri;
         try {
             uri = URI.create(urlString.trim());
         } catch (IllegalArgumentException e) {
-            throw new ApiException("VALIDATION_ERROR", "invalid MCP endpoint url: " + e.getMessage(), HttpStatus.BAD_REQUEST);
+            throw new ApiException("VALIDATION_ERROR", "无效的 MCP endpoint url：" + e.getMessage(), HttpStatus.BAD_REQUEST);
         }
         String scheme = uri.getScheme();
         if (scheme == null || (!"https".equalsIgnoreCase(scheme) && !"http".equalsIgnoreCase(scheme))) {
-            throw new ApiException("VALIDATION_ERROR", "MCP endpoint must be http or https", HttpStatus.BAD_REQUEST);
+            throw new ApiException("VALIDATION_ERROR", "MCP endpoint 必须是 http/https", HttpStatus.BAD_REQUEST);
         }
         String host = uri.getHost();
         if (host == null || host.isBlank()) {
-            throw new ApiException("VALIDATION_ERROR", "MCP endpoint must include a host", HttpStatus.BAD_REQUEST);
+            throw new ApiException("VALIDATION_ERROR", "MCP endpoint 必须包含 host", HttpStatus.BAD_REQUEST);
         }
         String h = host.toLowerCase();
         if ("169.254.169.254".equals(h) || h.endsWith(".local") || h.contains("metadata.google.internal")) {
-            throw new ApiException("VALIDATION_ERROR", "Target host is not allowed: " + host, HttpStatus.BAD_REQUEST);
+            throw new ApiException("VALIDATION_ERROR", "目标 host 不允许：" + host, HttpStatus.BAD_REQUEST);
         }
     }
 }

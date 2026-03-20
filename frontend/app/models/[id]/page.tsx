@@ -225,9 +225,11 @@ export default function ModelDetailPage(props: { params: Promise<{ id: string }>
                 <SectionCard title="连通性测试">
                     <Space orientation="vertical" size={12} style={{width: "100%"}}>
                         <Typography.Paragraph type="secondary" style={{marginBottom: 0}}>
-                            向当前模型发起一次最小调用，用于验证密钥与网络是否可用。后端对聊天 provider{" "}
-                            <Typography.Text code>DASHSCOPE</Typography.Text>/<Typography.Text code>OPENAI</Typography.Text>/
-                            <Typography.Text code>ANTHROPIC</Typography.Text> 支持连通性测试；embedding provider 会返回跳过结果。
+                            向当前模型发起一次最小调用，用于验证密钥与网络是否可用。聊天模型配置会映射为 AgentScope{" "}
+                            <Typography.Text code>GenerateOptions</Typography.Text>（含流式、惩罚、toolChoice、executionConfig
+                            等）；后端对 <Typography.Text code>DASHSCOPE</Typography.Text>/
+                            <Typography.Text code>OPENAI</Typography.Text>/
+                            <Typography.Text code>ANTHROPIC</Typography.Text> 支持连通性测试；Embedding provider 会返回跳过结果。
                         </Typography.Paragraph>
                         <Button
                             type="primary"

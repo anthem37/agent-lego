@@ -24,7 +24,7 @@ public final class McpToolSpec {
         if (ep == null || ep.isBlank()) {
             throw new ApiException(
                     "VALIDATION_ERROR",
-                    "MCP tool requires definition.endpoint (SSE URL of external MCP server)",
+                    "MCP 工具需要 definition.endpoint（外部 MCP Server 的 SSE URL）",
                     HttpStatus.BAD_REQUEST
             );
         }

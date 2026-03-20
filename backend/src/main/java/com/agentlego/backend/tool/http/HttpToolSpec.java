@@ -48,14 +48,14 @@ public final class HttpToolSpec {
 
     public static HttpToolSpec fromDefinition(Map<String, Object> definition) {
         if (definition == null || definition.isEmpty()) {
-            throw new ApiException("VALIDATION_ERROR", "HTTP tool requires non-empty definition", HttpStatus.BAD_REQUEST);
+            throw new ApiException("VALIDATION_ERROR", "HTTP 工具定义不能为空", HttpStatus.BAD_REQUEST);
         }
         String url = stringField(definition, "url");
         if (url == null || url.isBlank()) {
-            throw new ApiException("VALIDATION_ERROR", "HTTP tool definition.url is required", HttpStatus.BAD_REQUEST);
+            throw new ApiException("VALIDATION_ERROR", "HTTP 工具定义的 definition.url 为必填", HttpStatus.BAD_REQUEST);
         }
         if (url.length() > MAX_URL_LENGTH) {
-            throw new ApiException("VALIDATION_ERROR", "definition.url is too long", HttpStatus.BAD_REQUEST);
+            throw new ApiException("VALIDATION_ERROR", "definition.url 太长", HttpStatus.BAD_REQUEST);
         }
         String methodRaw = stringField(definition, "method");
         String method = (methodRaw == null || methodRaw.isBlank()) ? "GET" : methodRaw.trim().toUpperCase(Locale.ROOT);
@@ -71,7 +71,7 @@ public final class HttpToolSpec {
             }
             default -> throw new ApiException(
                     "VALIDATION_ERROR",
-                    "Unsupported HTTP method: " + method,
+                    "不支持的 HTTP 方法：" + method,
                     HttpStatus.BAD_REQUEST
             );
         }
@@ -97,13 +97,12 @@ public final class HttpToolSpec {
         return Boolean.parseBoolean(String.valueOf(v));
     }
 
-    @SuppressWarnings("unchecked")
     private static Map<String, String> parseHeaders(Object raw) {
         if (raw == null) {
             return Map.of();
         }
         if (!(raw instanceof Map<?, ?> map)) {
-            throw new ApiException("VALIDATION_ERROR", "definition.headers must be an object", HttpStatus.BAD_REQUEST);
+            throw new ApiException("VALIDATION_ERROR", "definition.headers 必须是对象", HttpStatus.BAD_REQUEST);
         }
         Map<String, String> out = new LinkedHashMap<>();
         for (Map.Entry<?, ?> e : map.entrySet()) {
@@ -134,7 +133,7 @@ public final class HttpToolSpec {
         m.appendTail(sb);
         String resolved = sb.toString();
         if (resolved.length() > MAX_URL_LENGTH) {
-            throw new ApiException("VALIDATION_ERROR", "Resolved url is too long", HttpStatus.BAD_REQUEST);
+            throw new ApiException("VALIDATION_ERROR", "解析后的 url 太长", HttpStatus.BAD_REQUEST);
         }
         return resolved;
     }
