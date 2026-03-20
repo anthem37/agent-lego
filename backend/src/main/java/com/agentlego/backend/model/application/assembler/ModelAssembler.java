@@ -1,8 +1,8 @@
 package com.agentlego.backend.model.application.assembler;
 
+import com.agentlego.backend.model.application.dto.ModelDto;
+import com.agentlego.backend.model.application.dto.ModelSummaryDto;
 import com.agentlego.backend.model.domain.ModelAggregate;
-import com.agentlego.backend.model.dto.ModelDto;
-import com.agentlego.backend.model.dto.ModelSummaryDto;
 import com.agentlego.backend.model.support.ModelConfigSummaries;
 
 /**

@@ -1,4 +1,4 @@
-package com.agentlego.backend.model.dto;
+package com.agentlego.backend.model.application.dto;
 
 import jakarta.validation.constraints.NotBlank;
 import lombok.Data;
