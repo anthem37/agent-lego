@@ -8,6 +8,7 @@ import com.agentlego.backend.model.dto.CreateModelRequest;
 import com.agentlego.backend.model.dto.TestModelResponse;
 import com.agentlego.backend.model.support.ChatModelFactory;
 import com.agentlego.backend.model.support.ModelConnectivityTester;
+import com.agentlego.backend.model.support.ModelEmbeddingClient;
 import com.agentlego.backend.runtime.definition.ModelDefinition;
 import io.agentscope.core.model.Model;
 import org.junit.jupiter.api.Test;
@@ -18,12 +19,12 @@ import org.mockito.Mockito;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.http.HttpStatus;
 
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertThrows;
-import static org.mockito.ArgumentMatchers.any;
+import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
@@ -41,11 +42,14 @@ class ModelApplicationServiceTest {
     @Mock
     private ChatModelFactory chatModelFactory;
 
+    @Mock
+    private ModelEmbeddingClient modelEmbeddingClient;
+
     @InjectMocks
     private ModelApplicationService service;
 
     @Test
-    void testModel_embeddingProvider_shouldSkipConnectionTest() {
+    void testModel_embeddingProvider_shouldRunEmbedProbe() {
         ModelAggregate agg = new ModelAggregate();
         agg.setId("m1");
         agg.setProvider("OPENAI_TEXT_EMBEDDING");
@@ -55,12 +59,16 @@ class ModelApplicationServiceTest {
         agg.setConfig(Map.of());
 
         when(modelRepository.findById("m1")).thenReturn(Optional.of(agg));
+        when(modelEmbeddingClient.embed(eq("m1"), anyList())).thenReturn(List.of(new float[]{0.1f, 0.2f, 0.3f}));
 
         TestModelResponse response = service.testModel("m1");
-        assertEquals("EMBEDDING_TEST_SKIPPED", response.getMessage());
-        assertEquals("EMBEDDING_TEST_SKIPPED", response.getRaw());
+        assertEquals("EMBEDDING", response.getTestType());
+        assertEquals("OK", response.getStatus());
+        assertEquals(3, response.getEmbeddingDimension());
+        assertNotNull(response.getLatencyMs());
 
-        verify(connectivityTester, never()).test(any());
+        verify(modelEmbeddingClient).embed(eq("m1"), anyList());
+        verify(connectivityTester, never()).testChat(any(), any(), any(), any());
         verify(chatModelFactory, never()).from(any(ModelDefinition.class));
     }
 
@@ -95,11 +103,24 @@ class ModelApplicationServiceTest {
 
         Model model = Mockito.mock(Model.class);
         when(chatModelFactory.from(any(ModelDefinition.class))).thenReturn(model);
-        when(connectivityTester.test(model)).thenReturn("OK");
+        when(connectivityTester.testChat(eq(model), isNull(), isNull(), isNull()))
+                .thenReturn(new ModelConnectivityTester.ChatConnectivityResult(
+                        "OK",
+                        15L,
+                        2,
+                        null,
+                        "Reply with a single word: OK.",
+                        256
+                ));
 
         TestModelResponse response = service.testModel("m1");
+        assertEquals("CHAT", response.getTestType());
+        assertEquals("OK", response.getStatus());
+        assertEquals(15L, response.getLatencyMs());
+        assertEquals(2, response.getStreamChunks());
         assertEquals("OK", response.getMessage());
         assertEquals("OK", response.getRaw());
+        verify(connectivityTester).testChat(eq(model), isNull(), isNull(), isNull());
     }
 
     @Test

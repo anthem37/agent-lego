@@ -11,7 +11,7 @@ import java.time.Duration;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.Mockito.when;
@@ -34,8 +34,8 @@ class ModelConnectivityTesterTest {
     }
 
     @Test
-    void test_modelStreamBlankFirstResponse_shouldReturnEmptyResponse() {
-        ModelConnectivityTester tester = new ModelConnectivityTester("prompt", 16, Duration.ofSeconds(1));
+    void testChat_firstChunkBlank_shouldBeEffectivelyEmpty() {
+        ModelConnectivityTester tester = new ModelConnectivityTester("prompt", 256, 32, Duration.ofSeconds(1));
 
         ChatResponse response = Mockito.mock(ChatResponse.class);
         TextBlock blank = TextBlock.builder().text("   ").build();
@@ -44,14 +44,14 @@ class ModelConnectivityTesterTest {
         Model model = Mockito.mock(Model.class);
         when(model.stream(anyList(), anyList(), any())).thenReturn(Flux.just(response));
 
-        String result = tester.test(model);
-        assertNotNull(result);
-        assertEquals("EMPTY_RESPONSE", result);
+        ModelConnectivityTester.ChatConnectivityResult r = tester.testChat(model, null, null, null);
+        assertTrue(r.isEffectivelyEmpty());
+        assertEquals(1, r.streamChunks());
     }
 
     @Test
-    void test_modelStreamOkResponse_shouldReturnTrimmedText() {
-        ModelConnectivityTester tester = new ModelConnectivityTester("prompt", 16, Duration.ofSeconds(1));
+    void testChat_okResponse_shouldAggregateText() {
+        ModelConnectivityTester tester = new ModelConnectivityTester("prompt", 256, 32, Duration.ofSeconds(1));
 
         ChatResponse response = Mockito.mock(ChatResponse.class);
         TextBlock ok = TextBlock.builder().text("  OK  ").build();
@@ -60,7 +60,9 @@ class ModelConnectivityTesterTest {
         Model model = Mockito.mock(Model.class);
         when(model.stream(anyList(), anyList(), any())).thenReturn(Flux.just(response));
 
-        assertEquals("OK", tester.test(model));
+        ModelConnectivityTester.ChatConnectivityResult r = tester.testChat(model, null, null, null);
+        assertEquals("OK", r.aggregatedText());
+        assertEquals("prompt", r.promptUsed());
+        assertEquals(256, r.maxTokensUsed());
     }
 }
-

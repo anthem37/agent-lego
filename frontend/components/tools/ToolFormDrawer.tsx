@@ -374,7 +374,7 @@ export function ToolFormDrawer(props: Props) {
                         <Alert
                             type={localBuiltins.length === 0 ? "warning" : "info"}
                             showIcon
-                            message="本地内置"
+                            title="本地内置"
                             description={
                                 localBuiltins.length === 0
                                     ? "未能从接口加载内置工具列表，请刷新或检查后端 /tools/meta/local-builtins。"
@@ -436,7 +436,7 @@ export function ToolFormDrawer(props: Props) {
                                 <Alert
                                     type="warning"
                                     showIcon
-                                    message="高级入参已保留（未用表格编辑）"
+                                    title="高级入参已保留（未用表格编辑）"
                                     description={
                                         <>
                                             当前工具在{" "}
@@ -481,7 +481,7 @@ export function ToolFormDrawer(props: Props) {
                                 <Alert
                                     type="info"
                                     showIcon
-                                    message="模型入参（parameters）"
+                                    title="模型入参（parameters）"
                                     description={
                                         <>
                                             此处定义模型调用工具时可见的<strong>参数名、类型、是否必填与说明</strong>，会写入{" "}
@@ -603,7 +603,7 @@ export function ToolFormDrawer(props: Props) {
                                 <Alert
                                     type="warning"
                                     showIcon
-                                    message="高级出参已保留"
+                                    title="高级出参已保留"
                                     description={
                                         <>
                                             <Typography.Text code>definition.outputSchema</Typography.Text>{" "}
@@ -643,7 +643,7 @@ export function ToolFormDrawer(props: Props) {
                                 <Alert
                                     type="info"
                                     showIcon
-                                    message="返回 / 出参（outputSchema）"
+                                    title="返回 / 出参（outputSchema）"
                                     description={
                                         <>
                                             描述<strong>响应体</strong>（多为 JSON 文本）里有哪些字段，写入{" "}
@@ -777,7 +777,7 @@ export function ToolFormDrawer(props: Props) {
                         <Alert
                             type="info"
                             showIcon
-                            message="MCP（外部 Server）"
+                            title="MCP（外部 Server）"
                             description={
                                 <>
                                     填写远端 MCP 的 <Typography.Text code>SSE</Typography.Text> 根地址（完整
@@ -822,7 +822,7 @@ export function ToolFormDrawer(props: Props) {
                                 <Alert
                                     type="warning"
                                     showIcon
-                                    message="高级入参已保留"
+                                    title="高级入参已保留"
                                     description={
                                         <>
                                             当前 <Typography.Text code>parameters</Typography.Text> /{" "}
@@ -861,7 +861,7 @@ export function ToolFormDrawer(props: Props) {
                                 <Alert
                                     type="info"
                                     showIcon
-                                    message="调用入参 Schema（可选）"
+                                    title="调用入参 Schema（可选）"
                                     description={
                                         <>
                                             写入 <Typography.Text code>definition.parameters</Typography.Text>

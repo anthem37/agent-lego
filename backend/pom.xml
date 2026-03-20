@@ -26,6 +26,8 @@
         <flyway.password>agentlego</flyway.password>
         <spring-boot.run.jvmArguments></spring-boot.run.jvmArguments>
         <agentscope.version>1.0.10</agentscope.version>
+        <!-- DashScope 文本嵌入：io.agentscope DashScopeTextEmbedding 运行时需要，agentscope 主 POM 未传递此依赖 -->
+        <dashscope-sdk.version>2.20.6</dashscope-sdk.version>
         <lombok.version>1.18.44</lombok.version>
         <!-- 须与 mcp-spring-webmvc 同发行线，否则会出现 NoSuchMethodError（如 deserializeJsonRpcMessage 签名变更） -->
         <mcp.sdk.version>0.17.0</mcp.sdk.version>
@@ -69,6 +71,11 @@
             <groupId>io.agentscope</groupId>
             <artifactId>agentscope-spring-boot-starter</artifactId>
             <version>${agentscope.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>com.alibaba</groupId>
+            <artifactId>dashscope-sdk-java</artifactId>
+            <version>${dashscope-sdk.version}</version>
         </dependency>
 
         <dependency>

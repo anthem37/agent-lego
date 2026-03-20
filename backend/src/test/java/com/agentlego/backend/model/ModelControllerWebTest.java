@@ -83,13 +83,29 @@ class ModelControllerWebTest {
 
     @Test
     void testModel_ok_shouldReturnResponse() throws Exception {
-        when(modelApplicationService.testModel("m1"))
+        when(modelApplicationService.testModel(eq("m1"), any()))
                 .thenReturn(new TestModelResponse("OK", "OK"));
 
         mockMvc.perform(post("/models/m1/test"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value("OK"))
                 .andExpect(jsonPath("$.data.message").value("OK"));
+    }
+
+    @Test
+    void testModel_withJsonBody_shouldPassRequest() throws Exception {
+        when(modelApplicationService.testModel(eq("m1"), any()))
+                .thenReturn(new TestModelResponse("OK", "OK"));
+
+        mockMvc.perform(post("/models/m1/test")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"prompt":"ping","maxTokens":64,"maxStreamChunks":8}
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.message").value("OK"));
+
+        verify(modelApplicationService).testModel(eq("m1"), any());
     }
 
     @Test

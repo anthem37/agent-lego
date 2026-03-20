@@ -10,13 +10,7 @@ import com.agentlego.backend.runtime.definition.ModelDefinition;
 import io.agentscope.core.embedding.EmbeddingModel;
 import io.agentscope.core.embedding.dashscope.DashScopeTextEmbedding;
 import io.agentscope.core.embedding.openai.OpenAITextEmbedding;
-import io.agentscope.core.model.AnthropicChatModel;
-import io.agentscope.core.model.DashScopeChatModel;
-import io.agentscope.core.model.ExecutionConfig;
-import io.agentscope.core.model.GenerateOptions;
-import io.agentscope.core.model.Model;
-import io.agentscope.core.model.OpenAIChatModel;
-import io.agentscope.core.model.ToolChoice;
+import io.agentscope.core.model.*;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Component;
 
@@ -45,6 +39,86 @@ public class ChatModelFactory {
 
     public ChatModelFactory(EnvVariables envVariables) {
         this.envVariables = envVariables;
+    }
+
+    private static Optional<ExecutionConfig> buildExecutionConfigFromRoot(Map<String, Object> rootConfig) {
+        Map<String, Object> ec = JsonMaps.getMap(rootConfig, "executionConfig");
+        if (MapUtil.isEmpty(ec)) {
+            return Optional.empty();
+        }
+        ExecutionConfig.Builder eb = ExecutionConfig.builder();
+        boolean any = false;
+        Double timeoutSec = JsonMaps.getDoubleOpt(ec, "timeoutSeconds");
+        if (timeoutSec != null && timeoutSec > 0) {
+            eb.timeout(Duration.ofMillis(Math.round(timeoutSec * 1000d)));
+            any = true;
+        }
+        Integer maxAttempts = JsonMaps.getIntOpt(ec, "maxAttempts");
+        if (maxAttempts != null && maxAttempts > 0) {
+            eb.maxAttempts(maxAttempts);
+            any = true;
+        }
+        Double initialBackoffSec = JsonMaps.getDoubleOpt(ec, "initialBackoffSeconds");
+        if (initialBackoffSec != null && initialBackoffSec >= 0) {
+            eb.initialBackoff(Duration.ofMillis(Math.round(initialBackoffSec * 1000d)));
+            any = true;
+        }
+        Double maxBackoffSec = JsonMaps.getDoubleOpt(ec, "maxBackoffSeconds");
+        if (maxBackoffSec != null && maxBackoffSec >= 0) {
+            eb.maxBackoff(Duration.ofMillis(Math.round(maxBackoffSec * 1000d)));
+            any = true;
+        }
+        Double backoffMultiplier = JsonMaps.getDoubleOpt(ec, "backoffMultiplier");
+        if (backoffMultiplier != null && backoffMultiplier > 0) {
+            eb.backoffMultiplier(backoffMultiplier);
+            any = true;
+        }
+        return any ? Optional.of(eb.build()) : Optional.empty();
+    }
+
+    /**
+     * 将平台 config 中的 {@code toolChoice} 转为 AgentScope {@link ToolChoice}。
+     * <ul>
+     *     <li>字符串：{@code auto} / {@code none} / {@code required}</li>
+     *     <li>对象：{@code { "toolName": "x" }} 或 {@code { "mode": "specific", "toolName": "x" }}</li>
+     *     <li>对象：{@code { "mode": "auto" | "none" | "required" }}</li>
+     * </ul>
+     */
+    private static ToolChoice parseToolChoice(Object raw) {
+        if (raw == null) {
+            return null;
+        }
+        if (raw instanceof String s) {
+            String t = s.trim().toLowerCase(Locale.ROOT);
+            return switch (t) {
+                case "auto" -> new ToolChoice.Auto();
+                case "none" -> new ToolChoice.None();
+                case "required" -> new ToolChoice.Required();
+                default -> null;
+            };
+        }
+        Map<String, Object> m = JsonMaps.asMap(raw);
+        if (m.isEmpty()) {
+            return null;
+        }
+        String toolNameDirect = JsonMaps.getString(m, "toolName", "").trim();
+        if (StrUtil.isNotBlank(toolNameDirect)) {
+            return new ToolChoice.Specific(toolNameDirect);
+        }
+        String mode = JsonMaps.getString(m, "mode", "").trim().toLowerCase(Locale.ROOT);
+        if ("specific".equals(mode)) {
+            String tn = JsonMaps.getString(m, "toolName", "").trim();
+            if (StrUtil.isNotBlank(tn)) {
+                return new ToolChoice.Specific(tn);
+            }
+            return null;
+        }
+        return switch (mode) {
+            case "auto" -> new ToolChoice.Auto();
+            case "none" -> new ToolChoice.None();
+            case "required" -> new ToolChoice.Required();
+            default -> null;
+        };
     }
 
     /**
@@ -216,86 +290,6 @@ public class ChatModelFactory {
             b.toolChoice(toolChoice);
         }
         return b.build();
-    }
-
-    private static Optional<ExecutionConfig> buildExecutionConfigFromRoot(Map<String, Object> rootConfig) {
-        Map<String, Object> ec = JsonMaps.getMap(rootConfig, "executionConfig");
-        if (MapUtil.isEmpty(ec)) {
-            return Optional.empty();
-        }
-        ExecutionConfig.Builder eb = ExecutionConfig.builder();
-        boolean any = false;
-        Double timeoutSec = JsonMaps.getDoubleOpt(ec, "timeoutSeconds");
-        if (timeoutSec != null && timeoutSec > 0) {
-            eb.timeout(Duration.ofMillis(Math.round(timeoutSec * 1000d)));
-            any = true;
-        }
-        Integer maxAttempts = JsonMaps.getIntOpt(ec, "maxAttempts");
-        if (maxAttempts != null && maxAttempts > 0) {
-            eb.maxAttempts(maxAttempts);
-            any = true;
-        }
-        Double initialBackoffSec = JsonMaps.getDoubleOpt(ec, "initialBackoffSeconds");
-        if (initialBackoffSec != null && initialBackoffSec >= 0) {
-            eb.initialBackoff(Duration.ofMillis(Math.round(initialBackoffSec * 1000d)));
-            any = true;
-        }
-        Double maxBackoffSec = JsonMaps.getDoubleOpt(ec, "maxBackoffSeconds");
-        if (maxBackoffSec != null && maxBackoffSec >= 0) {
-            eb.maxBackoff(Duration.ofMillis(Math.round(maxBackoffSec * 1000d)));
-            any = true;
-        }
-        Double backoffMultiplier = JsonMaps.getDoubleOpt(ec, "backoffMultiplier");
-        if (backoffMultiplier != null && backoffMultiplier > 0) {
-            eb.backoffMultiplier(backoffMultiplier);
-            any = true;
-        }
-        return any ? Optional.of(eb.build()) : Optional.empty();
-    }
-
-    /**
-     * 将平台 config 中的 {@code toolChoice} 转为 AgentScope {@link ToolChoice}。
-     * <ul>
-     *     <li>字符串：{@code auto} / {@code none} / {@code required}</li>
-     *     <li>对象：{@code { "toolName": "x" }} 或 {@code { "mode": "specific", "toolName": "x" }}</li>
-     *     <li>对象：{@code { "mode": "auto" | "none" | "required" }}</li>
-     * </ul>
-     */
-    private static ToolChoice parseToolChoice(Object raw) {
-        if (raw == null) {
-            return null;
-        }
-        if (raw instanceof String s) {
-            String t = s.trim().toLowerCase(Locale.ROOT);
-            return switch (t) {
-                case "auto" -> new ToolChoice.Auto();
-                case "none" -> new ToolChoice.None();
-                case "required" -> new ToolChoice.Required();
-                default -> null;
-            };
-        }
-        Map<String, Object> m = JsonMaps.asMap(raw);
-        if (m.isEmpty()) {
-            return null;
-        }
-        String toolNameDirect = JsonMaps.getString(m, "toolName", "").trim();
-        if (StrUtil.isNotBlank(toolNameDirect)) {
-            return new ToolChoice.Specific(toolNameDirect);
-        }
-        String mode = JsonMaps.getString(m, "mode", "").trim().toLowerCase(Locale.ROOT);
-        if ("specific".equals(mode)) {
-            String tn = JsonMaps.getString(m, "toolName", "").trim();
-            if (StrUtil.isNotBlank(tn)) {
-                return new ToolChoice.Specific(tn);
-            }
-            return null;
-        }
-        return switch (mode) {
-            case "auto" -> new ToolChoice.Auto();
-            case "none" -> new ToolChoice.None();
-            case "required" -> new ToolChoice.Required();
-            default -> null;
-        };
     }
 
     /**

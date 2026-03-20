@@ -45,3 +45,11 @@ mybatis:
   configuration:
     map-underscore-to-camel-case: true
 
+# 模型连通性测试（聊天：流式采集 chunk 上限与默认 maxTokens）
+model:
+  connectivity:
+    testPrompt: "Reply with a single word: OK."
+    maxTokens: 256
+    maxStreamChunks: 32
+    timeout: PT2M
+

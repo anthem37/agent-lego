@@ -13,7 +13,9 @@ import java.util.Locale;
  * - 这里的能力描述是“平台侧约定”，不强绑定具体厂商全部参数，避免过度耦合。
  */
 public enum ModelProvider {
-    /** 与 AgentScope Chat 模型及 {@code GenerateOptions} 对齐的可序列化 config 键。 */
+    /**
+     * 与 AgentScope Chat 模型及 {@code GenerateOptions} 对齐的可序列化 config 键。
+     */
     DASHSCOPE("DASHSCOPE", List.of(
             "temperature", "topP", "topK", "maxTokens", "seed",
             "frequencyPenalty", "presencePenalty",

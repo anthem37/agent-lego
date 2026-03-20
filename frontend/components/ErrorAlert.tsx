@@ -28,7 +28,7 @@ export function ErrorAlert(props: { error: unknown; title?: string }) {
             <Alert
                 type="error"
                 showIcon
-                message={title}
+                title={title}
                 description={
                     <div>
                         <div>{props.error.message}</div>
@@ -41,6 +41,6 @@ export function ErrorAlert(props: { error: unknown; title?: string }) {
         );
     }
 
-    return <Alert type="error" showIcon message={title} description={String(props.error)}/>;
+    return <Alert type="error" showIcon title={title} description={String(props.error)}/>;
 }
 

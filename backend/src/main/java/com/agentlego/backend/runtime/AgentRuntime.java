@@ -33,6 +33,13 @@ public class AgentRuntime {
         this.chatModelFactory = chatModelFactory;
     }
 
+    private static Msg userMessage(String userText) {
+        return Msg.builder()
+                .name(USER_MESSAGE_NAME)
+                .textContent(userText)
+                .build();
+    }
+
     public Mono<Msg> call(AgentDefinition agentDef, String userText, Toolkit toolkit) {
         Objects.requireNonNull(agentDef, "agentDef");
         Objects.requireNonNull(userText, "userText");
@@ -47,13 +54,6 @@ public class AgentRuntime {
 
         ReActAgent agent = buildAgent(agentDef, toolkit);
         return agent.stream(userMessage(userText));
-    }
-
-    private static Msg userMessage(String userText) {
-        return Msg.builder()
-                .name(USER_MESSAGE_NAME)
-                .textContent(userText)
-                .build();
     }
 
     private ReActAgent buildAgent(AgentDefinition agentDef, Toolkit toolkit) {

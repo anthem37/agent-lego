@@ -73,6 +73,11 @@ public class WorkflowApplicationService {
         this.executor = executor;
     }
 
+    private static String exceptionMessage(Throwable e) {
+        String m = e.getMessage();
+        return (m == null || m.isBlank()) ? e.getClass().getSimpleName() : m;
+    }
+
     public String createWorkflow(CreateWorkflowRequest req) {
         if (req.getDefinition() == null) {
             req.setDefinition(Map.of());
@@ -157,11 +162,6 @@ public class WorkflowApplicationService {
                 .orElseThrow(() -> new ApiException("NOT_FOUND", "工作流未找到", HttpStatus.NOT_FOUND));
         Map<String, Object> def = workflow.getDefinition() == null ? Map.of() : workflow.getDefinition();
         return buildWorkflowOutput(def, req);
-    }
-
-    private static String exceptionMessage(Throwable e) {
-        String m = e.getMessage();
-        return (m == null || m.isBlank()) ? e.getClass().getSimpleName() : m;
     }
 
     /**

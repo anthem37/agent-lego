@@ -162,7 +162,7 @@ export function McpBatchImportModal(props: Props) {
                 <Alert
                     type="info"
                     showIcon
-                    message="说明"
+                    title="说明"
                     description={
                         <>
                             填写外部 MCP 的 SSE 根 URL，先「拉取列表」再勾选导入。平台会为每条工具创建 MCP

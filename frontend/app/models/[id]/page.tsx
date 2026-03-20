@@ -1,6 +1,6 @@
 "use client";
 
-import {Button, Descriptions, Popconfirm, Space, Typography} from "antd";
+import {Alert, Button, Descriptions, Input, InputNumber, Popconfirm, Space, Tag, Typography} from "antd";
 import Link from "next/link";
 import {useRouter} from "next/navigation";
 import React from "react";
@@ -26,8 +26,16 @@ type ModelDto = {
 };
 
 type TestModelResponse = {
+    testType?: string;
+    status?: string;
+    latencyMs?: number;
+    streamChunks?: number;
+    promptUsed?: string;
+    maxTokensUsed?: number;
     message: string;
     raw: string;
+    embeddingDimension?: number;
+    embeddingPreview?: string;
 };
 
 export default function ModelDetailPage(props: { params: Promise<{ id: string }> }) {
@@ -39,6 +47,9 @@ export default function ModelDetailPage(props: { params: Promise<{ id: string }>
     const [testing, setTesting] = React.useState(false);
     const [deleting, setDeleting] = React.useState(false);
     const [error, setError] = React.useState<unknown>(null);
+    const [testPrompt, setTestPrompt] = React.useState("");
+    const [testMaxTokens, setTestMaxTokens] = React.useState<number | null>(null);
+    const [testMaxStreamChunks, setTestMaxStreamChunks] = React.useState<number | null>(null);
 
     React.useEffect(() => {
         let cancelled = false;
@@ -80,9 +91,10 @@ export default function ModelDetailPage(props: { params: Promise<{ id: string }>
         };
     }, [modelId]);
 
-    const canConnectivityTest =
-        model != null &&
-        new Set(["DASHSCOPE", "OPENAI", "ANTHROPIC"]).has(model.provider.trim().toUpperCase());
+    const isChatProvider =
+        model != null && new Set(["DASHSCOPE", "OPENAI", "ANTHROPIC"]).has(model.provider.trim().toUpperCase());
+    const isEmbeddingProvider = model != null && model.provider.toUpperCase().includes("EMBEDDING");
+    const canRunModelTest = isChatProvider || isEmbeddingProvider;
 
     async function onTest() {
         if (!model) {
@@ -91,7 +103,20 @@ export default function ModelDetailPage(props: { params: Promise<{ id: string }>
         setError(null);
         setTesting(true);
         try {
-            const data = await request<TestModelResponse>(`/models/${model.id}/test`, {method: "POST"});
+            const body: Record<string, unknown> = {};
+            if (testPrompt.trim()) {
+                body.prompt = testPrompt.trim();
+            }
+            if (testMaxTokens != null && testMaxTokens > 0) {
+                body.maxTokens = testMaxTokens;
+            }
+            if (testMaxStreamChunks != null && testMaxStreamChunks > 0) {
+                body.maxStreamChunks = testMaxStreamChunks;
+            }
+            const data = await request<TestModelResponse>(`/models/${model.id}/test`, {
+                method: "POST",
+                body,
+            });
             setTestResult(data);
         } catch (e) {
             setError(e);
@@ -222,30 +247,145 @@ export default function ModelDetailPage(props: { params: Promise<{ id: string }>
                     </SectionCard>
                 ) : null}
 
-                <SectionCard title="连通性测试">
+                <SectionCard title="模型测试（连通性 / 能力探测）">
                     <Space orientation="vertical" size={12} style={{width: "100%"}}>
                         <Typography.Paragraph type="secondary" style={{marginBottom: 0}}>
-                            向当前模型发起一次最小调用，用于验证密钥与网络是否可用。聊天模型配置会映射为 AgentScope{" "}
-                            <Typography.Text code>GenerateOptions</Typography.Text>（含流式、惩罚、toolChoice、executionConfig
-                            等）；后端对 <Typography.Text code>DASHSCOPE</Typography.Text>/
-                            <Typography.Text code>OPENAI</Typography.Text>/
-                            <Typography.Text code>ANTHROPIC</Typography.Text> 支持连通性测试；Embedding provider 会返回跳过结果。
+                            <b>聊天模型</b>：按当前配置走 AgentScope 流式接口，默认采集多条 chunk（可限制条数），并统计耗时。
+                            留空则使用服务端默认提示词与 maxTokens（见 <Typography.Text
+                            code>application.yml</Typography.Text>{" "}
+                            <Typography.Text code>model.connectivity</Typography.Text>）。
                         </Typography.Paragraph>
+                        <Typography.Paragraph type="secondary" style={{marginBottom: 0}}>
+                            <b>Embedding 模型</b>：对下方文本做一次真实 embed，返回维度与向量前几维预览；失败时返回{" "}
+                            <Typography.Text code>status=ERROR</Typography.Text>（HTTP 仍为 200，便于在页面查看原因）。
+                        </Typography.Paragraph>
+                        {!canRunModelTest && model ? (
+                            <Alert type="warning" showIcon title="当前提供方不支持在线测试"/>
+                        ) : null}
+                        <div>
+                            <Typography.Text strong>探测文本（prompt）</Typography.Text>
+                            <Typography.Paragraph type="secondary" style={{marginBottom: 6, marginTop: 4}}>
+                                聊天：作为 user 消息；Embedding：作为待向量化的输入。最长 8000 字符。
+                            </Typography.Paragraph>
+                            <Input.TextArea
+                                rows={3}
+                                placeholder={
+                                    isEmbeddingProvider
+                                        ? "留空则使用默认句子：AgentLego embedding connectivity test"
+                                        : "留空则使用服务端默认英文短提示（如 Reply with a single word: OK.）"
+                                }
+                                value={testPrompt}
+                                onChange={(e) => setTestPrompt(e.target.value)}
+                                maxLength={8000}
+                                showCount
+                            />
+                        </div>
+                        {isChatProvider ? (
+                            <Space wrap size="middle">
+                                <div>
+                                    <Typography.Text strong>maxTokens</Typography.Text>
+                                    <Typography.Paragraph type="secondary" style={{marginBottom: 4, marginTop: 2}}>
+                                        覆盖本次测试；留空用服务端默认
+                                    </Typography.Paragraph>
+                                    <InputNumber
+                                        min={1}
+                                        max={8192}
+                                        placeholder="默认"
+                                        value={testMaxTokens ?? undefined}
+                                        onChange={(v) => setTestMaxTokens(v === null ? null : Number(v))}
+                                    />
+                                </div>
+                                <div>
+                                    <Typography.Text strong>maxStreamChunks</Typography.Text>
+                                    <Typography.Paragraph type="secondary" style={{marginBottom: 4, marginTop: 2}}>
+                                        最多采集流式响应条数（1–128）
+                                    </Typography.Paragraph>
+                                    <InputNumber
+                                        min={1}
+                                        max={128}
+                                        placeholder="默认"
+                                        value={testMaxStreamChunks ?? undefined}
+                                        onChange={(v) => setTestMaxStreamChunks(v === null ? null : Number(v))}
+                                    />
+                                </div>
+                            </Space>
+                        ) : null}
                         <Button
                             type="primary"
                             onClick={() => void onTest()}
                             loading={testing}
-                            disabled={!canConnectivityTest}
+                            disabled={!canRunModelTest}
                         >
-                            执行连通性测试
+                            执行测试
                         </Button>
                         {testResult ? (
-                            <Descriptions column={1} size="small" bordered>
-                                <Descriptions.Item label="返回消息">{testResult.message}</Descriptions.Item>
-                                <Descriptions.Item label="原始内容（raw）">
-                                    <pre style={{margin: 0, whiteSpace: "pre-wrap"}}>{testResult.raw}</pre>
-                                </Descriptions.Item>
-                            </Descriptions>
+                            <Space orientation="vertical" size={12} style={{width: "100%"}}>
+                                {testResult.status === "ERROR" ? (
+                                    <Alert type="error" showIcon title={testResult.message}/>
+                                ) : testResult.status === "EMPTY" ? (
+                                    <Alert type="warning" showIcon title="模型返回空文本（EMPTY）"/>
+                                ) : (
+                                    <Alert type="success" showIcon title={testResult.message}/>
+                                )}
+                                <Descriptions column={1} size="small" bordered>
+                                    {testResult.testType ? (
+                                        <Descriptions.Item label="类型">
+                                            <Tag>{testResult.testType}</Tag>
+                                        </Descriptions.Item>
+                                    ) : null}
+                                    {testResult.status ? (
+                                        <Descriptions.Item label="状态">
+                                            <Tag
+                                                color={
+                                                    testResult.status === "OK"
+                                                        ? "green"
+                                                        : testResult.status === "ERROR"
+                                                            ? "red"
+                                                            : "orange"
+                                                }
+                                            >
+                                                {testResult.status}
+                                            </Tag>
+                                        </Descriptions.Item>
+                                    ) : null}
+                                    {testResult.latencyMs != null ? (
+                                        <Descriptions.Item label="耗时（ms）">{testResult.latencyMs}</Descriptions.Item>
+                                    ) : null}
+                                    {testResult.streamChunks != null ? (
+                                        <Descriptions.Item
+                                            label="流式 chunk 数">{testResult.streamChunks}</Descriptions.Item>
+                                    ) : null}
+                                    {testResult.maxTokensUsed != null ? (
+                                        <Descriptions.Item
+                                            label="本次 maxTokens">{testResult.maxTokensUsed}</Descriptions.Item>
+                                    ) : null}
+                                    {testResult.promptUsed ? (
+                                        <Descriptions.Item label="实际发送的 prompt">
+                                            <pre style={{margin: 0, whiteSpace: "pre-wrap", fontSize: 12}}>
+                                                {testResult.promptUsed}
+                                            </pre>
+                                        </Descriptions.Item>
+                                    ) : null}
+                                    {testResult.embeddingDimension != null ? (
+                                        <Descriptions.Item label="向量维度">
+                                            {testResult.embeddingDimension}
+                                        </Descriptions.Item>
+                                    ) : null}
+                                    {testResult.embeddingPreview ? (
+                                        <Descriptions.Item label="向量预览">
+                                            <Typography.Text code copyable>
+                                                {testResult.embeddingPreview}
+                                            </Typography.Text>
+                                        </Descriptions.Item>
+                                    ) : null}
+                                    <Descriptions.Item label="摘要 / message">
+                                        {testResult.message}
+                                    </Descriptions.Item>
+                                    <Descriptions.Item label="原始输出（raw）">
+                                        <pre style={{margin: 0, whiteSpace: "pre-wrap"}}>{testResult.raw}</pre>
+                                    </Descriptions.Item>
+                                </Descriptions>
+                            </Space>
                         ) : (
                             <Typography.Text type="secondary">尚未执行</Typography.Text>
                         )}

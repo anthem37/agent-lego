@@ -84,9 +84,17 @@ public class ModelController {
         return ApiResponse.ok(modelService.getModel(id));
     }
 
+    /**
+     * 模型测试：聊天模型走流式探测；Embedding 走单次 embed。
+     * <p>
+     * 请求体可选：{@code prompt}、{@code maxTokens}、{@code maxStreamChunks}。
+     */
     @PostMapping("/{id}/test")
-    public ApiResponse<TestModelResponse> test(@PathVariable("id") String id) {
-        return ApiResponse.ok(modelService.testModel(id));
+    public ApiResponse<TestModelResponse> test(
+            @PathVariable("id") String id,
+            @Valid @RequestBody(required = false) TestModelRequest body
+    ) {
+        return ApiResponse.ok(modelService.testModel(id, body));
     }
 }
 
