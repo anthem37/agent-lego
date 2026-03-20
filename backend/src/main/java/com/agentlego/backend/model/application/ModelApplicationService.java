@@ -18,30 +18,33 @@ import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 
-@Service
 /**
  * 模型应用服务（Application Service）。
- *
+ * <p>
  * 职责：
  * - 创建/查询模型配置；
  * - 连通性测试（通过 ChatModelFactory + ModelConnectivityTester，支持全部 chat provider）。
- *
+ * <p>
  * 注意：
  * - apiKeyCipher 字段名表示“应保存密文/引用”，当前版本仍可能为明文（MVP）。
  */
+@Service
 public class ModelApplicationService {
     private final ModelRepository modelRepository;
     private final AgentRepository agentRepository;
     private final ModelConnectivityTester connectivityTester;
+    private final ChatModelFactory chatModelFactory;
 
     public ModelApplicationService(
             ModelRepository modelRepository,
             AgentRepository agentRepository,
-            ModelConnectivityTester connectivityTester
+            ModelConnectivityTester connectivityTester,
+            ChatModelFactory chatModelFactory
     ) {
         this.modelRepository = modelRepository;
         this.agentRepository = agentRepository;
         this.connectivityTester = connectivityTester;
+        this.chatModelFactory = chatModelFactory;
     }
 
     private static ModelDefinition toModelDefinition(ModelAggregate agg) {
@@ -172,7 +175,7 @@ public class ModelApplicationService {
         }
 
         ModelDefinition def = toModelDefinition(agg);
-        Model model = ChatModelFactory.from(def);
+        Model model = chatModelFactory.from(def);
         String text = connectivityTester.test(model);
         return new TestModelResponse(text, text);
     }

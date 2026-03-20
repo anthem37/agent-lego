@@ -4,12 +4,14 @@ import cn.hutool.core.util.StrUtil;
 import com.agentlego.backend.api.ApiException;
 import com.agentlego.backend.common.JsonMaps;
 import com.agentlego.backend.model.domain.ModelAggregate;
+import com.agentlego.backend.model.domain.ModelProvider;
 import com.agentlego.backend.runtime.definition.ModelDefinition;
 import io.agentscope.core.embedding.EmbeddingModel;
 import io.agentscope.core.embedding.dashscope.DashScopeTextEmbedding;
 import io.agentscope.core.embedding.openai.OpenAITextEmbedding;
 import io.agentscope.core.model.*;
 import org.springframework.http.HttpStatus;
+import org.springframework.stereotype.Component;
 
 import java.util.Locale;
 import java.util.Map;
@@ -23,33 +25,51 @@ import java.util.Map;
  *   <li>{@link #createEmbeddingModel(ModelAggregate)}：Embedding 模型，用于 KB 向量化</li>
  * </ul>
  */
-public final class ChatModelFactory {
+@Component
+public class ChatModelFactory {
 
-    private ChatModelFactory() {
+    private static final String DASHSCOPE_API_KEY_ENV = "DASHSCOPE_API_KEY";
+    private static final String OPENAI_API_KEY_ENV = "OPENAI_API_KEY";
+    private static final String ANTHROPIC_API_KEY_ENV = "ANTHROPIC_API_KEY";
+
+    private final EnvVariables envVariables;
+
+    public ChatModelFactory(EnvVariables envVariables) {
+        this.envVariables = envVariables;
     }
 
     /**
      * Chat 模型：将 {@link ModelDefinition} 转为 AgentScope {@link Model}。
      */
-    public static Model from(ModelDefinition modelDef) {
+    public Model from(ModelDefinition modelDef) {
         if (modelDef == null) {
             throw new IllegalArgumentException("modelDef is required");
         }
-        String provider = StrUtil.blankToDefault(StrUtil.trim(modelDef.provider()), "").toUpperCase();
+        String providerRaw = StrUtil.blankToDefault(StrUtil.trim(modelDef.provider()), "")
+                .toUpperCase(Locale.ROOT);
+        ModelProvider provider = ModelProvider.from(providerRaw);
+        if (!provider.isChatProvider()) {
+            throw new IllegalArgumentException("provider is not a chat model: " + providerRaw);
+        }
+
         Map<String, Object> config = modelDef.config() == null ? Map.of() : modelDef.config();
         String apiKey = resolveApiKey(provider, modelDef.apiKey(), config);
         String baseUrl = StrUtil.trimToEmpty(modelDef.baseUrl());
         GenerateOptions defaultOptions = buildGenerateOptions(config);
 
-        return switch (provider) {
-            case "DASHSCOPE" -> buildDashScope(modelDef, apiKey, baseUrl, defaultOptions);
-            case "OPENAI" -> buildOpenAI(modelDef, apiKey, baseUrl, defaultOptions);
-            case "ANTHROPIC" -> buildAnthropic(modelDef, apiKey, baseUrl, defaultOptions);
-            default -> throw new IllegalArgumentException("Unsupported model provider: " + modelDef.provider());
-        };
+        if (provider == ModelProvider.DASHSCOPE) {
+            return buildDashScope(modelDef, apiKey, baseUrl, defaultOptions);
+        }
+        if (provider == ModelProvider.OPENAI) {
+            return buildOpenAI(modelDef, apiKey, baseUrl, defaultOptions, config);
+        }
+        if (provider == ModelProvider.ANTHROPIC) {
+            return buildAnthropic(modelDef, apiKey, baseUrl, defaultOptions);
+        }
+        throw new IllegalArgumentException("Unsupported model provider: " + providerRaw);
     }
 
-    private static Model buildDashScope(ModelDefinition def, String apiKey, String baseUrl, GenerateOptions opts) {
+    private Model buildDashScope(ModelDefinition def, String apiKey, String baseUrl, GenerateOptions opts) {
         if (StrUtil.isBlank(apiKey)) {
             throw new IllegalArgumentException("DASHSCOPE apiKey is required");
         }
@@ -63,7 +83,11 @@ public final class ChatModelFactory {
         return b.build();
     }
 
-    private static Model buildOpenAI(ModelDefinition def, String apiKey, String baseUrl, GenerateOptions opts) {
+    private Model buildOpenAI(ModelDefinition def,
+                              String apiKey,
+                              String baseUrl,
+                              GenerateOptions opts,
+                              Map<String, Object> config) {
         if (StrUtil.isBlank(apiKey)) {
             throw new IllegalArgumentException("OPENAI apiKey is required");
         }
@@ -74,14 +98,14 @@ public final class ChatModelFactory {
         if (!baseUrl.isBlank()) {
             b.baseUrl(baseUrl);
         }
-        String endpointPath = JsonMaps.getString(def.config() == null ? Map.of() : def.config(), "endpointPath", "");
+        String endpointPath = JsonMaps.getString(config, "endpointPath", "");
         if (StrUtil.isNotBlank(endpointPath)) {
             b.endpointPath(endpointPath);
         }
         return b.build();
     }
 
-    private static Model buildAnthropic(ModelDefinition def, String apiKey, String baseUrl, GenerateOptions opts) {
+    private Model buildAnthropic(ModelDefinition def, String apiKey, String baseUrl, GenerateOptions opts) {
         if (StrUtil.isBlank(apiKey)) {
             throw new IllegalArgumentException("ANTHROPIC apiKey is required");
         }
@@ -95,7 +119,7 @@ public final class ChatModelFactory {
         return b.build();
     }
 
-    private static String resolveApiKey(String provider, String explicitApiKey, Map<String, Object> config) {
+    private String resolveApiKey(ModelProvider provider, String explicitApiKey, Map<String, Object> config) {
         String key = StrUtil.trimToEmpty(explicitApiKey);
         if (StrUtil.isNotBlank(key)) {
             return key;
@@ -104,15 +128,19 @@ public final class ChatModelFactory {
         if (StrUtil.isNotBlank(configApiKey)) {
             return configApiKey;
         }
-        return switch (provider) {
-            case "DASHSCOPE" -> StrUtil.trimToEmpty(System.getenv("DASHSCOPE_API_KEY"));
-            case "OPENAI" -> StrUtil.trimToEmpty(System.getenv("OPENAI_API_KEY"));
-            case "ANTHROPIC" -> StrUtil.trimToEmpty(System.getenv("ANTHROPIC_API_KEY"));
-            default -> "";
-        };
+        if (provider == ModelProvider.DASHSCOPE) {
+            return StrUtil.trimToEmpty(envVariables.get(DASHSCOPE_API_KEY_ENV));
+        }
+        if (provider == ModelProvider.OPENAI) {
+            return StrUtil.trimToEmpty(envVariables.get(OPENAI_API_KEY_ENV));
+        }
+        if (provider == ModelProvider.ANTHROPIC) {
+            return StrUtil.trimToEmpty(envVariables.get(ANTHROPIC_API_KEY_ENV));
+        }
+        return "";
     }
 
-    private static GenerateOptions buildGenerateOptions(Map<String, Object> config) {
+    private GenerateOptions buildGenerateOptions(Map<String, Object> config) {
         Map<String, Object> safe = config == null ? Map.of() : config;
         GenerateOptions.Builder b = GenerateOptions.builder();
 
@@ -158,26 +186,29 @@ public final class ChatModelFactory {
     /**
      * Embedding 模型：将 {@link ModelAggregate} 转为 AgentScope {@link EmbeddingModel}。
      */
-    public static EmbeddingModel createEmbeddingModel(ModelAggregate model) {
+    public EmbeddingModel createEmbeddingModel(ModelAggregate model) {
         if (model == null) {
             throw new ApiException("VALIDATION_ERROR", "model aggregate is required", HttpStatus.BAD_REQUEST);
         }
-        String provider = StrUtil.blankToDefault(StrUtil.trim(model.getProvider()), "").toUpperCase(Locale.ROOT);
-        if (!provider.endsWith("_EMBEDDING")) {
+        String providerRaw = StrUtil.blankToDefault(StrUtil.trim(model.getProvider()), "")
+                .toUpperCase(Locale.ROOT);
+        ModelProvider provider = ModelProvider.from(providerRaw);
+        if (provider.isChatProvider()) {
             throw new ApiException(
                     "VALIDATION_ERROR",
-                    "embeddingModelId must point to an embedding provider model; got " + provider,
+                    "embeddingModelId must point to an embedding provider model; got " + providerRaw,
                     HttpStatus.BAD_REQUEST
             );
         }
+
         String apiKey = StrUtil.trimToEmpty(model.getApiKeyCipher());
-        String safeApiKey = apiKey.isBlank() ? null : apiKey;
+        String safeApiKey = apiKey.isBlank() ? null : apiKey.trim();
         Map<String, Object> cfg = model.getConfig() == null ? Map.of() : model.getConfig();
         String encodingFormat = JsonMaps.getString(cfg, "encodingFormat", "");
         String baseUrl = StrUtil.trimToEmpty(model.getBaseUrl());
         String baseUrlOrNull = baseUrl.isBlank() ? null : baseUrl;
 
-        if ("OPENAI_TEXT_EMBEDDING".equals(provider)) {
+        if (provider == ModelProvider.OPENAI_TEXT_EMBEDDING) {
             Integer d = JsonMaps.getIntOpt(cfg, "dimensions");
             int dimensions = (d != null && d > 0) ? d : 1536;
             if (StrUtil.isNotBlank(encodingFormat) && !"float".equalsIgnoreCase(encodingFormat)) {
@@ -189,14 +220,14 @@ public final class ChatModelFactory {
             }
             return new OpenAITextEmbedding(safeApiKey, model.getModelKey(), dimensions, null, baseUrlOrNull);
         }
-        if ("DASHSCOPE_TEXT_EMBEDDING".equals(provider)) {
+        if (provider == ModelProvider.DASHSCOPE_TEXT_EMBEDDING) {
             Integer d = JsonMaps.getIntOpt(cfg, "dimensions");
             int dimensions = (d != null && d > 0) ? d : 1024;
             return new DashScopeTextEmbedding(safeApiKey, model.getModelKey(), dimensions, null, baseUrlOrNull);
         }
         throw new ApiException(
                 "UNSUPPORTED_MODEL_PROVIDER",
-                "unsupported embedding provider: " + provider,
+                "unsupported embedding provider: " + providerRaw,
                 HttpStatus.BAD_REQUEST
         );
     }

@@ -25,9 +25,11 @@ public class ModelEmbeddingClient {
     private static final Duration BLOCK_TIMEOUT = Duration.ofSeconds(120);
 
     private final ModelRepository modelRepository;
+    private final ChatModelFactory chatModelFactory;
 
-    public ModelEmbeddingClient(ModelRepository modelRepository) {
+    public ModelEmbeddingClient(ModelRepository modelRepository, ChatModelFactory chatModelFactory) {
         this.modelRepository = modelRepository;
+        this.chatModelFactory = chatModelFactory;
     }
 
     public List<float[]> embed(String embeddingModelId, List<String> texts) {
@@ -43,7 +45,7 @@ public class ModelEmbeddingClient {
                         HttpStatus.NOT_FOUND
                 ));
 
-        EmbeddingModel embedder = ChatModelFactory.createEmbeddingModel(model);
+        EmbeddingModel embedder = chatModelFactory.createEmbeddingModel(model);
 
         List<float[]> out = new ArrayList<>(texts.size());
         for (String text : texts) {

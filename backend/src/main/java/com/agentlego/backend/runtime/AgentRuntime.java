@@ -25,6 +25,12 @@ import java.util.Objects;
 @Component
 public class AgentRuntime {
 
+    private final ChatModelFactory chatModelFactory;
+
+    public AgentRuntime(ChatModelFactory chatModelFactory) {
+        this.chatModelFactory = chatModelFactory;
+    }
+
     public Mono<Msg> call(AgentDefinition agentDef, String userText, Toolkit toolkit) {
         Objects.requireNonNull(agentDef, "agentDef");
         Objects.requireNonNull(userText, "userText");
@@ -62,7 +68,7 @@ public class AgentRuntime {
         ReActAgent.Builder builder = ReActAgent.builder()
                 .name(agentDef.name())
                 .sysPrompt(agentDef.systemPrompt())
-                .model(ChatModelFactory.from(modelDef))
+                .model(chatModelFactory.from(modelDef))
                 .toolkit(effectiveToolkit)
                 .memory(memory);
 

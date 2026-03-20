@@ -81,7 +81,8 @@ export default function ModelDetailPage(props: { params: Promise<{ id: string }>
     }, [modelId]);
 
     const canConnectivityTest =
-        model != null && model.provider.trim().toUpperCase() === "DASHSCOPE";
+        model != null &&
+        new Set(["DASHSCOPE", "OPENAI", "ANTHROPIC"]).has(model.provider.trim().toUpperCase());
 
     async function onTest() {
         if (!model) {
@@ -224,9 +225,9 @@ export default function ModelDetailPage(props: { params: Promise<{ id: string }>
                 <SectionCard title="连通性测试">
                     <Space orientation="vertical" size={12} style={{width: "100%"}}>
                         <Typography.Paragraph type="secondary" style={{marginBottom: 0}}>
-                            向当前模型发起一次最小调用，用于验证密钥与网络是否可用。当前后端仅对{" "}
-                            <Typography.Text code>DASHSCOPE</Typography.Text>{" "}
-                            提供方实现连通性测试；其他提供方调用接口将返回 400。
+                            向当前模型发起一次最小调用，用于验证密钥与网络是否可用。后端对聊天 provider{" "}
+                            <Typography.Text code>DASHSCOPE</Typography.Text>/<Typography.Text code>OPENAI</Typography.Text>/
+                            <Typography.Text code>ANTHROPIC</Typography.Text> 支持连通性测试；embedding provider 会返回跳过结果。
                         </Typography.Paragraph>
                         <Button
                             type="primary"
