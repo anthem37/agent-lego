@@ -3,7 +3,10 @@ package com.agentlego.backend.tool;
 import com.agentlego.backend.api.GlobalExceptionHandler;
 import com.agentlego.backend.tool.application.ToolApplicationService;
 import com.agentlego.backend.tool.application.dto.LocalBuiltinToolMetaDto;
+import com.agentlego.backend.tool.application.dto.RemoteMcpToolMetaDto;
+import com.agentlego.backend.tool.application.dto.BatchImportMcpToolsResponse;
 import com.agentlego.backend.tool.application.dto.ToolDto;
+import com.agentlego.backend.tool.application.dto.ToolPageDto;
 import com.agentlego.backend.tool.application.dto.ToolReferencesDto;
 import com.agentlego.backend.tool.application.dto.ToolTypeMetaDto;
 import com.agentlego.backend.tool.application.dto.UpdateToolRequest;
@@ -21,6 +24,7 @@ import java.util.Map;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
@@ -64,7 +68,7 @@ class ToolControllerWebTest {
     }
 
     @Test
-    void listTools_ok_shouldReturnList() throws Exception {
+    void listTools_ok_shouldReturnPage() throws Exception {
         ToolDto dto = new ToolDto();
         dto.setId("t1");
         dto.setToolType("LOCAL");
@@ -72,12 +76,22 @@ class ToolControllerWebTest {
         dto.setDefinition(Map.of());
         dto.setCreatedAt(Instant.parse("2020-01-01T00:00:00Z"));
 
-        when(toolApplicationService.listTools()).thenReturn(List.of(dto));
+        when(toolApplicationService.listToolsPage(1, 50, null)).thenReturn(
+                ToolPageDto.builder()
+                        .items(List.of(dto))
+                        .total(1)
+                        .page(1)
+                        .pageSize(50)
+                        .build()
+        );
 
         mockMvc.perform(get("/tools"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value("OK"))
-                .andExpect(jsonPath("$.data[0].id").value("t1"));
+                .andExpect(jsonPath("$.data.items[0].id").value("t1"))
+                .andExpect(jsonPath("$.data.total").value(1));
+
+        verify(toolApplicationService).listToolsPage(eq(1), eq(50), isNull());
     }
 
     @Test
@@ -107,6 +121,44 @@ class ToolControllerWebTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value("OK"))
                 .andExpect(jsonPath("$.data[0].name").value("echo"));
+    }
+
+    @Test
+    void remoteMcpTools_ok_shouldReturnList() throws Exception {
+        when(toolApplicationService.listRemoteMcpTools("http://127.0.0.1:9/mcp", false))
+                .thenReturn(List.of(RemoteMcpToolMetaDto.builder().name("t1").description("d").build()));
+
+        mockMvc.perform(get("/tools/meta/mcp/remote-tools")
+                        .param("endpoint", "http://127.0.0.1:9/mcp"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value("OK"))
+                .andExpect(jsonPath("$.data[0].name").value("t1"));
+
+        verify(toolApplicationService).listRemoteMcpTools("http://127.0.0.1:9/mcp", false);
+    }
+
+    @Test
+    void batchImportMcpTools_ok_shouldReturnResult() throws Exception {
+        BatchImportMcpToolsResponse resp = BatchImportMcpToolsResponse.builder()
+                .created(List.of(BatchImportMcpToolsResponse.Created.builder()
+                        .id("id1")
+                        .name("mcp_t1")
+                        .remoteToolName("t1")
+                        .build()))
+                .skipped(List.of())
+                .build();
+        when(toolApplicationService.batchImportMcpTools(any())).thenReturn(resp);
+
+        mockMvc.perform(post("/tools/meta/mcp/batch-import")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"endpoint":"http://127.0.0.1:9/mcp","remoteToolNames":["t1"],"skipExisting":true}
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value("OK"))
+                .andExpect(jsonPath("$.data.created[0].id").value("id1"));
+
+        verify(toolApplicationService).batchImportMcpTools(any());
     }
 
     @Test

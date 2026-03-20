@@ -189,23 +189,29 @@ public class ModelApplicationService {
         return value;
     }
 
+    /**
+     * 校验 provider 必须在 {@link ModelProvider} 内；若带 config 则键名须在提供方白名单内。
+     * <p>
+     * 注意：原先 config 为空时直接 return，会导致任意字符串 provider 被写入库（仅创建场景），运行时/测试才暴露问题。
+     */
     private void validateModelConfig(String provider, Map<String, Object> config) {
+        final ModelProvider p;
+        try {
+            p = ModelProvider.from(provider);
+        } catch (IllegalArgumentException e) {
+            throw new ApiException("UNSUPPORTED_MODEL_PROVIDER", e.getMessage(), HttpStatus.BAD_REQUEST);
+        }
         if (config == null || config.isEmpty()) {
             return;
         }
-        try {
-            ModelProvider p = ModelProvider.from(provider);
-            for (String key : config.keySet()) {
-                if (!p.supportedConfigKeys().contains(key)) {
-                    throw new ApiException(
-                            "INVALID_MODEL_CONFIG",
-                            "unsupported config key for " + p.code() + ": " + key,
-                            HttpStatus.BAD_REQUEST
-                    );
-                }
+        for (String key : config.keySet()) {
+            if (!p.supportedConfigKeys().contains(key)) {
+                throw new ApiException(
+                        "INVALID_MODEL_CONFIG",
+                        "unsupported config key for " + p.code() + ": " + key,
+                        HttpStatus.BAD_REQUEST
+                );
             }
-        } catch (IllegalArgumentException e) {
-            throw new ApiException("UNSUPPORTED_MODEL_PROVIDER", e.getMessage(), HttpStatus.BAD_REQUEST);
         }
     }
 

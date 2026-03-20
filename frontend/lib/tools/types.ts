@@ -11,6 +11,14 @@ export type ToolDto = {
     createdAt?: string;
 };
 
+/** 与后端 ToolPageDto 对齐（GET /tools 分页） */
+export type ToolPageDto = {
+    items: ToolDto[];
+    total: number;
+    page: number;
+    pageSize: number;
+};
+
 export type ToolTypeMetaDto = {
     code: string;
     label: string;
@@ -42,6 +50,26 @@ export type LocalBuiltinToolMetaDto = {
 export type ToolReferencesDto = {
     referencingAgentCount: number;
     referencingAgentIds: string[];
+};
+
+/** 远端 MCP tools/list 单条（与后端 RemoteMcpToolMetaDto 对齐） */
+export type RemoteMcpToolMetaDto = {
+    name: string;
+    description?: string;
+    inputSchema?: Record<string, unknown>;
+};
+
+export type BatchImportMcpToolsRequest = {
+    endpoint: string;
+    /** 空数组表示导入远端全部（由后端约定：不传或空列表） */
+    remoteToolNames?: string[];
+    namePrefix?: string;
+    skipExisting?: boolean;
+};
+
+export type BatchImportMcpToolsResponse = {
+    created: Array<{id: string; name: string; remoteToolName: string}>;
+    skipped: Array<{name: string; reason: string}>;
 };
 
 /** HTTP 请求头一行（表单项，非 JSON） */

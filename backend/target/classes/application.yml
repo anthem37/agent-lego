@@ -32,6 +32,14 @@ agentlego:
     server:
       enabled: true
       sse-path: /mcp
+    # 作为 Client 连外部 MCP：发现/批量导入前的 URL 校验
+    client:
+      # true 时与 HTTP 工具相同，禁止回环与解析到内网的 host（本地 127.0.0.1 联调需 false）
+      strict-ssrf: false
+  # HTTP 工具 test-call / 执行超时（秒），后端限制在 5–600
+  tool:
+    http-call-timeout-seconds: 120
+
 mybatis:
   mapper-locations: classpath*:mybatis/*.xml
   configuration:

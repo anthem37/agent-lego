@@ -24,5 +24,13 @@ public interface ToolMapper {
     ToolDO findById(@Param("id") String id);
 
     List<ToolDO> findAll();
+
+    long countByQuery(@Param("q") String q);
+
+    List<ToolDO> findPageByQuery(
+            @Param("q") String q,
+            @Param("offset") long offset,
+            @Param("limit") int limit
+    );
 }
 

@@ -28,7 +28,8 @@ class McpAdapterTest {
         McpAdapter adapter = new McpAdapter();
         ObjectMapper objectMapper = new ObjectMapper();
         LocalBuiltinToolCatalog catalog = new LocalBuiltinToolCatalog();
-        ToolExecutionService exec = new ToolExecutionService(workflowApplicationService, catalog, new McpClientRegistry());
+        ToolExecutionService exec = new ToolExecutionService(
+                workflowApplicationService, catalog, new McpClientRegistry(), 120);
 
         PlatformMcpServerBundle bundle = adapter.buildPlatformMcpServerBundle(objectMapper, "/mcp", exec, catalog);
         assertNotNull(bundle);

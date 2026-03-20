@@ -61,6 +61,16 @@ public class McpClientRegistry {
         });
     }
 
+    /**
+     * 下次 {@link #listRemoteTools(String)} 时重新向远端拉取 tools/list（例如远端工具集有变更）。
+     */
+    public void invalidateRemoteToolsCache(String sseEndpoint) {
+        if (sseEndpoint == null) {
+            return;
+        }
+        toolsByEndpoint.remove(sseEndpoint.trim());
+    }
+
     @PreDestroy
     public void shutdown() {
         toolsByEndpoint.clear();

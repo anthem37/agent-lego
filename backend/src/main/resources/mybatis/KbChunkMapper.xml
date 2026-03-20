@@ -11,6 +11,7 @@
         <result property="content" column="content"/>
         <result property="metadataJson" column="metadata_json"/>
         <result property="createdAt" column="created_at"/>
+        <result property="documentName" column="document_name"/>
     </resultMap>
 
     <insert id="insertChunk" parameterType="com.agentlego.backend.kb.infrastructure.persistence.KbChunkDO">
@@ -24,12 +25,13 @@
                c.chunk_index,
                c.content,
                cast(c.metadata as text) as metadata_json,
-               c.created_at
+               c.created_at,
+               d.name as document_name
         from kb_chunks c
                  join kb_documents d on c.document_id = d.id
-        where d.kb_key = #{kbKey}
+        where d.base_id = #{baseId}
           and c.content ilike '%' || #{queryText} || '%'
-        order by c.created_at desc
+        order by d.created_at desc, c.chunk_index asc
             limit #{topK}
     </select>
 </mapper>

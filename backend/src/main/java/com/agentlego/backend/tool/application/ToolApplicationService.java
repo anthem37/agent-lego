@@ -3,21 +3,30 @@ package com.agentlego.backend.tool.application;
 import com.agentlego.backend.agent.domain.AgentRepository;
 import com.agentlego.backend.api.ApiException;
 import com.agentlego.backend.common.SnowflakeIdGenerator;
+import com.agentlego.backend.mcp.McpClientProperties;
+import com.agentlego.backend.mcp.McpClientRegistry;
 import com.agentlego.backend.tool.application.dto.*;
 import com.agentlego.backend.tool.domain.ToolAggregate;
 import com.agentlego.backend.tool.domain.ToolRepository;
 import com.agentlego.backend.tool.domain.ToolType;
 import com.agentlego.backend.tool.http.HttpToolSpec;
 import com.agentlego.backend.tool.local.LocalBuiltinToolCatalog;
+import com.agentlego.backend.tool.mcp.McpEndpointSecurity;
 import com.agentlego.backend.tool.mcp.McpToolSpec;
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import io.modelcontextprotocol.spec.McpSchema;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 
 import java.time.Duration;
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.Collections;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.stream.Collectors;
 
 /**
@@ -36,22 +45,32 @@ public class ToolApplicationService {
      * 工作流工具可能串联多智能体，适当放宽上限。
      */
     private static final Duration TEST_CALL_TIMEOUT = Duration.ofMinutes(4);
+    private static final int TOOL_LIST_MAX_PAGE_SIZE = 200;
 
     private final ToolRepository toolRepository;
     private final ToolExecutionService toolExecutionService;
     private final AgentRepository agentRepository;
     private final LocalBuiltinToolCatalog localBuiltinToolCatalog;
+    private final McpClientRegistry mcpClientRegistry;
+    private final ObjectMapper objectMapper;
+    private final McpClientProperties mcpClientProperties;
 
     public ToolApplicationService(
             ToolRepository toolRepository,
             ToolExecutionService toolExecutionService,
             AgentRepository agentRepository,
-            LocalBuiltinToolCatalog localBuiltinToolCatalog
+            LocalBuiltinToolCatalog localBuiltinToolCatalog,
+            McpClientRegistry mcpClientRegistry,
+            ObjectMapper objectMapper,
+            McpClientProperties mcpClientProperties
     ) {
         this.toolRepository = toolRepository;
         this.toolExecutionService = toolExecutionService;
         this.agentRepository = agentRepository;
         this.localBuiltinToolCatalog = localBuiltinToolCatalog;
+        this.mcpClientRegistry = mcpClientRegistry;
+        this.objectMapper = objectMapper;
+        this.mcpClientProperties = mcpClientProperties;
     }
 
     public String createTool(CreateToolRequest req) {
@@ -169,15 +188,174 @@ public class ToolApplicationService {
                         .description(
                                 "登记外部 MCP Server（SSE URL 写入 definition.endpoint）；"
                                         + "可选 definition.mcpToolName 指定远端工具名（默认与平台工具 name 一致）。"
-                                        + "本服务同时对外暴露 MCP（见配置 agentlego.mcp.server.sse-path，默认同源 /mcp）。"
+                                        + "可使用 GET /tools/meta/mcp/remote-tools 发现远端工具列表，"
+                                        + "POST /tools/meta/mcp/batch-import 批量导入。"
+                                        + "本服务同时对外暴露 MCP（见 agentlego.mcp.server.sse-path，默认同源 /mcp）。"
+                                        + "SSRF：agentlego.mcp.client.strict-ssrf=true 时与 HTTP 工具一致禁止内网地址。"
                         )
                         .supportsTestCall(true)
                         .build()
         );
     }
 
-    public List<ToolDto> listTools() {
-        return toolRepository.findAll().stream().map(this::toDto).toList();
+    /**
+     * 连接外部 MCP 并返回 {@code tools/list}（可选刷新缓存）。
+     */
+    public List<RemoteMcpToolMetaDto> listRemoteMcpTools(String endpoint, boolean refresh) {
+        String ep = requireNonBlank(endpoint, "endpoint");
+        McpEndpointSecurity.validateEndpoint(ep, mcpClientProperties.isStrictSsrf());
+        if (refresh) {
+            mcpClientRegistry.invalidateRemoteToolsCache(ep);
+        }
+        List<McpSchema.Tool> tools = mcpClientRegistry.listRemoteTools(ep);
+        return tools.stream().map(this::toRemoteMcpToolMeta).toList();
+    }
+
+    /**
+     * 按远端工具批量创建平台 MCP 工具（每条含 endpoint + mcpToolName，可选写入 description/inputSchema）。
+     */
+    public BatchImportMcpToolsResponse batchImportMcpTools(BatchImportMcpToolsRequest req) {
+        if (req == null) {
+            throw new ApiException("VALIDATION_ERROR", "request body is required", HttpStatus.BAD_REQUEST);
+        }
+        String endpoint = requireNonBlank(req.getEndpoint(), "endpoint");
+        McpEndpointSecurity.validateEndpoint(endpoint, mcpClientProperties.isStrictSsrf());
+        mcpClientRegistry.invalidateRemoteToolsCache(endpoint);
+        List<McpSchema.Tool> remote = mcpClientRegistry.listRemoteTools(endpoint);
+        Map<String, McpSchema.Tool> byRemoteName = remote.stream()
+                .collect(Collectors.toMap(McpSchema.Tool::name, t -> t, (a, b) -> a));
+
+        List<String> orderedRemoteNames;
+        if (req.getRemoteToolNames() == null || req.getRemoteToolNames().isEmpty()) {
+            orderedRemoteNames = remote.stream().map(McpSchema.Tool::name).toList();
+        } else {
+            orderedRemoteNames = req.getRemoteToolNames().stream()
+                    .map(String::trim)
+                    .filter(s -> !s.isEmpty())
+                    .distinct()
+                    .toList();
+        }
+
+        boolean skipExisting = req.getSkipExisting() == null || req.getSkipExisting();
+        String prefix = req.getNamePrefix() == null ? "" : req.getNamePrefix().trim();
+
+        List<BatchImportMcpToolsResponse.Created> created = new ArrayList<>();
+        List<BatchImportMcpToolsResponse.Skipped> skipped = new ArrayList<>();
+
+        for (String remoteName : orderedRemoteNames) {
+            McpSchema.Tool rt = byRemoteName.get(remoteName);
+            if (rt == null) {
+                skipped.add(BatchImportMcpToolsResponse.Skipped.builder()
+                        .name(remoteName)
+                        .reason("远端 tools/list 中不存在该名称")
+                        .build());
+                continue;
+            }
+            String platformName = sanitizePlatformToolName(prefix, remoteName);
+            if (toolRepository.existsByToolTypeAndName(ToolType.MCP, platformName)) {
+                if (skipExisting) {
+                    skipped.add(BatchImportMcpToolsResponse.Skipped.builder()
+                            .name(platformName)
+                            .reason("已存在同名 MCP 工具")
+                            .build());
+                    continue;
+                }
+                throw new ApiException(
+                        "CONFLICT",
+                        "同一类型下已存在同名工具: MCP/" + platformName,
+                        HttpStatus.CONFLICT
+                );
+            }
+
+            Map<String, Object> definition = new LinkedHashMap<>();
+            definition.put(McpToolSpec.KEY_ENDPOINT, endpoint.trim());
+            definition.put(McpToolSpec.KEY_MCP_TOOL_NAME, remoteName);
+            if (rt.description() != null && !rt.description().isBlank()) {
+                definition.put("description", rt.description().trim());
+            }
+            if (rt.inputSchema() != null) {
+                try {
+                    Map<String, Object> schema = objectMapper.convertValue(
+                            rt.inputSchema(),
+                            new TypeReference<>() {
+                            }
+                    );
+                    if (schema != null && !schema.isEmpty()) {
+                        definition.put("inputSchema", schema);
+                    }
+                } catch (Exception ignored) {
+                    // 省略无法序列化的 schema，运行时仍可从远端推断
+                }
+            }
+
+            CreateToolRequest create = new CreateToolRequest();
+            create.setToolType("MCP");
+            create.setName(platformName);
+            create.setDefinition(definition);
+            String id = createTool(create);
+            created.add(BatchImportMcpToolsResponse.Created.builder()
+                    .id(id)
+                    .name(platformName)
+                    .remoteToolName(remoteName)
+                    .build());
+        }
+
+        return BatchImportMcpToolsResponse.builder()
+                .created(created)
+                .skipped(skipped)
+                .build();
+    }
+
+    private RemoteMcpToolMetaDto toRemoteMcpToolMeta(McpSchema.Tool t) {
+        Map<String, Object> schema = null;
+        if (t.inputSchema() != null) {
+            try {
+                schema = objectMapper.convertValue(t.inputSchema(), new TypeReference<>() {
+                });
+            } catch (Exception ignored) {
+                schema = null;
+            }
+        }
+        return RemoteMcpToolMetaDto.builder()
+                .name(t.name())
+                .description(t.description())
+                .inputSchema(schema)
+                .build();
+    }
+
+    /**
+     * 平台工具 name 规则与前端一致：字母开头，仅 [A-Za-z0-9_-]。
+     */
+    static String sanitizePlatformToolName(String prefix, String remoteName) {
+        String p = prefix == null ? "" : prefix.trim();
+        String raw = p + Objects.requireNonNull(remoteName, "remoteName").trim();
+        String s = raw.replaceAll("[^a-zA-Z0-9_-]", "_");
+        if (s.isEmpty()) {
+            s = "mcp_tool";
+        }
+        char c0 = s.charAt(0);
+        if (!Character.isLetter(c0)) {
+            s = "mcp_" + s;
+        }
+        return s;
+    }
+
+    /**
+     * 分页列表；{@code q} 对 name / id / tool_type / definition 文本做 ilike 模糊匹配（可为 null 表示不过滤）。
+     */
+    public ToolPageDto listToolsPage(int page, int pageSize, String q) {
+        int p = Math.max(1, page);
+        int size = Math.min(Math.max(1, pageSize), TOOL_LIST_MAX_PAGE_SIZE);
+        String qq = (q == null || q.isBlank()) ? null : q.trim();
+        long total = toolRepository.countByQuery(qq);
+        long offset = (long) (p - 1) * size;
+        var items = toolRepository.findPageByQuery(qq, offset, size).stream().map(this::toDto).toList();
+        return ToolPageDto.builder()
+                .items(items)
+                .total(total)
+                .page(p)
+                .pageSize(size)
+                .build();
     }
 
     public ToolDto getTool(String id) {

@@ -83,15 +83,31 @@ public class ToolRepositoryImpl implements ToolRepository {
         if (rows == null) {
             return Collections.emptyList();
         }
-        return rows.stream().map(r -> {
-            ToolAggregate agg = new ToolAggregate();
-            agg.setId(r.getId());
-            agg.setToolType(ToolType.valueOf(r.getToolType()));
-            agg.setName(r.getName());
-            agg.setDefinition(JsonMaps.parseObject(r.getDefinitionJson()));
-            agg.setCreatedAt(r.getCreatedAt());
-            return agg;
-        }).toList();
+        return rows.stream().map(this::toAggregate).toList();
+    }
+
+    @Override
+    public long countByQuery(String q) {
+        return mapper.countByQuery(q);
+    }
+
+    @Override
+    public List<ToolAggregate> findPageByQuery(String q, long offset, int limit) {
+        List<ToolDO> rows = mapper.findPageByQuery(q, offset, limit);
+        if (rows == null) {
+            return Collections.emptyList();
+        }
+        return rows.stream().map(this::toAggregate).toList();
+    }
+
+    private ToolAggregate toAggregate(ToolDO r) {
+        ToolAggregate agg = new ToolAggregate();
+        agg.setId(r.getId());
+        agg.setToolType(ToolType.valueOf(r.getToolType()));
+        agg.setName(r.getName());
+        agg.setDefinition(JsonMaps.parseObject(r.getDefinitionJson()));
+        agg.setCreatedAt(r.getCreatedAt());
+        return agg;
     }
 }
 

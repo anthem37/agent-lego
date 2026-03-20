@@ -15,6 +15,7 @@ import io.agentscope.core.message.ToolResultBlock;
 import io.agentscope.core.message.ToolUseBlock;
 import io.agentscope.core.tool.ToolCallParam;
 import io.agentscope.core.tool.Toolkit;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Lazy;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -44,6 +45,7 @@ public class ToolExecutionService {
     private final WorkflowApplicationService workflowApplicationService;
     private final LocalBuiltinToolCatalog localBuiltinToolCatalog;
     private final McpClientRegistry mcpClientRegistry;
+    private final Duration httpCallTimeout;
 
     /**
      * @param workflowApplicationService 使用 {@link Lazy} 避免与 {@link com.agentlego.backend.agent.application.AgentApplicationService} 形成构造器循环依赖。
@@ -51,11 +53,14 @@ public class ToolExecutionService {
     public ToolExecutionService(
             @Lazy WorkflowApplicationService workflowApplicationService,
             LocalBuiltinToolCatalog localBuiltinToolCatalog,
-            McpClientRegistry mcpClientRegistry
+            McpClientRegistry mcpClientRegistry,
+            @Value("${agentlego.tool.http-call-timeout-seconds:120}") int httpCallTimeoutSeconds
     ) {
         this.workflowApplicationService = workflowApplicationService;
         this.localBuiltinToolCatalog = localBuiltinToolCatalog;
         this.mcpClientRegistry = mcpClientRegistry;
+        int sec = Math.max(5, Math.min(httpCallTimeoutSeconds, 600));
+        this.httpCallTimeout = Duration.ofSeconds(sec);
     }
 
     /**
@@ -106,7 +111,9 @@ public class ToolExecutionService {
                 .toolUseBlock(toolUseBlock)
                 .input(toolUseBlock.getInput())
                 .build();
-        return tool.callAsync(param).timeout(Duration.ofMinutes(3));
+        return tool.callAsync(param)
+                .map(block -> block.withIdAndName(toolUseId, aggregate.getName()))
+                .timeout(Duration.ofMinutes(3));
     }
 
     private Mono<ToolResultBlock> executeMcpTool(ToolAggregate aggregate, Map<String, Object> input) {
@@ -123,7 +130,13 @@ public class ToolExecutionService {
                 .toolUseBlock(toolUseBlock)
                 .input(toolUseBlock.getInput())
                 .build();
-        return tool.callAsync(param).timeout(Duration.ofMinutes(3));
+        /*
+         * McpContentConverter.convertCallToolResult 使用 ToolResultBlock.of(List)，不填 id/name。
+         * id/name 语义与 ToolUseBlock 一致：关联本轮 tool 调用（联调 JSON 里应可见）。
+         */
+        return tool.callAsync(param)
+                .map(block -> block.withIdAndName(toolUseId, aggregate.getName()))
+                .timeout(Duration.ofMinutes(3));
     }
 
     private Mono<ToolResultBlock> executeHttpTool(ToolAggregate aggregate, Map<String, Object> input) {
@@ -140,7 +153,9 @@ public class ToolExecutionService {
                 .toolUseBlock(toolUseBlock)
                 .input(toolUseBlock.getInput())
                 .build();
-        return tool.callAsync(param).timeout(Duration.ofSeconds(35));
+        return tool.callAsync(param)
+                .map(block -> block.withIdAndName(toolUseId, aggregate.getName()))
+                .timeout(httpCallTimeout);
     }
 
     public Mono<ToolResultBlock> executeLocalTool(String toolName, Map<String, Object> input) {
@@ -166,6 +181,7 @@ public class ToolExecutionService {
                 .build();
 
         return toolkit.callTool(param)
+                .map(block -> block.withIdAndName(toolUseId, toolName))
                 .timeout(Duration.ofSeconds(30));
     }
 

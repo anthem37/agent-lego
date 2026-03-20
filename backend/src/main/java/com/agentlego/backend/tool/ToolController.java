@@ -2,7 +2,18 @@ package com.agentlego.backend.tool;
 
 import com.agentlego.backend.api.ApiResponse;
 import com.agentlego.backend.tool.application.ToolApplicationService;
-import com.agentlego.backend.tool.application.dto.*;
+import com.agentlego.backend.tool.application.dto.BatchImportMcpToolsRequest;
+import com.agentlego.backend.tool.application.dto.BatchImportMcpToolsResponse;
+import com.agentlego.backend.tool.application.dto.CreateToolRequest;
+import com.agentlego.backend.tool.application.dto.LocalBuiltinToolMetaDto;
+import com.agentlego.backend.tool.application.dto.RemoteMcpToolMetaDto;
+import com.agentlego.backend.tool.application.dto.TestToolCallRequest;
+import com.agentlego.backend.tool.application.dto.TestToolCallResponse;
+import com.agentlego.backend.tool.application.dto.ToolDto;
+import com.agentlego.backend.tool.application.dto.ToolPageDto;
+import com.agentlego.backend.tool.application.dto.ToolReferencesDto;
+import com.agentlego.backend.tool.application.dto.ToolTypeMetaDto;
+import com.agentlego.backend.tool.application.dto.UpdateToolRequest;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.*;
@@ -39,9 +50,16 @@ public class ToolController {
         return ApiResponse.created(id);
     }
 
+    /**
+     * 分页列表；{@code q} 可选，模糊匹配名称、ID、类型、definition 文本。
+     */
     @GetMapping
-    public ApiResponse<List<ToolDto>> list() {
-        return ApiResponse.ok(toolService.listTools());
+    public ApiResponse<ToolPageDto> list(
+            @RequestParam(defaultValue = "1") int page,
+            @RequestParam(defaultValue = "50") int pageSize,
+            @RequestParam(required = false) String q
+    ) {
+        return ApiResponse.ok(toolService.listToolsPage(page, pageSize, q));
     }
 
     /**
@@ -58,6 +76,30 @@ public class ToolController {
     @GetMapping("/meta/local-builtins")
     public ApiResponse<List<LocalBuiltinToolMetaDto>> localBuiltinsMeta() {
         return ApiResponse.ok(toolService.listLocalBuiltins());
+    }
+
+    /**
+     * 连接外部 MCP（SSE URL）并返回远端 {@code tools/list}，供前端勾选批量导入。
+     *
+     * @param endpoint SSE 根地址（URL 编码）
+     * @param refresh  为 true 时忽略缓存重新拉取
+     */
+    @GetMapping("/meta/mcp/remote-tools")
+    public ApiResponse<List<RemoteMcpToolMetaDto>> remoteMcpTools(
+            @RequestParam("endpoint") String endpoint,
+            @RequestParam(value = "refresh", defaultValue = "false") boolean refresh
+    ) {
+        return ApiResponse.ok(toolService.listRemoteMcpTools(endpoint, refresh));
+    }
+
+    /**
+     * 将远端 MCP 工具批量登记为平台 MCP 工具（每条 definition 含 endpoint、mcpToolName，可选 description/inputSchema）。
+     */
+    @PostMapping("/meta/mcp/batch-import")
+    public ApiResponse<BatchImportMcpToolsResponse> batchImportMcpTools(
+            @Valid @RequestBody BatchImportMcpToolsRequest body
+    ) {
+        return ApiResponse.ok(toolService.batchImportMcpTools(body));
     }
 
     @GetMapping("/{id}")

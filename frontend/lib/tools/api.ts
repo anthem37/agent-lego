@@ -1,10 +1,40 @@
 import {request} from "@/lib/api/request";
 
-import type {LocalBuiltinToolMetaDto, ToolDto, ToolReferencesDto, ToolTypeMetaDto} from "@/lib/tools/types";
+import type {
+    BatchImportMcpToolsRequest,
+    BatchImportMcpToolsResponse,
+    LocalBuiltinToolMetaDto,
+    RemoteMcpToolMetaDto,
+    ToolDto,
+    ToolPageDto,
+    ToolReferencesDto,
+    ToolTypeMetaDto,
+} from "@/lib/tools/types";
 
-export async function listTools(): Promise<ToolDto[]> {
-    const list = await request<ToolDto[]>("/tools");
-    return Array.isArray(list) ? list : [];
+export type ListToolsPageParams = {
+    page?: number;
+    pageSize?: number;
+    /** 服务端模糊匹配：名称、ID、类型、definition 文本 */
+    q?: string;
+};
+
+export async function listToolsPage(params?: ListToolsPageParams): Promise<ToolPageDto> {
+    const page = params?.page ?? 1;
+    const pageSize = params?.pageSize ?? 50;
+    const q = params?.q?.trim();
+    const data = await request<ToolPageDto>("/tools", {
+        query: {
+            page,
+            pageSize,
+            ...(q ? {q} : {}),
+        },
+    });
+    return {
+        items: Array.isArray(data.items) ? data.items : [],
+        total: typeof data.total === "number" ? data.total : 0,
+        page: typeof data.page === "number" ? data.page : page,
+        pageSize: typeof data.pageSize === "number" ? data.pageSize : pageSize,
+    };
 }
 
 export async function getTool(id: string): Promise<ToolDto> {
@@ -42,4 +72,21 @@ export async function fetchToolTypeMeta(): Promise<ToolTypeMetaDto[]> {
 export async function fetchLocalBuiltinToolsMeta(): Promise<LocalBuiltinToolMetaDto[]> {
     const data = await request<LocalBuiltinToolMetaDto[]>("/tools/meta/local-builtins");
     return Array.isArray(data) ? data : [];
+}
+
+/** 连接外部 MCP 并拉取 tools/list；refresh=true 时忽略缓存 */
+export async function fetchRemoteMcpTools(endpoint: string, refresh = false): Promise<RemoteMcpToolMetaDto[]> {
+    const q = new URLSearchParams();
+    q.set("endpoint", endpoint);
+    if (refresh) {
+        q.set("refresh", "true");
+    }
+    const data = await request<RemoteMcpToolMetaDto[]>(`/tools/meta/mcp/remote-tools?${q.toString()}`);
+    return Array.isArray(data) ? data : [];
+}
+
+export async function batchImportMcpTools(
+    body: BatchImportMcpToolsRequest,
+): Promise<BatchImportMcpToolsResponse> {
+    return request<BatchImportMcpToolsResponse>("/tools/meta/mcp/batch-import", {method: "POST", body});
 }

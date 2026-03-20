@@ -9,11 +9,11 @@ import React from "react";
 import {AppLayout} from "@/components/AppLayout";
 import {ErrorAlert} from "@/components/ErrorAlert";
 import {DeleteToolLink} from "@/components/tools/DeleteToolPopconfirm";
+import {McpBatchImportModal} from "@/components/tools/McpBatchImportModal";
 import {ToolFormDrawer} from "@/components/tools/ToolFormDrawer";
 import {PageHeaderBlock} from "@/components/PageHeaderBlock";
 import {SectionCard} from "@/components/SectionCard";
-import {deleteTool, fetchLocalBuiltinToolsMeta, fetchToolTypeMeta, listTools} from "@/lib/tools/api";
-import {stringifyPretty} from "@/lib/json";
+import {deleteTool, fetchLocalBuiltinToolsMeta, fetchToolTypeMeta, listToolsPage} from "@/lib/tools/api";
 import {tablePaginationFriendly} from "@/lib/table-pagination";
 import {toolTypeDisplayName} from "@/lib/tool-labels";
 import {summarizeToolDefinition} from "@/lib/tools/summary";
@@ -22,27 +22,93 @@ import type {LocalBuiltinToolMetaDto, ToolDto, ToolTypeMetaDto} from "@/lib/tool
 
 export default function ToolsPage() {
     const [tools, setTools] = React.useState<ToolDto[]>([]);
+    const [total, setTotal] = React.useState(0);
+    const [page, setPage] = React.useState(1);
+    const [pageSize, setPageSize] = React.useState(20);
     const [meta, setMeta] = React.useState<ToolTypeMetaDto[]>([]);
     const [localBuiltins, setLocalBuiltins] = React.useState<LocalBuiltinToolMetaDto[]>([]);
     const [loading, setLoading] = React.useState(false);
     const [error, setError] = React.useState<unknown>(null);
-    const [keyword, setKeyword] = React.useState("");
+    const [searchInput, setSearchInput] = React.useState("");
+    const [debouncedQ, setDebouncedQ] = React.useState("");
 
     const [drawerOpen, setDrawerOpen] = React.useState(false);
     const [drawerMode, setDrawerMode] = React.useState<"create" | "edit">("create");
     const [editing, setEditing] = React.useState<ToolDto | null>(null);
     const [deletingId, setDeletingId] = React.useState<string | null>(null);
+    const [mcpBulkOpen, setMcpBulkOpen] = React.useState(false);
+
+    React.useEffect(() => {
+        const t = window.setTimeout(() => {
+            const q = searchInput.trim();
+            setDebouncedQ(q);
+            setPage(1);
+        }, 350);
+        return () => window.clearTimeout(t);
+    }, [searchInput]);
+
+    /** 类型元数据、内置清单仅在首屏拉取；刷新按钮与导入成功后再拉 */
+    React.useEffect(() => {
+        let cancelled = false;
+        void (async () => {
+            try {
+                const [m, builtins] = await Promise.all([
+                    fetchToolTypeMeta(),
+                    fetchLocalBuiltinToolsMeta(),
+                ]);
+                if (!cancelled) {
+                    setMeta(m);
+                    setLocalBuiltins(builtins);
+                }
+            } catch (e) {
+                if (!cancelled) {
+                    console.error(e);
+                    message.warning("工具类型元数据加载失败，新建/编辑抽屉可能缺少类型说明");
+                }
+            }
+        })();
+        return () => {
+            cancelled = true;
+        };
+    }, []);
+
+    React.useEffect(() => {
+        let cancelled = false;
+        setLoading(true);
+        void (async () => {
+            try {
+                const pageData = await listToolsPage({page, pageSize, q: debouncedQ || undefined});
+                if (!cancelled) {
+                    setTools(pageData.items);
+                    setTotal(pageData.total);
+                    setError(null);
+                }
+            } catch (e) {
+                if (!cancelled) {
+                    setError(e);
+                }
+            } finally {
+                if (!cancelled) {
+                    setLoading(false);
+                }
+            }
+        })();
+        return () => {
+            cancelled = true;
+        };
+    }, [page, pageSize, debouncedQ]);
 
     async function reload() {
         setError(null);
         setLoading(true);
         try {
-            const [list, m, builtins] = await Promise.all([
-                listTools(),
+            const [pageData, m, builtins] = await Promise.all([
+                listToolsPage({page, pageSize, q: debouncedQ || undefined}),
                 fetchToolTypeMeta(),
                 fetchLocalBuiltinToolsMeta(),
             ]);
-            setTools(list);
+            setTools(pageData.items);
+            setTotal(pageData.total);
             setMeta(m);
             setLocalBuiltins(builtins);
         } catch (e) {
@@ -51,10 +117,6 @@ export default function ToolsPage() {
             setLoading(false);
         }
     }
-
-    React.useEffect(() => {
-        void reload();
-    }, []);
 
     function openCreate() {
         setDrawerMode("create");
@@ -81,25 +143,6 @@ export default function ToolsPage() {
             setDeletingId(null);
         }
     }
-
-    const filtered = React.useMemo(() => {
-        const k = keyword.trim().toLowerCase();
-        if (!k) {
-            return tools;
-        }
-        return tools.filter((r) => {
-            const defStr = r.definition ? stringifyPretty(r.definition).toLowerCase() : "";
-            const summary = summarizeToolDefinition(r).toLowerCase();
-            return (
-                r.id.toLowerCase().includes(k) ||
-                r.name.toLowerCase().includes(k) ||
-                r.toolType.toLowerCase().includes(k) ||
-                toolTypeDisplayName(r.toolType).toLowerCase().includes(k) ||
-                summary.includes(k) ||
-                defStr.includes(k)
-            );
-        });
-    }, [tools, keyword]);
 
     const columns: ColumnsType<ToolDto> = [
         {
@@ -195,6 +238,7 @@ export default function ToolsPage() {
                             <Button type="primary" icon={<PlusOutlined/>} onClick={openCreate}>
                                 新建工具
                             </Button>
+                            <Button onClick={() => setMcpBulkOpen(true)}>MCP 批量导入</Button>
                         </Space>
                     }
                 />
@@ -206,23 +250,36 @@ export default function ToolsPage() {
                         <Space wrap style={{width: "100%", justifyContent: "space-between", alignItems: "center"}}>
                             <Input.Search
                                 allowClear
-                                placeholder="按名称、类型、ID、配置摘要或 definition 片段过滤…"
+                                placeholder="按名称、类型、ID、definition 文本搜索（服务端模糊匹配）…"
                                 style={{maxWidth: 400, minWidth: 240}}
-                                onSearch={setKeyword}
-                                onChange={(e) => setKeyword(e.target.value)}
+                                value={searchInput}
+                                onSearch={(v) => {
+                                    setSearchInput(v);
+                                    setDebouncedQ(v.trim());
+                                    setPage(1);
+                                }}
+                                onChange={(e) => setSearchInput(e.target.value)}
                             />
-                            <Typography.Text type="secondary">
-                                共 {filtered.length} / {tools.length} 条
-                            </Typography.Text>
+                            <Typography.Text type="secondary">共 {total} 条</Typography.Text>
                         </Space>
 
                         <Table<ToolDto>
                             rowKey="id"
                             loading={loading}
-                            dataSource={filtered}
+                            dataSource={tools}
                             columns={columns}
                             scroll={{x: 1180}}
-                            pagination={tablePaginationFriendly()}
+                            pagination={tablePaginationFriendly({
+                                current: page,
+                                pageSize,
+                                total,
+                                showSizeChanger: true,
+                                pageSizeOptions: [10, 20, 50, 100],
+                                onChange: (p, ps) => {
+                                    setPage(p);
+                                    setPageSize(ps);
+                                },
+                            })}
                             locale={{
                                 emptyText: (
                                     <Empty
@@ -250,6 +307,12 @@ export default function ToolsPage() {
                         setEditing(null);
                     }}
                     onSaved={reload}
+                />
+
+                <McpBatchImportModal
+                    open={mcpBulkOpen}
+                    onClose={() => setMcpBulkOpen(false)}
+                    onSuccess={reload}
                 />
             </Space>
         </AppLayout>

@@ -51,7 +51,7 @@ class ToolExecutionServiceTest {
     }
 
     private ToolExecutionService service() {
-        return new ToolExecutionService(workflowApplicationService, catalog(), mcpClientRegistry);
+        return new ToolExecutionService(workflowApplicationService, catalog(), mcpClientRegistry, 120);
     }
 
     @Test

@@ -7,13 +7,13 @@ import com.agentlego.backend.tool.local.LocalBuiltinToolCatalog;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.agentscope.core.tool.mcp.McpClientBuilder;
 import io.agentscope.core.tool.mcp.McpClientWrapper;
+import io.modelcontextprotocol.json.jackson.JacksonMcpJsonMapper;
 import io.modelcontextprotocol.server.McpServer;
 import io.modelcontextprotocol.server.McpServerFeatures;
 import io.modelcontextprotocol.server.McpSyncServer;
 import io.modelcontextprotocol.server.McpSyncServerExchange;
 import io.modelcontextprotocol.server.transport.WebMvcSseServerTransportProvider;
 import io.modelcontextprotocol.spec.McpSchema;
-import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import reactor.core.publisher.Mono;
 
@@ -44,8 +44,17 @@ public class McpAdapter {
         Objects.requireNonNull(toolExecutionService, "toolExecutionService");
         Objects.requireNonNull(catalog, "catalog");
 
-        WebMvcSseServerTransportProvider transport =
-                new WebMvcSseServerTransportProvider(objectMapper, sseEndpointBase);
+        /*
+         * 0.10 与 mcp-core 0.17 混用会 NoSuchMethodError（deserializeJsonRpcMessage 改为 McpJsonMapper）。
+         * 老版两参构造还会把 SSE 固定到 /sse；这里用 builder 注册 GET {base}、POST {base}/message。
+         */
+        String base = normalizeMcpBasePath(sseEndpointBase);
+        WebMvcSseServerTransportProvider transport = WebMvcSseServerTransportProvider.builder()
+                .jsonMapper(new JacksonMcpJsonMapper(objectMapper))
+                .baseUrl("")
+                .messageEndpoint(base + "/message")
+                .sseEndpoint(base)
+                .build();
 
         McpSchema.ServerCapabilities capabilities = McpSchema.ServerCapabilities.builder()
                 .tools(true)
@@ -104,5 +113,19 @@ public class McpAdapter {
         return McpClientBuilder.create(clientName)
                 .sseTransport(sseEndpoint)
                 .buildAsync();
+    }
+
+    private static String normalizeMcpBasePath(String path) {
+        String p = Objects.requireNonNull(path, "sseEndpointBase").trim();
+        if (p.isEmpty()) {
+            throw new IllegalArgumentException("sseEndpointBase must not be blank");
+        }
+        if (!p.startsWith("/")) {
+            p = "/" + p;
+        }
+        while (p.length() > 1 && p.endsWith("/")) {
+            p = p.substring(0, p.length() - 1);
+        }
+        return p;
     }
 }

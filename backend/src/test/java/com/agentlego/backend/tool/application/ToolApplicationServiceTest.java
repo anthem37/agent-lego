@@ -6,10 +6,13 @@ import com.agentlego.backend.tool.application.dto.CreateToolRequest;
 import com.agentlego.backend.tool.application.dto.TestToolCallRequest;
 import com.agentlego.backend.tool.application.dto.TestToolCallResponse;
 import com.agentlego.backend.tool.application.dto.UpdateToolRequest;
+import com.agentlego.backend.mcp.McpClientProperties;
+import com.agentlego.backend.mcp.McpClientRegistry;
 import com.agentlego.backend.tool.domain.ToolAggregate;
 import com.agentlego.backend.tool.local.LocalBuiltinToolCatalog;
 import com.agentlego.backend.tool.domain.ToolRepository;
 import com.agentlego.backend.tool.domain.ToolType;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import io.agentscope.core.message.ToolResultBlock;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -45,6 +48,9 @@ class ToolApplicationServiceTest {
     @Mock
     private AgentRepository agentRepository;
 
+    @Mock
+    private McpClientRegistry mcpClientRegistry;
+
     private static LocalBuiltinToolCatalog localCatalog() {
         try {
             return new LocalBuiltinToolCatalog();
@@ -54,7 +60,16 @@ class ToolApplicationServiceTest {
     }
 
     private ToolApplicationService service() {
-        return new ToolApplicationService(toolRepository, toolExecutionService, agentRepository, localCatalog());
+        McpClientProperties mcpClientProperties = new McpClientProperties();
+        return new ToolApplicationService(
+                toolRepository,
+                toolExecutionService,
+                agentRepository,
+                localCatalog(),
+                mcpClientRegistry,
+                new ObjectMapper(),
+                mcpClientProperties
+        );
     }
 
     @Test

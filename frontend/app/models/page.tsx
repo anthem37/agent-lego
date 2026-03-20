@@ -29,6 +29,7 @@ import {normalizeModelConfig} from "@/lib/model-config";
 import {providerDisplayName} from "@/lib/model-config-labels";
 import {request} from "@/lib/api/request";
 import {tablePaginationFriendly} from "@/lib/table-pagination";
+import {DRAWER_WIDTH_SIMPLE} from "@/lib/ui/sizes";
 
 type ModelSummary = {
     id: string;
@@ -204,18 +205,20 @@ function ModelsPageContent() {
     }, [form]);
 
     React.useEffect(() => {
-        if (!editIdFromQuery || rows.length === 0) {
+        if (!editIdFromQuery || listLoading) {
             return;
         }
         if (openedFromQueryRef.current === editIdFromQuery) {
             return;
         }
+        openedFromQueryRef.current = editIdFromQuery;
         const hit = rows.some((r) => r.id === editIdFromQuery);
         if (hit) {
-            openedFromQueryRef.current = editIdFromQuery;
             void openEdit(editIdFromQuery);
+        } else {
+            message.warning(`未找到 ID 为「${editIdFromQuery}」的模型，请从列表选择编辑`);
         }
-    }, [editIdFromQuery, rows, openEdit]);
+    }, [editIdFromQuery, rows, listLoading, openEdit]);
 
     async function onDelete(id: string) {
         setError(null);
@@ -446,10 +449,10 @@ function ModelsPageContent() {
 
                 <Drawer
                     title={drawerMode === "create" ? "新建模型" : "编辑模型"}
-                    width={640}
+                    size={DRAWER_WIDTH_SIMPLE}
                     open={drawerOpen}
                     onClose={() => setDrawerOpen(false)}
-                    destroyOnClose
+                    destroyOnHidden
                     extra={
                         <Space>
                             <Button onClick={() => setDrawerOpen(false)}>取消</Button>

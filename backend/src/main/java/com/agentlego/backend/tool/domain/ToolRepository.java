@@ -17,5 +17,9 @@ public interface ToolRepository {
     Optional<ToolAggregate> findById(String id);
 
     List<ToolAggregate> findAll();
+
+    long countByQuery(String q);
+
+    List<ToolAggregate> findPageByQuery(String q, long offset, int limit);
 }
 

@@ -6,23 +6,64 @@
 
     <resultMap id="KbDocumentDOMap" type="com.agentlego.backend.kb.infrastructure.persistence.KbDocumentDO">
         <id property="id" column="id"/>
+        <result property="baseId" column="base_id"/>
         <result property="kbKey" column="kb_key"/>
         <result property="name" column="name"/>
+        <result property="contentRich" column="content_rich"/>
+        <result property="contentFormat" column="content_format"/>
+        <result property="chunkStrategy" column="chunk_strategy"/>
         <result property="createdAt" column="created_at"/>
+        <result property="chunkCount" column="chunk_count"/>
     </resultMap>
 
     <insert id="insert" parameterType="com.agentlego.backend.kb.infrastructure.persistence.KbDocumentDO">
-        insert into kb_documents (id, kb_key, name)
-        values (#{id}, #{kbKey}, #{name})
+        insert into kb_documents (id, base_id, name, content_rich, content_format, chunk_strategy)
+        values (#{id}, #{baseId}, #{name}, #{contentRich}, #{contentFormat}, #{chunkStrategy})
     </insert>
 
-    <select id="findByKbKey" parameterType="java.lang.String" resultMap="KbDocumentDOMap">
-        select id,
-               kb_key,
-               name,
-               created_at
+    <delete id="deleteById" parameterType="java.lang.String">
+        delete from kb_documents where id = #{id}
+    </delete>
+
+    <select id="countByBaseId" resultType="long">
+        select count(*)::bigint
         from kb_documents
-        where kb_key = #{kbKey}
+        where base_id = #{baseId}
+    </select>
+
+    <select id="listByBaseIdPaged" resultMap="KbDocumentDOMap">
+        select d.id,
+               d.base_id,
+               b.kb_key,
+               d.name,
+               d.content_format,
+               d.chunk_strategy,
+               d.created_at,
+               coalesce(ch.cnt, 0)::int as chunk_count
+        from kb_documents d
+                 join kb_bases b on b.id = d.base_id
+                 left join (
+            select document_id, count(*)::bigint as cnt
+            from kb_chunks
+            group by document_id
+        ) ch on ch.document_id = d.id
+        where d.base_id = #{baseId}
+        order by d.created_at desc
+        offset #{offset} limit #{limit}
+    </select>
+
+    <select id="findById" resultMap="KbDocumentDOMap">
+        select d.id,
+               d.base_id,
+               b.kb_key,
+               d.name,
+               d.content_rich,
+               d.content_format,
+               d.chunk_strategy,
+               d.created_at,
+               null::int as chunk_count
+        from kb_documents d
+                 join kb_bases b on b.id = d.base_id
+        where d.id = #{id}
     </select>
 </mapper>
-

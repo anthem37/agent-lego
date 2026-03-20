@@ -38,5 +38,9 @@ public class KbChunkAggregate {
      * 创建时间。
      */
     private Instant createdAt;
+    /**
+     * 检索联表填充：所属文档标题（可选）。
+     */
+    private String documentName;
 }
 

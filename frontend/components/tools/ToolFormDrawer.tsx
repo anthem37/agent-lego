@@ -18,8 +18,10 @@ import {
 } from "antd";
 import React from "react";
 
+import {DRAWER_WIDTH_COMPLEX} from "@/lib/ui/sizes";
 import {ErrorAlert} from "@/components/ErrorAlert";
 import {LocalBuiltinIoPreview} from "@/components/tools/LocalBuiltinIoPreview";
+import {McpBatchImportModal} from "@/components/tools/McpBatchImportModal";
 import {createTool, updateTool} from "@/lib/tools/api";
 import {
     buildToolDefinition,
@@ -59,6 +61,8 @@ export function ToolFormDrawer(props: Props) {
     const [form] = Form.useForm<ToolFormValues>();
     const [submitting, setSubmitting] = React.useState(false);
     const [localError, setLocalError] = React.useState<unknown>(null);
+    const [mcpBulkOpen, setMcpBulkOpen] = React.useState(false);
+    const [mcpBulkDefaultEndpoint, setMcpBulkDefaultEndpoint] = React.useState<string | undefined>(undefined);
 
     const watchedToolType = Form.useWatch("toolType", form) ?? "LOCAL";
     const watchedHttpMethod = Form.useWatch("httpMethod", form) ?? "GET";
@@ -300,10 +304,10 @@ export function ToolFormDrawer(props: Props) {
                     </Space>
                 )
             }
-            width={720}
+            size={DRAWER_WIDTH_COMPLEX}
             open={open}
             onClose={onClose}
-            destroyOnClose
+            destroyOnHidden
             extra={
                 <Space>
                     <Button onClick={onClose}>取消</Button>
@@ -772,10 +776,10 @@ export function ToolFormDrawer(props: Props) {
                             message="MCP（外部 Server）"
                             description={
                                 <>
-                                    填写远端 MCP 的 <Typography.Text code>SSE</Typography.Text> 根地址（完整 URL，与对端文档一致，常见以{" "}
-                                    <Typography.Text code>/sse</Typography.Text> 结尾）。本服务自身也会对外暴露 MCP（默认路径{" "}
-                                    <Typography.Text code>/mcp</Typography.Text>，见后端{" "}
-                                    <Typography.Text code>agentlego.mcp.server</Typography.Text>
+                                    填写远端 MCP 的 <Typography.Text code>SSE</Typography.Text> 根地址（完整 URL，与对端文档一致；部分实现为{" "}
+                                    <Typography.Text code>/sse</Typography.Text>，本服务默认在{" "}
+                                    <Typography.Text code>/mcp</Typography.Text>）。本服务自身也会对外暴露 MCP（见后端{" "}
+                                    <Typography.Text code>agentlego.mcp.server.sse-path</Typography.Text>
                                     ），供外部客户端连接并调用与 LOCAL 内置一致的工具列表。下方可配置{" "}
                                     <Typography.Text code>definition.parameters</Typography.Text>，用于模型侧与联调表单的参数说明。
                                 </>
@@ -791,6 +795,19 @@ export function ToolFormDrawer(props: Props) {
                             rules={[{required: true, message: "请填写外部 MCP Server 的 SSE URL"}]}
                         >
                             <Input placeholder="例如 http://127.0.0.1:3000/sse"/>
+                        </Form.Item>
+                        <Form.Item label=" ">
+                            <Button
+                                type="link"
+                                style={{padding: 0}}
+                                onClick={() => {
+                                    const ep = form.getFieldValue("mcpEndpoint") as string | undefined;
+                                    setMcpBulkDefaultEndpoint(ep?.trim() || undefined);
+                                    setMcpBulkOpen(true);
+                                }}
+                            >
+                                从该 SSE 地址发现并批量导入远端工具…
+                            </Button>
                         </Form.Item>
                         <Form.Item name="mcpRemoteToolName" label="远端工具名（可选）">
                             <Input placeholder="省略则与「平台工具名」相同，并用于 tools/call"/>
@@ -928,6 +945,13 @@ export function ToolFormDrawer(props: Props) {
                     <Input.TextArea rows={3} placeholder="给模型/同事看的简短说明"/>
                 </Form.Item>
             </Form>
+
+            <McpBatchImportModal
+                open={mcpBulkOpen}
+                onClose={() => setMcpBulkOpen(false)}
+                onSuccess={onSaved}
+                defaultEndpoint={mcpBulkDefaultEndpoint}
+            />
         </Drawer>
     );
 }

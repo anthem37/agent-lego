@@ -80,6 +80,9 @@ export default function ModelDetailPage(props: { params: Promise<{ id: string }>
         };
     }, [modelId]);
 
+    const canConnectivityTest =
+        model != null && model.provider.trim().toUpperCase() === "DASHSCOPE";
+
     async function onTest() {
         if (!model) {
             return;
@@ -221,9 +224,16 @@ export default function ModelDetailPage(props: { params: Promise<{ id: string }>
                 <SectionCard title="连通性测试">
                     <Space orientation="vertical" size={12} style={{width: "100%"}}>
                         <Typography.Paragraph type="secondary" style={{marginBottom: 0}}>
-                            向当前模型发起一次最小调用，用于验证密钥与网络是否可用；是否支持取决于服务端实现。
+                            向当前模型发起一次最小调用，用于验证密钥与网络是否可用。当前后端仅对{" "}
+                            <Typography.Text code>DASHSCOPE</Typography.Text>{" "}
+                            提供方实现连通性测试；其他提供方调用接口将返回 400。
                         </Typography.Paragraph>
-                        <Button type="primary" onClick={() => void onTest()} loading={testing} disabled={!model}>
+                        <Button
+                            type="primary"
+                            onClick={() => void onTest()}
+                            loading={testing}
+                            disabled={!canConnectivityTest}
+                        >
                             执行连通性测试
                         </Button>
                         {testResult ? (

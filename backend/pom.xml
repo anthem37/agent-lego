@@ -23,6 +23,8 @@
         <spring-boot.run.jvmArguments></spring-boot.run.jvmArguments>
         <agentscope.version>1.0.10</agentscope.version>
         <lombok.version>1.18.44</lombok.version>
+        <!-- 须与 mcp-spring-webmvc 同发行线，否则会出现 NoSuchMethodError（如 deserializeJsonRpcMessage 签名变更） -->
+        <mcp.sdk.version>0.17.0</mcp.sdk.version>
     </properties>
 
     <dependencies>
@@ -80,18 +82,30 @@
             <artifactId>hutool-all</artifactId>
             <version>5.8.44</version>
         </dependency>
+        <!-- 富文本知识：HTML → 纯文本用于分片与关键词检索 -->
+        <dependency>
+            <groupId>org.jsoup</groupId>
+            <artifactId>jsoup</artifactId>
+            <version>1.18.3</version>
+        </dependency>
+        <!-- Markdown → HTML → 纯文本，用于分片与关键词检索 -->
+        <dependency>
+            <groupId>com.vladsch.flexmark</groupId>
+            <artifactId>flexmark-all</artifactId>
+            <version>0.64.8</version>
+        </dependency>
 
-        <!-- MCP server transport (SSE over WebMVC) -->
+        <!-- MCP server transport (SSE over WebMVC)；与 mcp-core 版本必须一致 -->
         <dependency>
             <groupId>io.modelcontextprotocol.sdk</groupId>
             <artifactId>mcp-core</artifactId>
-            <version>0.17.0</version>
+            <version>${mcp.sdk.version}</version>
         </dependency>
 
         <dependency>
             <groupId>io.modelcontextprotocol.sdk</groupId>
             <artifactId>mcp-spring-webmvc</artifactId>
-            <version>0.10.0</version>
+            <version>${mcp.sdk.version}</version>
         </dependency>
 
         <dependency>

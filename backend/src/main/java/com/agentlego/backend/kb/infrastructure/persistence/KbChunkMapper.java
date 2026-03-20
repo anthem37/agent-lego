@@ -10,7 +10,7 @@ public interface KbChunkMapper {
     int insertChunk(KbChunkDO chunk);
 
     List<KbChunkDO> searchChunks(
-            @Param("kbKey") String kbKey,
+            @Param("baseId") String baseId,
             @Param("queryText") String queryText,
             @Param("topK") int topK
     );

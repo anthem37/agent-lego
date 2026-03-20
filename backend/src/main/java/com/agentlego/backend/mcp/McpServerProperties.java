@@ -14,7 +14,9 @@ public class McpServerProperties {
     private boolean enabled = true;
 
     /**
-     * WebMvc SSE 传输的基础路径（与 MCP SDK 的 WebMvcSseServerTransportProvider 一致），例如 {@code /mcp}。
+     * MCP WebMvc 传输的基础路径：{@code GET {ssePath}} 为 SSE；
+     * {@code POST {ssePath}/message?sessionId=...} 为 JSON-RPC 消息（与 {@code WebMvcSseServerTransportProvider} 四参注册方式一致）。
+     * 例如 {@code /mcp}。
      */
     private String ssePath = "/mcp";
 

@@ -17,7 +17,7 @@ import java.time.Duration;
  * 注册本机 MCP Server 的 {@link RouterFunction} 与优雅关闭。
  */
 @Configuration
-@EnableConfigurationProperties(McpServerProperties.class)
+@EnableConfigurationProperties({McpServerProperties.class, McpClientProperties.class})
 public class McpServerSpringConfiguration {
 
     @Bean

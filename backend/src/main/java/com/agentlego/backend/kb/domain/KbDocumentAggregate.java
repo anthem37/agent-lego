@@ -16,7 +16,11 @@ public class KbDocumentAggregate {
      */
     private String id;
     /**
-     * 知识库标识（kb key），用于分组隔离。
+     * 所属知识库主键（kb_bases.id）。
+     */
+    private String baseId;
+    /**
+     * 冗余：所属知识库绑定键（便于对照智能体配置）。
      */
     private String kbKey;
     /**
