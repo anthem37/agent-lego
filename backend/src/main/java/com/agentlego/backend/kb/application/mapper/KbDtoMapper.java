@@ -46,6 +46,7 @@ public interface KbDtoMapper {
      * 列表项：不序列化大字段 body（由服务层保证不设置或忽略映射）。
      */
     @Mapping(target = "body", ignore = true)
+    @Mapping(target = "bodyRich", ignore = true)
     @Mapping(target = "linkedToolIds", ignore = true)
     @Mapping(target = "toolOutputBindings", ignore = true)
     KbDocumentDto toDocumentListItemDto(KbDocumentRow row);

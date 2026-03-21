@@ -3,10 +3,9 @@
 import {
     BookOutlined,
     DeleteOutlined,
-    DownOutlined,
+    EditOutlined,
     EyeOutlined,
     FileAddOutlined,
-    MinusCircleOutlined,
     PlusOutlined,
     ReloadOutlined,
     SearchOutlined,
@@ -14,10 +13,8 @@ import {
 import {
     Alert,
     Button,
-    Card,
     Col,
     Drawer,
-    Dropdown,
     Empty,
     Form,
     Input,
@@ -43,25 +40,27 @@ import {AppLayout} from "@/components/AppLayout";
 import {ErrorAlert} from "@/components/ErrorAlert";
 import {PageHeaderBlock} from "@/components/PageHeaderBlock";
 import {request} from "@/lib/api/request";
-import {KbMarkdownField} from "@/components/kb/KbMarkdownField";
+import {KbIngestDocumentDrawer} from "@/components/kb/KbIngestDocumentDrawer";
 import {KbMarkdownPreview} from "@/components/kb/KbMarkdownPreview";
+import DOMPurify from "dompurify";
 import {
     createKbCollection,
     deleteKbCollection,
     deleteKbDocument,
     getKbDocument,
-    ingestKbDocument,
     listKbChunkStrategies,
     listKbCollections,
     listKbDocuments,
-    renderKbDocumentBody,
 } from "@/lib/kb/api";
+import {kbToolsByRuntimeName, normalizeKbRichHtmlForDetailView} from "@/lib/kb/kb-rich-html-display";
 import type {KbChunkStrategyMetaDto, KbCollectionDto, KbDocumentDto} from "@/lib/kb/types";
-import {kbToolChipText, kbToolOptionDescription, kbToolPrimaryLabel, kbToolSearchBlob} from "@/lib/kb/tool-labels";
+import {kbToolRichTagLabel} from "@/lib/kb/tool-labels";
 import type {ToolDto} from "@/lib/tools/types";
 import {type ModelOptionRow, toModelSelectOptions} from "@/lib/model-select-options";
 import {listToolsPage} from "@/lib/tools/api";
 import {tablePaginationFriendly} from "@/lib/table-pagination";
+
+import "@/components/kb/kb-quill-knowledge.css";
 
 type CreateCollectionForm = {
     name: string;
@@ -73,24 +72,6 @@ type CreateCollectionForm = {
     headingLevel?: number;
     leadMaxChars?: number;
 };
-
-type ToolBindingRowForm = {
-    placeholder?: string;
-    toolId?: string;
-    jsonPath?: string;
-};
-
-type IngestForm = {
-    title: string;
-    body: string;
-    /** 相似问列表，每项一条；提交时空串会被过滤 */
-    similarQueries?: string[];
-    linkedToolIds?: string[];
-    toolBindingRows?: ToolBindingRowForm[];
-};
-
-const MAX_SIMILAR_QUERIES = 32;
-const MAX_SIMILAR_QUERY_CHARS = 512;
 
 function formatDateTime(iso?: string): string {
     if (!iso) {
@@ -139,28 +120,21 @@ export default function KnowledgeBasePage() {
     const [loadingDocs, setLoadingDocs] = React.useState(false);
     const [refreshing, setRefreshing] = React.useState(false);
     const [creating, setCreating] = React.useState(false);
-    const [ingesting, setIngesting] = React.useState(false);
     const [deletingCollectionId, setDeletingCollectionId] = React.useState<string | null>(null);
     const [deletingDocumentId, setDeletingDocumentId] = React.useState<string | null>(null);
     const [selectedCollectionId, setSelectedCollectionId] = React.useState<string | undefined>();
     const [collectionQuery, setCollectionQuery] = React.useState("");
     const [createModalOpen, setCreateModalOpen] = React.useState(false);
-    const [ingestDrawerOpen, setIngestDrawerOpen] = React.useState(false);
+    const [ingestOpen, setIngestOpen] = React.useState(false);
+    const [ingestEditDocumentId, setIngestEditDocumentId] = React.useState<string | undefined>();
     const [viewDocOpen, setViewDocOpen] = React.useState(false);
     const [viewDocLoading, setViewDocLoading] = React.useState(false);
     const [viewDocDetail, setViewDocDetail] = React.useState<KbDocumentDto | null>(null);
-    const [toolOutputsPreviewJson, setToolOutputsPreviewJson] = React.useState("{}");
-    const [renderedPreviewBody, setRenderedPreviewBody] = React.useState<string | null>(null);
-    const [previewLoading, setPreviewLoading] = React.useState(false);
     const [chunkMeta, setChunkMeta] = React.useState<KbChunkStrategyMetaDto[]>([]);
-    const [ingestToolCatalog, setIngestToolCatalog] = React.useState<ToolDto[]>([]);
-    const [loadingToolPicker, setLoadingToolPicker] = React.useState(false);
     /** 查看文档抽屉：解析 linkedToolIds 展示名称 */
     const [viewToolById, setViewToolById] = React.useState<Record<string, ToolDto>>({});
     const [loadingViewTools, setLoadingViewTools] = React.useState(false);
     const [collectionForm] = Form.useForm<CreateCollectionForm>();
-    const [ingestForm] = Form.useForm<IngestForm>();
-    const watchedLinkedToolIds = Form.useWatch("linkedToolIds", ingestForm);
 
     const embeddingModelRows = React.useMemo(
         () =>
@@ -189,63 +163,6 @@ export default function KnowledgeBasePage() {
         () => collections.find((c) => c.id === selectedCollectionId),
         [collections, selectedCollectionId],
     );
-
-    const toolById = React.useMemo(() => {
-        const m = new Map<string, ToolDto>();
-        for (const t of ingestToolCatalog) {
-            m.set(t.id, t);
-        }
-        return m;
-    }, [ingestToolCatalog]);
-
-    const toolSelectOptions = React.useMemo(
-        () =>
-            ingestToolCatalog.map((t) => ({
-                value: t.id,
-                label: (
-                    <div style={{lineHeight: 1.35}}>
-                        <div>{kbToolPrimaryLabel(t)}</div>
-                        <Typography.Text type="secondary" style={{fontSize: 11}}>
-                            {kbToolOptionDescription(t)}
-                        </Typography.Text>
-                    </div>
-                ),
-            })),
-        [ingestToolCatalog],
-    );
-
-    const bindingToolSelectOptions = React.useMemo(() => {
-        const lk = new Set((watchedLinkedToolIds ?? []).filter(Boolean) as string[]);
-        return ingestToolCatalog
-            .filter((t) => lk.has(t.id))
-            .map((t) => ({
-                value: t.id,
-                label: `${kbToolPrimaryLabel(t)} · ${kbToolOptionDescription(t)}`,
-            }));
-    }, [ingestToolCatalog, watchedLinkedToolIds]);
-
-    /** 取消关联工具时，同步清空映射行里已不在列表中的 toolId，避免下拉「无选项却显示 id」 */
-    React.useEffect(() => {
-        if (!ingestDrawerOpen) {
-            return;
-        }
-        const linked = new Set((watchedLinkedToolIds ?? []).filter(Boolean) as string[]);
-        const rows = ingestForm.getFieldValue("toolBindingRows") as ToolBindingRowForm[] | undefined;
-        if (!rows?.length) {
-            return;
-        }
-        let changed = false;
-        const next = rows.map((r) => {
-            if (r.toolId && !linked.has(r.toolId)) {
-                changed = true;
-                return {...r, toolId: undefined};
-            }
-            return r;
-        });
-        if (changed) {
-            ingestForm.setFieldsValue({toolBindingRows: next});
-        }
-    }, [ingestDrawerOpen, watchedLinkedToolIds, ingestForm]);
 
     const reloadBootstrap = React.useCallback(async (opts?: { toast?: boolean }) => {
         setRefreshing(true);
@@ -323,34 +240,6 @@ export default function KnowledgeBasePage() {
     }, [selectedCollectionId]);
 
     React.useEffect(() => {
-        if (!ingestDrawerOpen) {
-            return;
-        }
-        let cancelled = false;
-        setLoadingToolPicker(true);
-        void listToolsPage({page: 1, pageSize: 200})
-            .then((p) => {
-                if (cancelled) {
-                    return;
-                }
-                setIngestToolCatalog(Array.isArray(p.items) ? p.items : []);
-            })
-            .catch(() => {
-                if (!cancelled) {
-                    setIngestToolCatalog([]);
-                }
-            })
-            .finally(() => {
-                if (!cancelled) {
-                    setLoadingToolPicker(false);
-                }
-            });
-        return () => {
-            cancelled = true;
-        };
-    }, [ingestDrawerOpen]);
-
-    React.useEffect(() => {
         if (!viewDocOpen) {
             setViewToolById({});
             setLoadingViewTools(false);
@@ -390,6 +279,27 @@ export default function KnowledgeBasePage() {
         };
     }, [viewDocOpen, viewDocDetail?.id, (viewDocDetail?.linkedToolIds ?? []).join("|")]);
 
+    const viewDetailRichHtmlSafe = React.useMemo(() => {
+        const raw = viewDocDetail?.bodyRich?.trim();
+        if (!raw) {
+            return "";
+        }
+        const toolsByName = kbToolsByRuntimeName(viewDocDetail?.linkedToolIds, viewToolById);
+        const normalized = normalizeKbRichHtmlForDetailView(raw, {toolsByName});
+        return DOMPurify.sanitize(normalized, {
+            USE_PROFILES: {html: true},
+            ADD_ATTR: [
+                "data-type",
+                "data-tool-code",
+                "data-tool-field",
+                "data-kb-display",
+                "data-kb-field-desc",
+                "data-kb-tool",
+                "data-kb-placeholder",
+            ],
+        });
+    }, [viewDocDetail?.bodyRich, viewDocDetail?.linkedToolIds, viewToolById]);
+
     async function onCreateCollection(values: CreateCollectionForm) {
         setCreating(true);
         setError(null);
@@ -422,55 +332,6 @@ export default function KnowledgeBasePage() {
         }
     }
 
-    async function onIngest(values: IngestForm) {
-        if (!selectedCollectionId) {
-            message.warning("请先选择集合");
-            return;
-        }
-        setIngesting(true);
-        setError(null);
-        try {
-            const rawSq = values.similarQueries ?? [];
-            const sqLines = rawSq
-                .map((l) => (typeof l === "string" ? l.trim() : ""))
-                .filter(Boolean)
-                .slice(0, MAX_SIMILAR_QUERIES)
-                .map((l) => (l.length > MAX_SIMILAR_QUERY_CHARS ? l.slice(0, MAX_SIMILAR_QUERY_CHARS) : l));
-            const rows = (values.toolBindingRows ?? [])
-                .map((r) => ({
-                    placeholder: typeof r?.placeholder === "string" ? r.placeholder.trim() : "",
-                    toolId: typeof r?.toolId === "string" ? r.toolId.trim() : "",
-                    jsonPath: typeof r?.jsonPath === "string" ? r.jsonPath.trim() : "",
-                }))
-                .filter((r) => r.placeholder && r.toolId && r.jsonPath);
-            const toolOutputBindings =
-                rows.length > 0 ? {mappings: rows.map((r) => ({...r}))} : undefined;
-            const linked = (values.linkedToolIds ?? []).filter(Boolean);
-            const doc = await ingestKbDocument(selectedCollectionId, {
-                title: values.title,
-                body: values.body,
-                ...(sqLines.length > 0 ? {similarQueries: sqLines} : {}),
-                ...(linked.length > 0 ? {linkedToolIds: linked} : {}),
-                ...(toolOutputBindings != null ? {toolOutputBindings} : {}),
-            });
-            message.success(
-                doc.status === "FAILED"
-                    ? "文档已写入但向量化失败，请查看列表中的错误信息"
-                    : "文档已写入并完成向量化",
-            );
-            ingestForm.resetFields();
-            setDocuments((prev) => {
-                const rest = prev.filter((d) => d.id !== doc.id);
-                return [doc, ...rest];
-            });
-            setIngestDrawerOpen(false);
-        } catch (e) {
-            setError(e);
-        } finally {
-            setIngesting(false);
-        }
-    }
-
     async function openViewDocument(docId: string) {
         if (!selectedCollectionId) {
             return;
@@ -479,8 +340,6 @@ export default function KnowledgeBasePage() {
         setViewDocLoading(true);
         setViewDocDetail(null);
         setViewToolById({});
-        setRenderedPreviewBody(null);
-        setToolOutputsPreviewJson("{}");
         setError(null);
         try {
             const d = await getKbDocument(selectedCollectionId, docId);
@@ -492,41 +351,6 @@ export default function KnowledgeBasePage() {
             setViewDocLoading(false);
         }
     }
-
-    async function runDocPlaceholderPreview() {
-        if (!selectedCollectionId || !viewDocDetail?.id) {
-            return;
-        }
-        let parsed: Record<string, unknown>;
-        try {
-            parsed = JSON.parse(toolOutputsPreviewJson || "{}") as Record<string, unknown>;
-        } catch {
-            message.error("toolOutputs 不是合法 JSON 对象");
-            return;
-        }
-        setPreviewLoading(true);
-        setError(null);
-        try {
-            const r = await renderKbDocumentBody(selectedCollectionId, viewDocDetail.id, {toolOutputs: parsed});
-            setRenderedPreviewBody(r.renderedBody ?? "");
-            message.success("已按绑定生成预览（未写入数据库）");
-        } catch (e) {
-            setError(e);
-        } finally {
-            setPreviewLoading(false);
-        }
-    }
-
-    const insertToolMentionIntoBody = React.useCallback(
-        (mentionToken: string) => {
-            const cur = (ingestForm.getFieldValue("body") as string | undefined) ?? "";
-            const token = `{{tool:${mentionToken}}}`;
-            const next = cur.length === 0 || cur.endsWith("\n") ? `${cur}${token}` : `${cur}\n${token}`;
-            ingestForm.setFieldsValue({body: next});
-            void message.success("已插入工具引用，可在正文中移动或继续编辑");
-        },
-        [ingestForm],
-    );
 
     async function onDeleteCollection(collectionId: string) {
         setDeletingCollectionId(collectionId);
@@ -614,7 +438,7 @@ export default function KnowledgeBasePage() {
         {
             title: "操作",
             key: "actions",
-            width: 132,
+            width: 196,
             fixed: "right" as const,
             render: (_: unknown, row: KbDocumentDto) => (
                 <Space size={0} wrap={false}>
@@ -626,6 +450,18 @@ export default function KnowledgeBasePage() {
                         onClick={() => void openViewDocument(row.id)}
                     >
                         查看
+                    </Button>
+                    <Button
+                        type="link"
+                        size="small"
+                        icon={<EditOutlined/>}
+                        disabled={!selectedCollectionId}
+                        onClick={() => {
+                            setIngestEditDocumentId(row.id);
+                            setIngestOpen(true);
+                        }}
+                    >
+                        编辑
                     </Button>
                     <Popconfirm
                         title="删除该文档？"
@@ -824,7 +660,10 @@ export default function KnowledgeBasePage() {
                                     type="primary"
                                     icon={<FileAddOutlined/>}
                                     disabled={!selectedCollectionId}
-                                    onClick={() => setIngestDrawerOpen(true)}
+                                    onClick={() => {
+                                        setIngestEditDocumentId(undefined);
+                                        setIngestOpen(true);
+                                    }}
                                 >
                                     新增文档
                                 </Button>
@@ -1090,255 +929,28 @@ export default function KnowledgeBasePage() {
                     </Form>
                 </Modal>
 
-                <Drawer
-                    title="新增文档"
-                    width={920}
-                    open={ingestDrawerOpen}
-                    onClose={() => setIngestDrawerOpen(false)}
-                    destroyOnHidden
-                    styles={{body: {paddingBottom: 24}}}
-                    afterOpenChange={(open) => {
-                        if (open) {
-                            ingestForm.resetFields();
-                        }
+                <KbIngestDocumentDrawer
+                    open={ingestOpen}
+                    onClose={() => {
+                        setIngestOpen(false);
+                        setIngestEditDocumentId(undefined);
                     }}
-                    extra={
-                        <Space>
-                            <Button onClick={() => setIngestDrawerOpen(false)}>取消</Button>
-                            <Button type="primary" loading={ingesting} onClick={() => void ingestForm.submit()}>
-                                提交写入
-                            </Button>
-                        </Space>
-                    }
-                >
-                    <Typography.Paragraph type="secondary" style={{marginTop: 0}}>
-                        目标集合：
-                        <Typography.Text strong>{selectedCollection?.name ?? "—"}</Typography.Text>
-                    </Typography.Paragraph>
-                    <Form
-                        form={ingestForm}
-                        layout="vertical"
-                        onFinish={onIngest}
-                        initialValues={{
-                            similarQueries: [],
-                            linkedToolIds: [],
-                            toolBindingRows: [],
-                        }}
-                    >
-                        <Form.Item name="title" label="标题" rules={[{required: true, message: "请输入标题"}]}>
-                            <Input placeholder="在列表中展示的文档标题"/>
-                        </Form.Item>
-                        <Card size="small" title="工具与占位符" style={{marginBottom: 16}}>
-                            <Typography.Paragraph type="secondary" style={{marginTop: 0}}>
-                                先勾选<strong>关联工具</strong>，再在正文写{" "}
-                                <Typography.Text code>{"{{tool:运行时名称}}"}</Typography.Text>
-                                （与工具管理里的「名称」一致）。需要把工具 JSON 出参塞进正文时，用下方映射表配置{" "}
-                                <Typography.Text code>{"{{占位符}}"}</Typography.Text>。
-                            </Typography.Paragraph>
-                            <Form.Item
-                                name="linkedToolIds"
-                                label="关联工具"
-                                extra="正文里的 {{tool:…}} 与出参映射中的工具都必须包含在本列表中。支持按名称、展示名、类型、ID 搜索。"
-                            >
-                                <Select
-                                    mode="multiple"
-                                    allowClear
-                                    loading={loadingToolPicker}
-                                    options={toolSelectOptions}
-                                    placeholder={loadingToolPicker ? "正在加载工具列表…" : "搜索并选择工具（可多选）"}
-                                    showSearch
-                                    filterOption={(input, option) => {
-                                        const q = input.trim().toLowerCase();
-                                        if (!q) {
-                                            return true;
-                                        }
-                                        const id = String(option?.value ?? "");
-                                        const t = toolById.get(id);
-                                        return t ? kbToolSearchBlob(t).includes(q) : false;
-                                    }}
-                                    popupMatchSelectWidth={520}
-                                    maxTagCount="responsive"
-                                    tagRender={(props) => {
-                                        const {value, closable, onClose} = props;
-                                        const id = String(value);
-                                        const t = toolById.get(id);
-                                        const text = t ? kbToolChipText(t) : `未加载 ${id.slice(0, 8)}…`;
-                                        return (
-                                            <Tooltip title={t ? `${kbToolPrimaryLabel(t)} · ${id}` : id}>
-                                                <Tag closable={closable} onClose={onClose} style={{marginInlineEnd: 4}}>
-                                                    {text}
-                                                </Tag>
-                                            </Tooltip>
-                                        );
-                                    }}
-                                />
-                            </Form.Item>
-                            <Form.Item shouldUpdate={(p, c) => p.linkedToolIds !== c.linkedToolIds} noStyle>
-                                {() => {
-                                    const linked = (ingestForm.getFieldValue("linkedToolIds") as string[] | undefined) ?? [];
-                                    const linkedIds = linked.filter(Boolean);
-                                    const menuItems = linkedIds.map((id) => {
-                                        const t = toolById.get(id);
-                                        const lab = t ? kbToolPrimaryLabel(t) : id.slice(0, 12) + "…";
-                                        const mention = t?.name?.trim() ? t.name.trim() : id;
-                                        return {key: id, label: lab, onClick: () => insertToolMentionIntoBody(mention)};
-                                    });
-                                    return (
-                                        <Form.Item label="插入正文引用" style={{marginBottom: 12}}>
-                                            {linkedIds.length === 0 ? (
-                                                <Typography.Text
-                                                    type="secondary">请先在上方关联至少一个工具。</Typography.Text>
-                                            ) : (
-                                                <Space orientation="vertical" size={8} style={{width: "100%"}}>
-                                                    <Space wrap size={[8, 8]}>
-                                                        {linkedIds.map((id) => {
-                                                            const t = toolById.get(id);
-                                                            const mention = t?.name?.trim() ? t.name.trim() : id;
-                                                            const btnLabel = t ? kbToolChipText(t, 18) : id.slice(0, 8) + "…";
-                                                            return (
-                                                                <Tooltip
-                                                                    key={id}
-                                                                    title={`插入 {{tool:${mention}}}${t ? ` · ${kbToolOptionDescription(t)}` : ""}`}
-                                                                >
-                                                                    <Button
-                                                                        size="small"
-                                                                        type="default"
-                                                                        onClick={() => insertToolMentionIntoBody(mention)}
-                                                                    >
-                                                                        + {btnLabel}
-                                                                    </Button>
-                                                                </Tooltip>
-                                                            );
-                                                        })}
-                                                    </Space>
-                                                    <Dropdown
-                                                        menu={{items: menuItems}}
-                                                        trigger={["click"]}
-                                                    >
-                                                        <Button size="small" icon={<DownOutlined/>}>
-                                                            下拉选择插入（同上）
-                                                        </Button>
-                                                    </Dropdown>
-                                                    <Typography.Text type="secondary" style={{fontSize: 12}}>
-                                                        引用会追加到正文末尾，再在编辑器里拖到合适位置即可。
-                                                    </Typography.Text>
-                                                </Space>
-                                            )}
-                                        </Form.Item>
-                                    );
-                                }}
-                            </Form.Item>
-                            <Form.Item
-                                label="出参 → 正文占位符"
-                                extra="每行：占位符 key（正文写 {{key}}）、工具、JSON 路径（如 $.data.orderNo）。仅完整填写才会提交。取消关联某工具时，对应行的工具选择会自动清空。"
-                            >
-                                <Form.List name="toolBindingRows">
-                                    {(fields, {add, remove}) => (
-                                        <Space orientation="vertical" size={8} style={{width: "100%"}}>
-                                            {fields.map((field) => (
-                                                <Space.Compact key={field.key}
-                                                               style={{width: "100%", flexWrap: "wrap"}}>
-                                                    <Form.Item
-                                                        name={[field.name, "placeholder"]}
-                                                        noStyle
-                                                        rules={[{max: 64, message: "最长 64"}]}
-                                                    >
-                                                        <Input placeholder="占位符 key" style={{width: 128}}/>
-                                                    </Form.Item>
-                                                    <Form.Item name={[field.name, "toolId"]} noStyle>
-                                                        <Select
-                                                            placeholder="选工具"
-                                                            style={{minWidth: 240, maxWidth: 320, flex: 1}}
-                                                            options={bindingToolSelectOptions}
-                                                            showSearch
-                                                            allowClear
-                                                            optionFilterProp="label"
-                                                            popupMatchSelectWidth={400}
-                                                        />
-                                                    </Form.Item>
-                                                    <Form.Item
-                                                        name={[field.name, "jsonPath"]}
-                                                        noStyle
-                                                        rules={[{max: 512, message: "路径过长"}]}
-                                                    >
-                                                        <Input placeholder="$.data.field"
-                                                               style={{minWidth: 140, flex: 1}}/>
-                                                    </Form.Item>
-                                                    <Button
-                                                        type="text"
-                                                        danger
-                                                        icon={<MinusCircleOutlined/>}
-                                                        onClick={() => remove(field.name)}
-                                                        aria-label="删除该行"
-                                                    />
-                                                </Space.Compact>
-                                            ))}
-                                            <Button type="dashed" icon={<PlusOutlined/>} onClick={() => add({})} block>
-                                                添加出参映射
-                                            </Button>
-                                        </Space>
-                                    )}
-                                </Form.List>
-                            </Form.Item>
-                        </Card>
-                        <Form.Item
-                            name="body"
-                            label="正文（Markdown）"
-                            rules={[{required: true, message: "请输入正文"}]}
-                            extra="可先插入工具引用再写说明文字；支持 Markdown。"
-                        >
-                            <KbMarkdownField height={400}/>
-                        </Form.Item>
-                        <Form.Item
-                            label="相似问（可选）"
-                            extra={`用户口语化问法，会拼进每条分片的向量化文本以提升召回。最多 ${MAX_SIMILAR_QUERIES} 条，每条最长 ${MAX_SIMILAR_QUERY_CHARS} 字符。`}
-                        >
-                            <Form.List name="similarQueries">
-                                {(fields, {add, remove}) => (
-                                    <Space orientation="vertical" size={10} style={{width: "100%"}}>
-                                        {fields.map((field) => (
-                                            <Space.Compact key={field.key} style={{width: "100%"}}>
-                                                <Form.Item
-                                                    {...field}
-                                                    noStyle
-                                                    rules={[
-                                                        {
-                                                            max: MAX_SIMILAR_QUERY_CHARS,
-                                                            message: `单条不超过 ${MAX_SIMILAR_QUERY_CHARS} 字符`,
-                                                        },
-                                                    ]}
-                                                >
-                                                    <Input
-                                                        placeholder="例如：怎么退款？会员能退吗？"
-                                                        maxLength={MAX_SIMILAR_QUERY_CHARS}
-                                                        showCount
-                                                        style={{width: "calc(100% - 40px)"}}
-                                                    />
-                                                </Form.Item>
-                                                <Button
-                                                    type="text"
-                                                    danger
-                                                    icon={<MinusCircleOutlined/>}
-                                                    onClick={() => remove(field.name)}
-                                                    aria-label="删除该条"
-                                                />
-                                            </Space.Compact>
-                                        ))}
-                                        <Button
-                                            type="dashed"
-                                            icon={<PlusOutlined/>}
-                                            onClick={() => add("")}
-                                            disabled={fields.length >= MAX_SIMILAR_QUERIES}
-                                            block
-                                        >
-                                            添加相似问（{fields.length}/{MAX_SIMILAR_QUERIES}）
-                                        </Button>
-                                    </Space>
-                                )}
-                            </Form.List>
-                        </Form.Item>
-                    </Form>
-                </Drawer>
+                    collectionId={selectedCollectionId}
+                    collectionName={selectedCollection?.name}
+                    editDocumentId={ingestEditDocumentId}
+                    onSuccess={(doc) => {
+                        setDocuments((prev) => {
+                            const i = prev.findIndex((d) => d.id === doc.id);
+                            if (i >= 0) {
+                                const next = [...prev];
+                                next[i] = doc;
+                                return next;
+                            }
+                            return [doc, ...prev];
+                        });
+                    }}
+                    onError={setError}
+                />
 
                 <Drawer
                     title={viewDocDetail ? `文档：${viewDocDetail.title}` : "文档内容"}
@@ -1351,11 +963,31 @@ export default function KnowledgeBasePage() {
                     }}
                     destroyOnHidden
                     extra={
-                        viewDocDetail?.body != null ? (
-                            <Typography.Text copyable={{text: viewDocDetail.body}} type="secondary"
-                                             style={{fontSize: 12}}>
-                                复制原文
-                            </Typography.Text>
+                        viewDocDetail ? (
+                            <Space wrap>
+                                {viewDocDetail.body != null ? (
+                                    <Typography.Text copyable={{text: viewDocDetail.body}} type="secondary"
+                                                     style={{fontSize: 12}}>
+                                        复制原文
+                                    </Typography.Text>
+                                ) : null}
+                                <Button
+                                    type="primary"
+                                    size="small"
+                                    icon={<EditOutlined/>}
+                                    disabled={!selectedCollectionId}
+                                    onClick={() => {
+                                        const id = viewDocDetail.id;
+                                        setViewDocOpen(false);
+                                        setViewDocDetail(null);
+                                        setViewToolById({});
+                                        setIngestEditDocumentId(id);
+                                        setIngestOpen(true);
+                                    }}
+                                >
+                                    编辑
+                                </Button>
+                            </Space>
                         ) : null
                     }
                 >
@@ -1382,7 +1014,7 @@ export default function KnowledgeBasePage() {
                                         <Space wrap size={[6, 6]}>
                                             {viewDocDetail.linkedToolIds!.map((tid) => {
                                                 const t = viewToolById[tid];
-                                                const label = t ? kbToolPrimaryLabel(t) : tid;
+                                                const label = t ? kbToolRichTagLabel(t) : tid;
                                                 return (
                                                     <Tooltip key={tid} title={tid}>
                                                         <Tag color="blue">{label}</Tag>
@@ -1399,48 +1031,43 @@ export default function KnowledgeBasePage() {
                                 <Tabs
                                     items={[
                                         {
-                                            key: "raw",
-                                            label: "原文",
+                                            key: "rich",
+                                            label: "富文本",
                                             children: (
                                                 <Space orientation="vertical" size={8} style={{width: "100%"}}>
-                                                    <Typography.Text type="secondary" style={{fontSize: 12}}>
-                                                        入库原文（Markdown）
-                                                    </Typography.Text>
-                                                    <KbMarkdownPreview source={viewDocDetail.body ?? "_（无正文）_"}/>
+                                                    <Typography.Paragraph type="secondary" style={{fontSize: 12, marginBottom: 0}}>
+                                                        入库保存的 HTML 与编辑器一致：工具标签仅<strong>工具展示名</strong>；字段标签为<strong>工具展示名.出参说明</strong>（完整路径见悬停）。打开详情时会按绑定工具与出参表刷新展示。
+                                                    </Typography.Paragraph>
+                                                    {viewDetailRichHtmlSafe ? (
+                                                        <div
+                                                            className="kb-doc-rich-html"
+                                                            style={{
+                                                                padding: 12,
+                                                                border: "1px solid rgba(0,0,0,0.06)",
+                                                                borderRadius: 8,
+                                                                maxHeight: 480,
+                                                                overflow: "auto",
+                                                            }}
+                                                            dangerouslySetInnerHTML={{__html: viewDetailRichHtmlSafe}}
+                                                        />
+                                                    ) : (
+                                                        <Typography.Text type="secondary">未入库富文本</Typography.Text>
+                                                    )}
                                                 </Space>
                                             ),
                                         },
                                         {
-                                            key: "ph",
-                                            label: "占位符预览",
+                                            key: "raw",
+                                            label: "原文（Markdown）",
                                             children: (
-                                                <Space orientation="vertical" size={12} style={{width: "100%"}}>
-                                                    <Typography.Paragraph type="secondary" style={{marginBottom: 0}}>
-                                                        输入 toolOutputs（工具 ID → 该工具一次调用的 JSON 根对象）：先按本文档的
-                                                        toolOutputBindings
-                                                        替换 {"{{placeholder}}"}，再将 {"{{tool:名称}}"}（或数字
-                                                        ID）展开为工具展示名；不入库。
-                                                    </Typography.Paragraph>
-                                                    <Input.TextArea
-                                                        rows={10}
-                                                        value={toolOutputsPreviewJson}
-                                                        onChange={(e) => setToolOutputsPreviewJson(e.target.value)}
-                                                        placeholder={'{\n  "1800000000001000001": { "data": { "orderNo": "A-1" } }\n}'}
-                                                        style={{fontFamily: "monospace", fontSize: 12}}
-                                                    />
-                                                    <Button type="primary" loading={previewLoading}
-                                                            onClick={() => void runDocPlaceholderPreview()}>
-                                                        生成预览
-                                                    </Button>
-                                                    {renderedPreviewBody != null ? (
-                                                        <>
-                                                            <Typography.Text type="secondary" style={{fontSize: 12}}>
-                                                                替换后预览
-                                                            </Typography.Text>
-                                                            <KbMarkdownPreview
-                                                                source={renderedPreviewBody || "_（空）_"}/>
-                                                        </>
-                                                    ) : null}
+                                                <Space orientation="vertical" size={8} style={{width: "100%"}}>
+                                                    <Typography.Text type="secondary" style={{fontSize: 12}}>
+                                                        入库原文（Markdown，分块/召回依据）。其中的{" "}
+                                                        <Typography.Text code>{"{{tool:运行时name}}"}</Typography.Text>、
+                                                        <Typography.Text code>{"{{tool_field:运行时name.出参路径}}"}</Typography.Text>{" "}
+                                                        为占位符：召回后可根据绑定执行工具，并将字段占位替换为真实出参值。
+                                                    </Typography.Text>
+                                                    <KbMarkdownPreview source={viewDocDetail.body ?? "_（无正文）_"}/>
                                                 </Space>
                                             ),
                                         },

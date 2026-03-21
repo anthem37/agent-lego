@@ -1,0 +1,136 @@
+/* 详情抽屉等非 Quill 容器内展示（与 .ql-editor 内标签视觉对齐） */
+.kb-doc-rich-html .kb-knowledge-inline {
+    display: inline;
+    padding: 1px 6px;
+    border-radius: 4px;
+    background: rgba(22, 119, 255, 0.08);
+    border-bottom: 1px solid rgba(22, 119, 255, 0.55);
+    color: #1677ff;
+    font-weight: 500;
+    text-decoration: none;
+    cursor: default;
+    vertical-align: baseline;
+}
+
+.kb-doc-rich-html .kb-knowledge-inline[data-type="tool_field"] {
+    background: rgba(82, 196, 26, 0.08);
+    border-bottom-color: rgba(82, 196, 26, 0.55);
+    color: #237804;
+    font-size: 0.95em;
+}
+
+.kb-doc-rich-html .kb-knowledge-inline__text {
+    white-space: nowrap;
+}
+
+/* Quill 编辑区 */
+.ql-editor .kb-knowledge-inline {
+    display: inline;
+    padding: 1px 6px;
+    border-radius: 4px;
+    background: rgba(22, 119, 255, 0.08);
+    border-bottom: 1px solid rgba(22, 119, 255, 0.55);
+    color: #1677ff;
+    font-weight: 500;
+    cursor: default;
+    vertical-align: baseline;
+}
+
+.ql-editor .kb-knowledge-inline[data-type="tool_field"] {
+    background: rgba(82, 196, 26, 0.08);
+    border-bottom-color: rgba(82, 196, 26, 0.55);
+    color: #237804;
+    font-size: 0.95em;
+}
+
+.ql-editor .kb-knowledge-inline__text {
+    pointer-events: none;
+    white-space: nowrap;
+}
+
+/* 与 Quill Snow 默认工具栏按钮同尺寸、同 hover（见 .ql-snow .ql-toolbar button） */
+.kb-quill-wrap .ql-toolbar .kb-quill-toolbar-extras {
+    margin-left: 2px;
+    padding-left: 4px;
+    border-left: 1px solid rgba(0, 0, 0, 0.06);
+}
+
+.kb-quill-wrap .ql-toolbar button.ql-kb-insert-tool,
+.kb-quill-wrap .ql-toolbar button.ql-kb-insert-field {
+    float: left;
+    width: 28px;
+    height: 24px;
+    padding: 3px;
+    border: 1px solid transparent;
+    border-radius: 3px;
+    background: transparent;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.kb-quill-wrap .ql-toolbar button.ql-kb-insert-tool svg,
+.kb-quill-wrap .ql-toolbar button.ql-kb-insert-field svg {
+    width: 18px;
+    height: 18px;
+}
+
+.kb-quill-wrap .ql-toolbar button.ql-kb-insert-tool:hover:not(:disabled),
+.kb-quill-wrap .ql-toolbar button.ql-kb-insert-field:hover:not(:disabled) {
+    background: rgba(0, 0, 0, 0.06);
+}
+
+.kb-quill-wrap .ql-toolbar button.ql-kb-insert-tool:disabled,
+.kb-quill-wrap .ql-toolbar button.ql-kb-insert-field:disabled {
+    opacity: 0.35;
+    cursor: not-allowed;
+}
+
+/* ---------- Quill Snow 中文：标题下拉、链接气泡（覆盖 dist 内英文 content） ---------- */
+.kb-quill-wrap .ql-snow .ql-picker.ql-header .ql-picker-label::before,
+.kb-quill-wrap .ql-snow .ql-picker.ql-header .ql-picker-item::before {
+    content: "正文" !important;
+}
+
+.kb-quill-wrap .ql-snow .ql-picker.ql-header .ql-picker-label[data-value="1"]::before,
+.kb-quill-wrap .ql-snow .ql-picker.ql-header .ql-picker-item[data-value="1"]::before {
+    content: "标题 1" !important;
+}
+
+.kb-quill-wrap .ql-snow .ql-picker.ql-header .ql-picker-label[data-value="2"]::before,
+.kb-quill-wrap .ql-snow .ql-picker.ql-header .ql-picker-item[data-value="2"]::before {
+    content: "标题 2" !important;
+}
+
+.kb-quill-wrap .ql-snow .ql-picker.ql-header .ql-picker-label[data-value="3"]::before,
+.kb-quill-wrap .ql-snow .ql-picker.ql-header .ql-picker-item[data-value="3"]::before {
+    content: "标题 3" !important;
+}
+
+.kb-quill-wrap .ql-snow .ql-tooltip::before {
+    content: "链接预览：" !important;
+}
+
+.kb-quill-wrap .ql-snow .ql-tooltip[data-mode="link"]::before {
+    content: "请输入链接：" !important;
+}
+
+.kb-quill-wrap .ql-snow .ql-tooltip a.ql-action::after {
+    content: "编辑" !important;
+}
+
+.kb-quill-wrap .ql-snow .ql-tooltip.ql-editing a.ql-action::after {
+    content: "保存" !important;
+}
+
+.kb-quill-wrap .ql-snow .ql-tooltip a.ql-remove::before {
+    content: "移除" !important;
+}
+
+.kb-quill-wrap .ql-snow .ql-tooltip[data-mode="formula"]::before {
+    content: "请输入公式：" !important;
+}
+
+.kb-quill-wrap .ql-snow .ql-tooltip[data-mode="video"]::before {
+    content: "请输入视频地址：" !important;
+}

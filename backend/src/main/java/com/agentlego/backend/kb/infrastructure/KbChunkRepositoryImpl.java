@@ -21,6 +21,14 @@ public class KbChunkRepositoryImpl implements KbChunkRepository {
     }
 
     @Override
+    public void deleteByDocumentId(String documentId) {
+        if (documentId == null || documentId.isBlank()) {
+            return;
+        }
+        mapper.deleteByDocumentId(documentId);
+    }
+
+    @Override
     public void insert(
             String id,
             String documentId,

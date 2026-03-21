@@ -9,7 +9,8 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 /**
- * 将知识正文中的 <code>{{placeholder}}</code> 按集合级绑定替换为工具 JSON 出参字段值。
+ * 将知识正文中的 <code>{{placeholder}}</code>（含历史短名如 <code>{{orderNo}}</code>、
+ * 或 <code>{{tool_field:运行时名.路径}}</code>）按文档绑定替换为工具 JSON 出参字段值。
  */
 public final class KbToolPlaceholderExpander {
 

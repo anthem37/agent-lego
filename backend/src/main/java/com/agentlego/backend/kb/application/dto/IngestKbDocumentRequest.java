@@ -12,9 +12,17 @@ public class IngestKbDocumentRequest {
     @NotBlank
     @Size(max = 512)
     private String title;
-    @NotBlank
+    /**
+     * Markdown 正文（用于分块/向量/召回）。与 {@link #bodyRich} 二选一：
+     * 若 {@link #bodyRich} 非空，服务端<strong>忽略本字段</strong>，一律由富文本转 Markdown。
+     */
     @Size(max = 524288)
     private String body;
+    /**
+     * 富文本 HTML；非空时由服务端转为 Markdown 后入库并向量化（与分块一致）。
+     */
+    @Size(max = 1048576)
+    private String bodyRich;
 
     /**
      * 可选：拼入每条分片的 embedding 输入，提升召回；最多 32 条，每条最长 512 字符

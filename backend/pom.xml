@@ -114,6 +114,12 @@
             <artifactId>flexmark-all</artifactId>
             <version>0.64.8</version>
         </dependency>
+        <!-- 富文本 HTML → Markdown（与 body 对齐后参与分块） -->
+        <dependency>
+            <groupId>com.vladsch.flexmark</groupId>
+            <artifactId>flexmark-html2md-converter</artifactId>
+            <version>0.64.8</version>
+        </dependency>
 
         <!-- MCP server transport (SSE over WebMVC)；与 mcp-core 版本必须一致 -->
         <dependency>

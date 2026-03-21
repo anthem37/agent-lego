@@ -3,6 +3,8 @@ package com.agentlego.backend.tool.application.service;
 import com.agentlego.backend.api.ApiException;
 import com.agentlego.backend.common.JacksonHolder;
 import com.agentlego.backend.common.SnowflakeIdGenerator;
+import com.agentlego.backend.kb.rag.KbRagSessionToolOutputs;
+import com.agentlego.backend.kb.rag.KbRecordingAgentTool;
 import com.agentlego.backend.mcp.client.McpClientRegistry;
 import com.agentlego.backend.tool.domain.ToolAggregate;
 import com.agentlego.backend.tool.http.HttpProxyAgentTool;
@@ -14,6 +16,7 @@ import com.agentlego.backend.workflow.application.service.WorkflowApplicationSer
 import com.fasterxml.jackson.core.JsonProcessingException;
 import io.agentscope.core.message.ToolResultBlock;
 import io.agentscope.core.message.ToolUseBlock;
+import io.agentscope.core.tool.AgentTool;
 import io.agentscope.core.tool.ToolCallParam;
 import io.agentscope.core.tool.Toolkit;
 import org.springframework.beans.factory.annotation.Value;
@@ -62,6 +65,14 @@ public class ToolExecutionService {
      * 构建一个只包含指定工具集合的 Toolkit，供智能体运行时挂载使用。
      */
     public Toolkit buildToolkitForToolIds(List<ToolAggregate> tools) {
+        return buildToolkitForToolIds(tools, null);
+    }
+
+    /**
+     * 同 {@link #buildToolkitForToolIds(List)}；若提供 {@code sessionToolOutputs}，则对 HTTP/MCP/WORKFLOW 等 {@link AgentTool}
+     * 包装录制：成功返回时写入本次请求内的出参表，供知识库 RAG 替换 {@code tool_field}（非跨请求缓存）。
+     */
+    public Toolkit buildToolkitForToolIds(List<ToolAggregate> tools, KbRagSessionToolOutputs sessionToolOutputs) {
         Set<String> seenNames = new HashSet<>();
         for (ToolAggregate t : tools) {
             String n = t.getName();
@@ -76,21 +87,46 @@ public class ToolExecutionService {
         }
 
         Toolkit toolkit = new Toolkit();
+        var om = JacksonHolder.INSTANCE;
 
         for (ToolAggregate t : tools) {
             switch (t.getToolType()) {
                 case LOCAL -> toolkit.registerTool(resolveLocalTool(t.getName()));
                 case HTTP -> toolkit.registerAgentTool(
-                        new HttpProxyAgentTool(t, JacksonHolder.INSTANCE, httpToolRequestExecutor)
+                        wrapForKbRecording(
+                                new HttpProxyAgentTool(t, om, httpToolRequestExecutor),
+                                t,
+                                sessionToolOutputs,
+                                om
+                        )
                 );
-                case MCP -> toolkit.registerAgentTool(new McpProxyAgentTool(t, mcpClientRegistry));
+                case MCP -> toolkit.registerAgentTool(
+                        wrapForKbRecording(new McpProxyAgentTool(t, mcpClientRegistry), t, sessionToolOutputs, om)
+                );
                 case WORKFLOW -> toolkit.registerAgentTool(
-                        new WorkflowProxyAgentTool(t, workflowApplicationService, JacksonHolder.INSTANCE)
+                        wrapForKbRecording(
+                                new WorkflowProxyAgentTool(t, workflowApplicationService, om),
+                                t,
+                                sessionToolOutputs,
+                                om
+                        )
                 );
             }
         }
 
         return toolkit;
+    }
+
+    private static AgentTool wrapForKbRecording(
+            AgentTool tool,
+            ToolAggregate aggregate,
+            KbRagSessionToolOutputs sessionToolOutputs,
+            com.fasterxml.jackson.databind.ObjectMapper om
+    ) {
+        if (sessionToolOutputs == null || aggregate.getId() == null || aggregate.getId().isBlank()) {
+            return tool;
+        }
+        return new KbRecordingAgentTool(tool, aggregate.getId(), sessionToolOutputs, om);
     }
 
     /**

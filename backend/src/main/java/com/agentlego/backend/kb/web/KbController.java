@@ -71,6 +71,15 @@ public class KbController {
         return ApiResponse.created(kbApplicationService.ingestTextDocument(id, req));
     }
 
+    @PutMapping("/collections/{collectionId}/documents/{documentId}")
+    public ApiResponse<KbDocumentDto> updateDocument(
+            @PathVariable("collectionId") String collectionId,
+            @PathVariable("documentId") String documentId,
+            @Valid @RequestBody IngestKbDocumentRequest req
+    ) {
+        return ApiResponse.ok(kbApplicationService.updateTextDocument(collectionId, documentId, req));
+    }
+
     @DeleteMapping("/collections/{collectionId}/documents/{documentId}")
     public ApiResponse<Void> deleteDocument(
             @PathVariable("collectionId") String collectionId,

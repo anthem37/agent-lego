@@ -7,6 +7,8 @@ import com.agentlego.backend.kb.infrastructure.persistence.KbDocumentMapper;
 import com.agentlego.backend.kb.support.KbDocumentToolBindings;
 import org.springframework.stereotype.Repository;
 
+import java.util.ArrayList;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Optional;
 
@@ -25,6 +27,7 @@ public class KbDocumentRepositoryImpl implements KbDocumentRepository {
             String collectionId,
             String title,
             String body,
+            String bodyRich,
             String linkedToolIdsJson,
             String toolOutputBindingsJson
     ) {
@@ -33,6 +36,7 @@ public class KbDocumentRepositoryImpl implements KbDocumentRepository {
         row.setCollectionId(collectionId);
         row.setTitle(title);
         row.setBody(body);
+        row.setBodyRich(bodyRich == null || bodyRich.isBlank() ? null : bodyRich);
         row.setLinkedToolIdsJson(
                 linkedToolIdsJson == null || linkedToolIdsJson.isBlank() ? "[]" : linkedToolIdsJson
         );
@@ -61,9 +65,53 @@ public class KbDocumentRepositoryImpl implements KbDocumentRepository {
     }
 
     @Override
+    public void updateReingest(
+            String id,
+            String title,
+            String body,
+            String bodyRich,
+            String linkedToolIdsJson,
+            String toolOutputBindingsJson
+    ) {
+        String linked = linkedToolIdsJson == null || linkedToolIdsJson.isBlank() ? "[]" : linkedToolIdsJson;
+        String bindings = toolOutputBindingsJson == null || toolOutputBindingsJson.isBlank()
+                ? KbDocumentToolBindings.defaultBindingsJson()
+                : toolOutputBindingsJson;
+        mapper.updateReingest(
+                id,
+                title,
+                body,
+                bodyRich == null || bodyRich.isBlank() ? null : bodyRich,
+                linked,
+                bindings
+        );
+    }
+
+    @Override
     public Optional<KbDocumentRow> findById(String id) {
         KbDocumentDO row = mapper.findById(id);
         return row == null ? Optional.empty() : Optional.of(toRow(row));
+    }
+
+    @Override
+    public List<KbDocumentRow> findByIds(List<String> ids) {
+        if (ids == null || ids.isEmpty()) {
+            return List.of();
+        }
+        LinkedHashSet<String> distinct = new LinkedHashSet<>();
+        for (String id : ids) {
+            if (id != null && !id.isBlank()) {
+                distinct.add(id.trim());
+            }
+        }
+        if (distinct.isEmpty()) {
+            return List.of();
+        }
+        List<KbDocumentDO> rows = mapper.findByIds(new ArrayList<>(distinct));
+        if (rows == null || rows.isEmpty()) {
+            return List.of();
+        }
+        return rows.stream().map(this::toRow).toList();
     }
 
     @Override
@@ -86,6 +134,7 @@ public class KbDocumentRepositoryImpl implements KbDocumentRepository {
         r.setCollectionId(row.getCollectionId());
         r.setTitle(row.getTitle());
         r.setBody(row.getBody());
+        r.setBodyRich(row.getBodyRich());
         r.setStatus(row.getStatus());
         r.setErrorMessage(row.getErrorMessage());
         r.setLinkedToolIdsJson(

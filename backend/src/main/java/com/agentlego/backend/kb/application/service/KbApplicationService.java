@@ -8,7 +8,14 @@ import com.agentlego.backend.common.Throwables;
 import com.agentlego.backend.kb.application.dto.*;
 import com.agentlego.backend.kb.application.mapper.KbDtoMapper;
 import com.agentlego.backend.kb.domain.*;
-import com.agentlego.backend.kb.support.*;
+import com.agentlego.backend.kb.support.KbChunkExecutor;
+import com.agentlego.backend.kb.support.KbChunkSlice;
+import com.agentlego.backend.kb.support.KbDocumentToolBindings;
+import com.agentlego.backend.kb.support.KbHtmlToMarkdown;
+import com.agentlego.backend.kb.support.KbRichHtmlExpansion;
+import com.agentlego.backend.kb.support.KbKnowledgeInlineToolSyntax;
+import com.agentlego.backend.kb.support.KbPolicies;
+import com.agentlego.backend.kb.support.KbToolPlaceholderExpander;
 import com.agentlego.backend.model.domain.ModelAggregate;
 import com.agentlego.backend.model.domain.ModelRepository;
 import com.agentlego.backend.model.support.ModelEmbeddingClient;
@@ -302,14 +309,19 @@ public class KbApplicationService {
         }
     }
 
-    /**
-     * 写入路径：先短事务落库 PENDING，再在事务外调用 embedding（避免长事务锁表），最后单事务批量写分片并标记 READY。
-     * 失败时单独事务标记 FAILED。
-     */
-    public KbDocumentDto ingestTextDocument(String collectionId, IngestKbDocumentRequest req) {
-        KbCollectionAggregate col = collectionRepository.findById(collectionId)
-                .orElseThrow(() -> new ApiException("NOT_FOUND", "知识库集合未找到", HttpStatus.NOT_FOUND));
+    private record PreparedKbIngest(
+            String title,
+            String markdownBody,
+            String bodyRichToStore,
+            String linkedJson,
+            String bindingsJson
+    ) {
+    }
 
+    /**
+     * 校验并生成入库 Markdown / 绑定 JSON（新增与更新共用）。
+     */
+    private PreparedKbIngest prepareKbIngestPayload(IngestKbDocumentRequest req) {
         String title = req.getTitle() == null ? "" : req.getTitle().trim();
         if (title.isEmpty()) {
             throw new ApiException("VALIDATION_ERROR", "title 不能为空", HttpStatus.BAD_REQUEST);
@@ -318,33 +330,77 @@ public class KbApplicationService {
             throw new ApiException("VALIDATION_ERROR", "title 过长（最多 " + MAX_DOCUMENT_TITLE_CHARS + " 字符）", HttpStatus.BAD_REQUEST);
         }
 
-        String body = req.getBody() == null ? "" : req.getBody().trim();
+        String mdRaw = req.getBody() == null ? "" : req.getBody().trim();
+        String richRaw = req.getBodyRich() == null ? "" : req.getBodyRich().trim();
+        if (mdRaw.isEmpty() && richRaw.isEmpty()) {
+            throw new ApiException("VALIDATION_ERROR", "正文不能为空：请填写富文本（bodyRich）或 Markdown（body）", HttpStatus.BAD_REQUEST);
+        }
+        if (richRaw.length() > maxDocumentChars * 4) {
+            throw new ApiException(
+                    "VALIDATION_ERROR",
+                    "bodyRich 过长（最多约 " + (maxDocumentChars * 4) + " 字符），请拆分或精简",
+                    HttpStatus.BAD_REQUEST
+            );
+        }
+        String htmlForMarkdown = richRaw;
+        String bindingsJson;
+        try {
+            if (!richRaw.isEmpty()) {
+                String linkedJsonPre = KbDocumentToolBindings.normalizeLinkedToolIdsJson(req.getLinkedToolIds());
+                KbRichHtmlExpansion.ExpandOutcome expanded =
+                        KbRichHtmlExpansion.expandForIngest(richRaw, linkedJsonPre, toolRepository, KB_OBJECT_MAPPER);
+                htmlForMarkdown = expanded.html();
+                bindingsJson = KbDocumentToolBindings.mergeBindingsJson(
+                        expanded.bindingsJson(),
+                        req.getToolOutputBindings(),
+                        KB_OBJECT_MAPPER
+                );
+            } else {
+                bindingsJson = KbDocumentToolBindings.normalizeBindingsJson(req.getToolOutputBindings(), KB_OBJECT_MAPPER);
+            }
+        } catch (IllegalArgumentException e) {
+            throw new ApiException("VALIDATION_ERROR", e.getMessage(), HttpStatus.BAD_REQUEST);
+        }
+        String body = !richRaw.isEmpty() ? KbHtmlToMarkdown.convert(htmlForMarkdown) : mdRaw;
         if (body.isEmpty()) {
-            throw new ApiException("VALIDATION_ERROR", "body 不能为空", HttpStatus.BAD_REQUEST);
+            throw new ApiException(
+                    "VALIDATION_ERROR",
+                    "富文本转换后的 Markdown 为空，请检查内容",
+                    HttpStatus.BAD_REQUEST
+            );
         }
         if (body.length() > maxDocumentChars) {
             throw new ApiException(
                     "VALIDATION_ERROR",
-                    "body 超过允许长度（最多 " + maxDocumentChars + " 字符），请拆分文档",
+                    "正文（Markdown）超过允许长度（最多 " + maxDocumentChars + " 字符），请拆分文档",
                     HttpStatus.BAD_REQUEST
             );
         }
+        String bodyRichToStore = richRaw.isEmpty() ? null : richRaw;
 
         String linkedJson;
-        String bindingsJson;
         try {
             linkedJson = KbDocumentToolBindings.normalizeLinkedToolIdsJson(req.getLinkedToolIds());
-            bindingsJson = KbDocumentToolBindings.normalizeBindingsJson(req.getToolOutputBindings(), KB_OBJECT_MAPPER);
         } catch (IllegalArgumentException e) {
             throw new ApiException("VALIDATION_ERROR", e.getMessage(), HttpStatus.BAD_REQUEST);
         }
         validateKbDocumentToolLinks(linkedJson, bindingsJson);
         validateBodyInlineToolMentions(body, linkedJson);
 
-        String docId = SnowflakeIdGenerator.nextId();
-        transactionTemplate.executeWithoutResult(status ->
-                documentRepository.insertPending(docId, collectionId, title, body, linkedJson, bindingsJson));
+        return new PreparedKbIngest(title, body, bodyRichToStore, linkedJson, bindingsJson);
+    }
 
+    /**
+     * 分片、向量化、写 chunks、标记 READY；失败标记 FAILED。文档行须已为 PENDING。
+     */
+    private void runKbIngestFinalize(
+            String docId,
+            String collectionId,
+            KbCollectionAggregate col,
+            String documentTitle,
+            String bodyMarkdown,
+            List<String> similarQueries
+    ) {
         try {
             KbChunkExecutor executor;
             try {
@@ -355,7 +411,7 @@ public class KbApplicationService {
             }
             List<KbChunkSlice> slices;
             try {
-                slices = executor.chunkSlices(body);
+                slices = executor.chunkSlices(bodyMarkdown);
             } catch (IllegalArgumentException e) {
                 transactionTemplate.executeWithoutResult(s -> documentRepository.markFailed(docId, e.getMessage()));
                 throw new ApiException("VALIDATION_ERROR", e.getMessage(), HttpStatus.BAD_REQUEST);
@@ -367,9 +423,9 @@ public class KbApplicationService {
             }
             if (slices.isEmpty()) {
                 transactionTemplate.executeWithoutResult(s -> documentRepository.markReady(docId));
-                return documentDtoOrThrow(docId);
+                return;
             }
-            List<String> embeddingInputs = buildEmbeddingInputs(title, slices, req.getSimilarQueries());
+            List<String> embeddingInputs = buildEmbeddingInputs(documentTitle, slices, similarQueries);
             List<float[]> vectors = embeddingClient.embed(col.getEmbeddingModelId(), embeddingInputs);
             if (vectors.size() != slices.size()) {
                 throw new IllegalStateException("embedding 条数与分片不一致");
@@ -400,7 +456,56 @@ public class KbApplicationService {
             transactionTemplate.executeWithoutResult(s -> documentRepository.markFailed(docId, msg));
             throw new ApiException("UPSTREAM_ERROR", "知识库写入失败：" + msg, HttpStatus.BAD_GATEWAY);
         }
+    }
+
+    /**
+     * 写入路径：先短事务落库 PENDING，再在事务外调用 embedding（避免长事务锁表），最后单事务批量写分片并标记 READY。
+     * 失败时单独事务标记 FAILED。
+     */
+    public KbDocumentDto ingestTextDocument(String collectionId, IngestKbDocumentRequest req) {
+        KbCollectionAggregate col = collectionRepository.findById(collectionId)
+                .orElseThrow(() -> new ApiException("NOT_FOUND", "知识库集合未找到", HttpStatus.NOT_FOUND));
+        PreparedKbIngest p = prepareKbIngestPayload(req);
+        String docId = SnowflakeIdGenerator.nextId();
+        transactionTemplate.executeWithoutResult(status ->
+                documentRepository.insertPending(
+                        docId,
+                        collectionId,
+                        p.title(),
+                        p.markdownBody(),
+                        p.bodyRichToStore(),
+                        p.linkedJson(),
+                        p.bindingsJson()
+                ));
+        runKbIngestFinalize(docId, collectionId, col, p.title(), p.markdownBody(), req.getSimilarQueries());
         return documentDtoOrThrow(docId);
+    }
+
+    /**
+     * 更新文档：删除旧分片，更新正文与绑定为 PENDING，重新分片与向量化。
+     */
+    public KbDocumentDto updateTextDocument(String collectionId, String documentId, IngestKbDocumentRequest req) {
+        KbCollectionAggregate col = collectionRepository.findById(collectionId)
+                .orElseThrow(() -> new ApiException("NOT_FOUND", "知识库集合未找到", HttpStatus.NOT_FOUND));
+        KbDocumentRow existing = documentRepository.findById(documentId)
+                .orElseThrow(() -> new ApiException("NOT_FOUND", "文档未找到", HttpStatus.NOT_FOUND));
+        if (!collectionId.equals(existing.getCollectionId())) {
+            throw new ApiException("VALIDATION_ERROR", "文档不属于该集合", HttpStatus.BAD_REQUEST);
+        }
+        PreparedKbIngest p = prepareKbIngestPayload(req);
+        transactionTemplate.executeWithoutResult(status -> {
+            chunkRepository.deleteByDocumentId(documentId);
+            documentRepository.updateReingest(
+                    documentId,
+                    p.title(),
+                    p.markdownBody(),
+                    p.bodyRichToStore(),
+                    p.linkedJson(),
+                    p.bindingsJson()
+            );
+        });
+        runKbIngestFinalize(documentId, collectionId, col, p.title(), p.markdownBody(), req.getSimilarQueries());
+        return documentDtoOrThrow(documentId);
     }
 
     private KbDocumentDto documentDtoOrThrow(String docId) {

@@ -16,7 +16,18 @@ public interface KbDocumentMapper {
             @Param("errorMessage") String errorMessage
     );
 
+    int updateReingest(
+            @Param("id") String id,
+            @Param("title") String title,
+            @Param("body") String body,
+            @Param("bodyRich") String bodyRich,
+            @Param("linkedToolIdsJson") String linkedToolIdsJson,
+            @Param("toolOutputBindingsJson") String toolOutputBindingsJson
+    );
+
     KbDocumentDO findById(@Param("id") String id);
+
+    List<KbDocumentDO> findByIds(@Param("ids") List<String> ids);
 
     List<KbDocumentDO> listByCollectionId(@Param("collectionId") String collectionId);
 

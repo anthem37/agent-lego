@@ -88,6 +88,28 @@ class KbControllerWebTest {
     }
 
     @Test
+    void updateDocument_ok_shouldReturnDto() throws Exception {
+        KbDocumentDto dto = new KbDocumentDto();
+        dto.setId("d1");
+        dto.setCollectionId("c1");
+        dto.setTitle("t2");
+        dto.setStatus("READY");
+        dto.setCreatedAt(Instant.parse("2025-01-01T00:00:00Z"));
+        dto.setUpdatedAt(Instant.parse("2025-01-02T00:00:00Z"));
+        when(kbApplicationService.updateTextDocument(eq("c1"), eq("d1"), any(IngestKbDocumentRequest.class))).thenReturn(dto);
+
+        mockMvc.perform(
+                        put("/kb/collections/c1/documents/d1")
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content("{\"title\":\"t2\",\"body\":\"hello2\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value("OK"))
+                .andExpect(jsonPath("$.data.title").value("t2"));
+
+        verify(kbApplicationService).updateTextDocument(eq("c1"), eq("d1"), any(IngestKbDocumentRequest.class));
+    }
+
+    @Test
     void getDocument_ok_shouldReturnBody() throws Exception {
         KbDocumentDto dto = new KbDocumentDto();
         dto.setId("d1");

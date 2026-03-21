@@ -12,6 +12,8 @@ import com.agentlego.backend.api.ApiRequires;
 import com.agentlego.backend.common.JsonMaps;
 import com.agentlego.backend.common.SnowflakeIdGenerator;
 import com.agentlego.backend.kb.application.KbRagKnowledgeFactory;
+import com.agentlego.backend.kb.rag.KbRagSessionToolOutputs;
+import com.agentlego.backend.kb.support.KbPolicies;
 import com.agentlego.backend.memory.application.dto.MemoryQueryRequest;
 import com.agentlego.backend.memory.application.service.MemoryApplicationService;
 import com.agentlego.backend.model.domain.ModelAggregate;
@@ -39,6 +41,16 @@ import java.util.stream.Collectors;
 public class AgentApplicationService {
     private static final String POLICY_OWNER_SCOPE = "ownerScope";
     private static final String POLICY_TOP_K = "topK";
+
+    /**
+     * 绑定知识库时追加：说明召回片段中的工具记号，引导模型用 Tool Calling 配合会话内已注入的字段值。
+     */
+    static final String KB_RAG_PLACEHOLDER_HINT = """
+            [知识库]
+            后续消息中的「参考资料」可能含有：
+            - {{tool_field:工具运行时名.出参路径}}：表示该处对应工具的 JSON 出参字段；若本轮已调用过该工具，片段中可能已替换为实际值；否则请先调用工具获取最新结果，勿编造。
+            - 已展开为「…」工具的文案：表示知识建议调用的工具，仍请用标准工具调用执行。
+            """.strip();
 
     private final AgentRepository agentRepository;
     private final ModelRepository modelRepository;
@@ -146,13 +158,25 @@ public class AgentApplicationService {
                 .filter(t -> agentAgg.getToolIds() != null && agentAgg.getToolIds().contains(t.getId()))
                 .toList();
 
-        Toolkit toolkit = toolExecutionService.buildToolkitForToolIds(tools);
-
         String sysPrompt = agentAgg.getSystemPrompt();
         String memoryContext = buildMemoryContext(agentAgg, req.getInput());
         if (!memoryContext.isBlank()) {
             sysPrompt = sysPrompt + "\n\n" + memoryContext;
         }
+
+        boolean kbPolicyPresent = !KbPolicies.collectionIds(
+                agentAgg.getKnowledgeBasePolicy() == null ? Map.of() : agentAgg.getKnowledgeBasePolicy()
+        ).isEmpty();
+        KbRagSessionToolOutputs kbSessionToolOutputs = kbPolicyPresent ? new KbRagSessionToolOutputs() : null;
+        var kbBinding = kbRagKnowledgeFactory.resolve(agentAgg, kbSessionToolOutputs);
+        Toolkit toolkit;
+        if (kbBinding.isPresent()) {
+            sysPrompt = sysPrompt + "\n\n" + KB_RAG_PLACEHOLDER_HINT;
+            toolkit = toolExecutionService.buildToolkitForToolIds(tools, kbSessionToolOutputs);
+        } else {
+            toolkit = toolExecutionService.buildToolkitForToolIds(tools);
+        }
+
         Map<String, Object> mergedModelConfig = JsonMaps.shallowMerge(model.getConfig(), req.getOptions());
         ModelDefinition modelDef = new ModelDefinition(
                 model.getProvider(),
@@ -163,7 +187,6 @@ public class AgentApplicationService {
         );
 
         AgentDefinition agentDef;
-        var kbBinding = kbRagKnowledgeFactory.resolve(agentAgg);
         if (kbBinding.isPresent()) {
             var kb = kbBinding.get();
             agentDef = new AgentDefinition(

@@ -4,6 +4,10 @@
         "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
 <mapper namespace="com.agentlego.backend.kb.infrastructure.persistence.KbChunkMapper">
 
+    <delete id="deleteByDocumentId">
+        delete from lego_kb_chunks where document_id = #{documentId}
+    </delete>
+
     <resultMap id="KbChunkDOMap" type="com.agentlego.backend.kb.infrastructure.persistence.KbChunkDO">
         <id property="id" column="id"/>
         <result property="documentId" column="document_id"/>

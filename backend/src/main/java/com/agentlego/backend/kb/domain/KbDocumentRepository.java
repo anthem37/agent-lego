@@ -10,6 +10,7 @@ public interface KbDocumentRepository {
             String collectionId,
             String title,
             String body,
+            String bodyRich,
             String linkedToolIdsJson,
             String toolOutputBindingsJson
     );
@@ -18,7 +19,24 @@ public interface KbDocumentRepository {
 
     void markFailed(String id, String errorMessage);
 
+    /**
+     * 更新正文与绑定并置为 PENDING，供重新分片与向量化（调用方应先删除旧 chunks）。
+     */
+    void updateReingest(
+            String id,
+            String title,
+            String body,
+            String bodyRich,
+            String linkedToolIdsJson,
+            String toolOutputBindingsJson
+    );
+
     Optional<KbDocumentRow> findById(String id);
+
+    /**
+     * 按 id 批量加载（RAG 按 document_id enrich 片段）；id 去重、忽略空串。
+     */
+    List<KbDocumentRow> findByIds(List<String> ids);
 
     List<KbDocumentRow> listByCollectionId(String collectionId);
 

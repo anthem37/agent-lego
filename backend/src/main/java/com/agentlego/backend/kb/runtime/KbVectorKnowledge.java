@@ -1,9 +1,10 @@
 package com.agentlego.backend.kb.runtime;
 
-import com.agentlego.backend.kb.domain.KbChunkHit;
-import com.agentlego.backend.kb.domain.KbChunkRepository;
-import com.agentlego.backend.model.support.ModelEmbeddingClient;
-import com.agentlego.backend.model.support.ModelEmbeddingDimensions;
+import com.agentlego.backend.kb.domain.KbDocumentRepository;
+import com.agentlego.backend.kb.domain.KbDocumentRow;
+import com.agentlego.backend.kb.rag.KbRagRankedChunk;
+import com.agentlego.backend.kb.rag.KbRagRetrieveEngine;
+import com.agentlego.backend.kb.rag.KbRetrievedChunkRenderer;
 import io.agentscope.core.message.TextBlock;
 import io.agentscope.core.rag.Knowledge;
 import io.agentscope.core.rag.model.Document;
@@ -12,38 +13,35 @@ import io.agentscope.core.rag.model.RetrieveConfig;
 import reactor.core.publisher.Mono;
 import reactor.core.scheduler.Schedulers;
 
-import java.util.*;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.function.Supplier;
 
 /**
- * 平台知识库 → 检索 {@link Knowledge} 实现：pgvector 余弦近邻 + {@code content_tsv} 全文通道，
- * 应用层 RRF 融合后再按融合分与阈值截断。
+ * 平台知识库 → {@link Knowledge}：检索由 {@link KbRagRetrieveEngine} 完成，片段正文由 {@link KbRetrievedChunkRenderer}
+ * 在注入模型前按文档绑定与会话工具出参做后处理。
  */
 public final class KbVectorKnowledge implements Knowledge {
 
-    private final List<String> collectionIds;
-    private final String embeddingModelId;
-    private final KbChunkRepository chunkRepository;
-    private final ModelEmbeddingClient embeddingClient;
-    private final int candidateLimit;
-    /**
-     * false 时仅走向量近邻，不调用 {@link KbChunkRepository#searchByFullText}。
-     */
-    private final boolean fullTextEnabled;
+    private final KbRagRetrieveEngine retrieveEngine;
+    private final KbDocumentRepository documentRepository;
+    private final KbRetrievedChunkRenderer chunkRenderer;
+    private final Supplier<Map<String, Object>> toolOutputsSupplier;
 
     public KbVectorKnowledge(
-            List<String> collectionIds,
-            String embeddingModelId,
-            KbChunkRepository chunkRepository,
-            ModelEmbeddingClient embeddingClient,
-            int candidateLimit,
-            boolean fullTextEnabled
+            KbRagRetrieveEngine retrieveEngine,
+            KbDocumentRepository documentRepository,
+            KbRetrievedChunkRenderer chunkRenderer,
+            Supplier<Map<String, Object>> toolOutputsSupplier
     ) {
-        this.collectionIds = List.copyOf(Objects.requireNonNull(collectionIds));
-        this.embeddingModelId = Objects.requireNonNull(embeddingModelId);
-        this.chunkRepository = Objects.requireNonNull(chunkRepository);
-        this.embeddingClient = Objects.requireNonNull(embeddingClient);
-        this.candidateLimit = Math.max(50, candidateLimit);
-        this.fullTextEnabled = fullTextEnabled;
+        this.retrieveEngine = Objects.requireNonNull(retrieveEngine, "retrieveEngine");
+        this.documentRepository = Objects.requireNonNull(documentRepository, "documentRepository");
+        this.chunkRenderer = Objects.requireNonNull(chunkRenderer, "chunkRenderer");
+        this.toolOutputsSupplier = Objects.requireNonNull(toolOutputsSupplier, "toolOutputsSupplier");
     }
 
     @Override
@@ -58,89 +56,43 @@ public final class KbVectorKnowledge implements Knowledge {
     }
 
     private List<Document> doRetrieve(String query, RetrieveConfig config) {
-        String q = query == null ? "" : query.trim();
-        if (q.isEmpty() || collectionIds.isEmpty()) {
+        List<KbRagRankedChunk> ranked = retrieveEngine.search(query, config);
+        if (ranked.isEmpty()) {
             return List.of();
         }
-        Integer lim = config != null ? config.getLimit() : null;
-        int topK = lim != null ? Math.max(1, lim) : 5;
-        Double cfgTh = config != null ? config.getScoreThreshold() : null;
-        double threshold = cfgTh != null ? cfgTh : 0.25d;
-
-        List<float[]> qv = embeddingClient.embed(embeddingModelId, List.of(q));
-        if (qv.isEmpty()) {
-            return List.of();
-        }
-        float[] queryVec = ModelEmbeddingDimensions.padForPgStorage(qv.get(0));
-
-        List<KbChunkHit> vecHits = chunkRepository.searchByCosineSimilarity(collectionIds, queryVec, candidateLimit);
-        // 单字中文等短查询也走全文通道，避免仅靠向量漏召回专有名词（可通过策略或配置关闭）
-        List<KbChunkHit> kwHits = fullTextEnabled
-                ? chunkRepository.searchByFullText(collectionIds, q, candidateLimit)
-                : List.of();
-
-        Map<String, Double> vecSimById = new HashMap<>();
-        for (KbChunkHit h : vecHits) {
-            if (h.getSimilarity() != null) {
-                vecSimById.put(h.getId(), h.getSimilarity());
+        LinkedHashSet<String> docIds = new LinkedHashSet<>();
+        for (KbRagRankedChunk c : ranked) {
+            if (c.documentId() != null && !c.documentId().isBlank()) {
+                docIds.add(c.documentId().trim());
             }
         }
-        Map<String, Double> kwSimById = new HashMap<>();
-        for (KbChunkHit h : kwHits) {
-            if (h.getSimilarity() != null) {
-                kwSimById.put(h.getId(), h.getSimilarity());
+        LinkedHashMap<String, KbDocumentRow> docById = new LinkedHashMap<>();
+        if (!docIds.isEmpty()) {
+            for (KbDocumentRow row : documentRepository.findByIds(new ArrayList<>(docIds))) {
+                if (row != null && row.getId() != null) {
+                    docById.putIfAbsent(row.getId(), row);
+                }
             }
         }
-
-        Map<String, Double> rrf = new HashMap<>();
-        int rrfK = 60;
-        for (int i = 0; i < vecHits.size(); i++) {
-            rrf.merge(vecHits.get(i).getId(), 1.0 / (rrfK + i + 1), Double::sum);
+        Map<String, Object> toolOutputs = toolOutputsSupplier.get();
+        if (toolOutputs == null) {
+            toolOutputs = Map.of();
         }
-        for (int i = 0; i < kwHits.size(); i++) {
-            rrf.merge(kwHits.get(i).getId(), 1.0 / (rrfK + i + 1), Double::sum);
-        }
-        if (rrf.isEmpty()) {
-            return List.of();
-        }
-
-        Map<String, KbChunkHit> hitById = new LinkedHashMap<>();
-        for (KbChunkHit h : vecHits) {
-            hitById.putIfAbsent(h.getId(), h);
-        }
-        for (KbChunkHit h : kwHits) {
-            hitById.putIfAbsent(h.getId(), h);
-        }
-
-        List<String> orderedIds = rrf.entrySet().stream()
-                .sorted((a, b) -> Double.compare(b.getValue(), a.getValue()))
-                .map(Map.Entry::getKey)
-                .toList();
 
         List<Document> out = new ArrayList<>();
-        for (String id : orderedIds) {
-            double vec = vecSimById.getOrDefault(id, 0.0);
-            double kwRaw = kwSimById.getOrDefault(id, 0.0);
-            double kwNorm = Math.min(1.0, kwRaw * 10.0);
-            double fused = Math.max(vec, kwNorm);
-            if (fused < threshold) {
-                continue;
-            }
-            KbChunkHit h = hitById.get(id);
-            if (h == null) {
-                continue;
-            }
+        for (KbRagRankedChunk c : ranked) {
+            KbDocumentRow doc = c.documentId() == null || c.documentId().isBlank()
+                    ? null
+                    : docById.get(c.documentId().trim());
+            String text = chunkRenderer.renderForModel(c.content(), doc, toolOutputs);
             DocumentMetadata meta = DocumentMetadata.builder()
-                    .content(TextBlock.builder().text(h.getContent()).build())
-                    .docId(h.getDocumentId())
-                    .chunkId(h.getId())
+                    .content(TextBlock.builder().text(text).build())
+                    .docId(c.documentId())
+                    .chunkId(c.chunkId())
                     .build();
             Document d = new Document(meta);
-            d.setScore(fused);
+            d.setScore(c.score());
             out.add(d);
-            if (out.size() >= topK) {
-                break;
-            }
         }
         return out;
     }

@@ -5,6 +5,10 @@ import com.agentlego.backend.api.ApiException;
 import com.agentlego.backend.kb.domain.KbChunkRepository;
 import com.agentlego.backend.kb.domain.KbCollectionAggregate;
 import com.agentlego.backend.kb.domain.KbCollectionRepository;
+import com.agentlego.backend.kb.domain.KbDocumentRepository;
+import com.agentlego.backend.kb.rag.KbRagRetrieveEngine;
+import com.agentlego.backend.kb.rag.KbRagSessionToolOutputs;
+import com.agentlego.backend.kb.rag.KbRetrievedChunkRenderer;
 import com.agentlego.backend.kb.runtime.KbVectorKnowledge;
 import com.agentlego.backend.kb.support.KbPolicies;
 import com.agentlego.backend.model.support.ModelEmbeddingClient;
@@ -14,10 +18,15 @@ import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Component;
 
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
+import java.util.function.Supplier;
 
 /**
  * 根据智能体 {@code knowledge_base_policy} 装配 {@link Knowledge} 与 RAG 数值参数。
+ * <p>
+ * {@link KbRagSessionToolOutputs} 由单次 {@code runAgent} 创建，与带录制的 Toolkit 共享，用于 RAG 渲染时替换
+ * {@code tool_field}；不实现跨请求缓存。
  */
 @Component
 public class KbRagKnowledgeFactory {
@@ -29,22 +38,32 @@ public class KbRagKnowledgeFactory {
 
     private final KbCollectionRepository collectionRepository;
     private final KbChunkRepository chunkRepository;
+    private final KbDocumentRepository documentRepository;
+    private final KbRetrievedChunkRenderer retrievedChunkRenderer;
     private final ModelEmbeddingClient embeddingClient;
     private final boolean defaultFullTextEnabled;
 
     public KbRagKnowledgeFactory(
             KbCollectionRepository collectionRepository,
             KbChunkRepository chunkRepository,
+            KbDocumentRepository documentRepository,
+            KbRetrievedChunkRenderer retrievedChunkRenderer,
             ModelEmbeddingClient embeddingClient,
             @Value("${agentlego.kb.retrieve.fulltext-enabled:true}") boolean defaultFullTextEnabled
     ) {
         this.collectionRepository = collectionRepository;
         this.chunkRepository = chunkRepository;
+        this.documentRepository = documentRepository;
+        this.retrievedChunkRenderer = retrievedChunkRenderer;
         this.embeddingClient = embeddingClient;
         this.defaultFullTextEnabled = defaultFullTextEnabled;
     }
 
     public Optional<KnowledgeBinding> resolve(AgentAggregate agent) {
+        return resolve(agent, null);
+    }
+
+    public Optional<KnowledgeBinding> resolve(AgentAggregate agent, KbRagSessionToolOutputs sessionToolOutputs) {
         List<String> ids = KbPolicies.collectionIds(agent.getKnowledgeBasePolicy());
         if (ids.isEmpty()) {
             return Optional.empty();
@@ -67,7 +86,7 @@ public class KbRagKnowledgeFactory {
         String embeddingModelId = override.isBlank() ? expectedModel : override;
 
         boolean fullText = KbPolicies.fullTextEnabled(agent.getKnowledgeBasePolicy(), defaultFullTextEnabled);
-        Knowledge knowledge = new KbVectorKnowledge(
+        KbRagRetrieveEngine engine = new KbRagRetrieveEngine(
                 ids,
                 embeddingModelId,
                 chunkRepository,
@@ -75,6 +94,9 @@ public class KbRagKnowledgeFactory {
                 DEFAULT_CANDIDATE_LIMIT,
                 fullText
         );
+        Supplier<Map<String, Object>> outputs =
+                sessionToolOutputs == null ? () -> Map.of() : sessionToolOutputs::forExpansion;
+        Knowledge knowledge = new KbVectorKnowledge(engine, documentRepository, retrievedChunkRenderer, outputs);
         int topK = KbPolicies.topK(agent.getKnowledgeBasePolicy(), 5);
         double threshold = KbPolicies.scoreThreshold(agent.getKnowledgeBasePolicy(), 0.25d);
         return Optional.of(new KnowledgeBinding(knowledge, topK, threshold));

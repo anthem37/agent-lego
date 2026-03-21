@@ -113,7 +113,7 @@ class AgentApplicationServiceTest {
                 kbRagKnowledgeFactory,
                 AGENT_DTO_MAPPER
         );
-        when(kbRagKnowledgeFactory.resolve(any(AgentAggregate.class))).thenReturn(Optional.empty());
+        when(kbRagKnowledgeFactory.resolve(any(AgentAggregate.class), any())).thenReturn(Optional.empty());
 
         AgentAggregate agentAgg = new AgentAggregate();
         agentAgg.setId("agent1");
@@ -181,7 +181,7 @@ class AgentApplicationServiceTest {
                 kbRagKnowledgeFactory,
                 AGENT_DTO_MAPPER
         );
-        when(kbRagKnowledgeFactory.resolve(any(AgentAggregate.class))).thenReturn(Optional.empty());
+        when(kbRagKnowledgeFactory.resolve(any(AgentAggregate.class), any())).thenReturn(Optional.empty());
 
         AgentAggregate agentAgg = new AgentAggregate();
         agentAgg.setId("agent1");

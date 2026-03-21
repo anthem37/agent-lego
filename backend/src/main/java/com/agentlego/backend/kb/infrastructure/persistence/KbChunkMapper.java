@@ -8,6 +8,8 @@ import java.util.List;
 @Mapper
 public interface KbChunkMapper {
 
+    int deleteByDocumentId(@Param("documentId") String documentId);
+
     int insert(
             @Param("id") String id,
             @Param("documentId") String documentId,

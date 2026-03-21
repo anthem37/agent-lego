@@ -7,6 +7,15 @@ export function kbToolPrimaryLabel(t: ToolDto): string {
     return d ? `${d}（${t.name}）` : t.name;
 }
 
+/**
+ * 富文本内嵌「工具」标签可见文案：只要展示名（中文），不要「中文（英文）」；
+ * 无展示名时退回运行时 name。
+ */
+export function kbToolRichTagLabel(t: ToolDto): string {
+    const d = t.displayLabel?.trim();
+    return d || (t.name?.trim() || t.id);
+}
+
 /** 搜索用：名称、id、类型、说明 */
 export function kbToolSearchBlob(t: ToolDto): string {
     return `${t.name} ${t.id} ${t.displayLabel ?? ""} ${t.description ?? ""} ${t.toolType} ${t.toolCategory ?? ""}`.toLowerCase();

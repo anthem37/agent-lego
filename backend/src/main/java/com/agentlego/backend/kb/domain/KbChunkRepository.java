@@ -4,6 +4,9 @@ import java.util.List;
 
 public interface KbChunkRepository {
 
+    /** 文档重新入库/更新前删除旧向量分片 */
+    void deleteByDocumentId(String documentId);
+
     void insert(
             String id,
             String documentId,

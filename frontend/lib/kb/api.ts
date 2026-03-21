@@ -7,8 +7,6 @@ import type {
     KbCollectionDeleteResult,
     KbCollectionDto,
     KbDocumentDto,
-    RenderKbDocumentBody,
-    RenderKbDocumentResult,
 } from "@/lib/kb/types";
 
 export async function listKbChunkStrategies(signal?: AbortSignal): Promise<KbChunkStrategyMetaDto[]> {
@@ -34,18 +32,6 @@ export async function getKbDocument(
     return request<KbDocumentDto>(`/kb/collections/${collectionId}/documents/${documentId}`, {signal});
 }
 
-export async function renderKbDocumentBody(
-    collectionId: string,
-    documentId: string,
-    body: RenderKbDocumentBody,
-    signal?: AbortSignal,
-): Promise<RenderKbDocumentResult> {
-    return request<RenderKbDocumentResult>(
-        `/kb/collections/${collectionId}/documents/${documentId}/render`,
-        {method: "POST", body, signal},
-    );
-}
-
 export async function createKbCollection(
     body: CreateKbCollectionBody,
     signal?: AbortSignal,
@@ -64,6 +50,19 @@ export async function ingestKbDocument(
 ): Promise<KbDocumentDto> {
     return request<KbDocumentDto>(`/kb/collections/${collectionId}/documents`, {
         method: "POST",
+        body,
+        signal,
+    });
+}
+
+export async function updateKbDocument(
+    collectionId: string,
+    documentId: string,
+    body: IngestKbDocumentBody,
+    signal?: AbortSignal,
+): Promise<KbDocumentDto> {
+    return request<KbDocumentDto>(`/kb/collections/${collectionId}/documents/${documentId}`, {
+        method: "PUT",
         body,
         signal,
     });

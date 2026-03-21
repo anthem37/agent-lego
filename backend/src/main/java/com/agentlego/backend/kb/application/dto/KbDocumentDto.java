@@ -17,6 +17,10 @@ public class KbDocumentDto {
      * 列表接口不返回以减轻负载；GET 单条详情时返回入库原文。
      */
     private String body;
+    /**
+     * 可选：富文本 HTML；GET 单条时有值则返回。
+     */
+    private String bodyRich;
     private String status;
     private String errorMessage;
     /**

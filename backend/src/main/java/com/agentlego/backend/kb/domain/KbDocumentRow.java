@@ -10,6 +10,8 @@ public class KbDocumentRow {
     private String collectionId;
     private String title;
     private String body;
+    /** 可选：富文本 HTML */
+    private String bodyRich;
     private String status;
     private String errorMessage;
     /**

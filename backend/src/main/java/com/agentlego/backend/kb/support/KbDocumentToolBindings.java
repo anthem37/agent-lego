@@ -14,7 +14,22 @@ import java.util.regex.Pattern;
 public final class KbDocumentToolBindings {
 
     private static final int MAX_MAPPINGS = 64;
-    private static final Pattern PLACEHOLDER_KEY = Pattern.compile("^[a-zA-Z][a-zA-Z0-9_]{0,63}$");
+    /** 历史：短占位符如 pab5e01d3、或自定义 orderNo */
+    private static final Pattern PLACEHOLDER_KEY_LEGACY = Pattern.compile("^[a-zA-Z][a-zA-Z0-9_]{0,63}$");
+    /**
+     * 语义占位：正文为 {@code {{tool_field:运行时工具名.出参路径}}}，mappings.placeholder 存不含外层括号的整段，
+     * 例如 {@code tool_field:seed_http_json_todo.data.orderNo}。
+     */
+    private static final Pattern PLACEHOLDER_KEY_TOOL_FIELD = Pattern.compile(
+            "^tool_field:[A-Za-z0-9_.\\[\\]-]{1,400}$"
+    );
+
+    static boolean isValidPlaceholderKey(String s) {
+        if (s == null || s.isBlank() || s.length() > 512) {
+            return false;
+        }
+        return PLACEHOLDER_KEY_LEGACY.matcher(s).matches() || PLACEHOLDER_KEY_TOOL_FIELD.matcher(s).matches();
+    }
 
     private KbDocumentToolBindings() {
     }
@@ -57,9 +72,9 @@ public final class KbDocumentToolBindings {
             if (placeholder.isEmpty()) {
                 throw new IllegalArgumentException("mappings[].placeholder 不能为空");
             }
-            if (!PLACEHOLDER_KEY.matcher(placeholder).matches()) {
+            if (!isValidPlaceholderKey(placeholder)) {
                 throw new IllegalArgumentException(
-                        "占位符 key 须匹配 [a-zA-Z][a-zA-Z0-9_]{0,63}，正文使用 {{" + placeholder + "}}"
+                        "占位符 key 须为：1) 短标识 [a-zA-Z][a-zA-Z0-9_]{0,63}；或 2) tool_field:运行时名.点分路径（≤512 字符），正文 {{…}} 与此一致"
                 );
             }
             if (toolId.isEmpty()) {
@@ -89,6 +104,60 @@ public final class KbDocumentToolBindings {
 
     public static String defaultBindingsJson() {
         return "{\"mappings\":[]}";
+    }
+
+    /**
+     * 合并服务端从富文本解析出的 bindings 与客户端提交的 mappings；同名的 placeholder 以<strong>自动解析</strong>为准（不覆盖）。
+     */
+    public static String mergeBindingsJson(String autoBindingsJson, Map<String, Object> clientRaw, ObjectMapper om)
+            throws IllegalArgumentException {
+        String clientNormalized = normalizeBindingsJson(clientRaw, om);
+        try {
+            JsonNode autoRoot = om.readTree(autoBindingsJson == null || autoBindingsJson.isBlank()
+                    ? defaultBindingsJson()
+                    : autoBindingsJson);
+            JsonNode clientRoot = om.readTree(clientNormalized);
+            ArrayNode autoArr = autoRoot.path("mappings").isArray()
+                    ? (ArrayNode) autoRoot.path("mappings")
+                    : om.createArrayNode();
+            ArrayNode clientArr = clientRoot.path("mappings").isArray()
+                    ? (ArrayNode) clientRoot.path("mappings")
+                    : om.createArrayNode();
+            Set<String> seen = new LinkedHashSet<>();
+            ArrayNode out = om.createArrayNode();
+            for (JsonNode m : autoArr) {
+                if (m == null || !m.isObject()) {
+                    continue;
+                }
+                String ph = textField(m, "placeholder");
+                if (ph.isEmpty() || seen.contains(ph)) {
+                    continue;
+                }
+                seen.add(ph);
+                out.add(m.deepCopy());
+            }
+            for (JsonNode m : clientArr) {
+                if (m == null || !m.isObject()) {
+                    continue;
+                }
+                String ph = textField(m, "placeholder");
+                if (ph.isEmpty() || seen.contains(ph)) {
+                    continue;
+                }
+                seen.add(ph);
+                out.add(m.deepCopy());
+            }
+            if (out.size() > MAX_MAPPINGS) {
+                throw new IllegalArgumentException("toolOutputBindings.mappings 最多 " + MAX_MAPPINGS + " 条");
+            }
+            ObjectNode root = om.createObjectNode();
+            root.set("mappings", out);
+            return om.writeValueAsString(root);
+        } catch (IllegalArgumentException e) {
+            throw e;
+        } catch (Exception e) {
+            throw new IllegalArgumentException("合并 toolOutputBindings 失败: " + e.getMessage());
+        }
     }
 
     private static String textField(JsonNode obj, String field) {

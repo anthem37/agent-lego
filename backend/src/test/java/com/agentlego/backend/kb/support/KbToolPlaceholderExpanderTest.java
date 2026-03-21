@@ -25,6 +25,19 @@ class KbToolPlaceholderExpanderTest {
     }
 
     @Test
+    void expand_toolFieldStylePlaceholder_replaces() {
+        String bindings =
+                "{\"mappings\":[{\"placeholder\":\"tool_field:t1.data.orderNo\",\"toolId\":\"t1\",\"jsonPath\":\"$.data.orderNo\"}]}";
+        String body = "单号：{{tool_field:t1.data.orderNo}} 结束";
+        Map<String, Object> out = Map.of(
+                "t1",
+                Map.of("data", Map.of("orderNo", "A-100"))
+        );
+        String r = KbToolPlaceholderExpander.expand(body, bindings, out, OM);
+        assertEquals("单号：A-100 结束", r);
+    }
+
+    @Test
     void resolveJsonPath_arrayIndex() {
         var root = OM.createArrayNode().add("x").add("y");
         assertEquals("y", KbToolPlaceholderExpander.resolveJsonPath(root, "$.1").asText());
