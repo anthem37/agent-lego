@@ -20,7 +20,7 @@ import java.util.Map;
 import java.util.Objects;
 
 /**
- * 将 {@link com.agentlego.backend.tool.domain.ToolType#WORKFLOW} 工具映射为 AgentScope {@link AgentTool}，
+ * 将 {@link com.agentlego.backend.tool.domain.ToolType#WORKFLOW} 工具映射为可调用 {@link AgentTool}，
  * 同步执行工作流并把结果序列化为文本返回给模型。
  */
 public final class WorkflowProxyAgentTool implements AgentTool {

@@ -1,6 +1,7 @@
 package com.agentlego.backend.model.support;
 
 import io.agentscope.core.message.TextBlock;
+import io.agentscope.core.message.ThinkingBlock;
 import io.agentscope.core.model.ChatResponse;
 import io.agentscope.core.model.Model;
 import org.junit.jupiter.api.Test;
@@ -31,6 +32,31 @@ class ModelConnectivityTesterTest {
         when(response.getContent()).thenReturn(List.of(ok, blank));
 
         assertEquals("OK", ModelConnectivityTester.extractText(response));
+    }
+
+    @Test
+    void extractText_thinkingBlock_shouldUseThinkingText() {
+        ChatResponse response = Mockito.mock(ChatResponse.class);
+        ThinkingBlock think = ThinkingBlock.builder().thinking("inner reasoning").build();
+        when(response.getContent()).thenReturn(List.of(think));
+
+        assertEquals("inner reasoning", ModelConnectivityTester.extractText(response));
+    }
+
+    @Test
+    void testChat_thinkingOnly_shouldNotBeEffectivelyEmpty() {
+        ModelConnectivityTester tester = new ModelConnectivityTester("prompt", 256, 32, Duration.ofSeconds(1));
+
+        ChatResponse response = Mockito.mock(ChatResponse.class);
+        ThinkingBlock think = ThinkingBlock.builder().thinking("visible thought").build();
+        when(response.getContent()).thenReturn(List.of(think));
+
+        Model model = Mockito.mock(Model.class);
+        when(model.stream(anyList(), anyList(), any())).thenReturn(Flux.just(response));
+
+        ModelConnectivityTester.ChatConnectivityResult r = tester.testChat(model, null, null, null);
+        assertEquals("visible thought", r.aggregatedText());
+        assertTrue(!r.isEffectivelyEmpty());
     }
 
     @Test

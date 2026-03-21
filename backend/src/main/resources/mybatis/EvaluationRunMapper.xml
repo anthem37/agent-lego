@@ -18,12 +18,12 @@
     </resultMap>
 
     <insert id="insert" parameterType="com.agentlego.backend.eval.infrastructure.persistence.EvaluationRunDO">
-        insert into platform_evaluation_runs (id, evaluation_id, status, input)
+        insert into lego_evaluation_runs (id, evaluation_id, status, input)
         values (#{id}, #{evaluationId}, #{status}, cast(#{inputJson} as jsonb))
     </insert>
 
     <update id="updateStatusRunning">
-        update platform_evaluation_runs
+        update lego_evaluation_runs
         set status      = 'RUNNING',
             started_at  = now(),
             finished_at = null,
@@ -32,7 +32,7 @@
     </update>
 
     <update id="updateStatusSucceeded">
-        update platform_evaluation_runs
+        update lego_evaluation_runs
         set status      = 'SUCCEEDED',
             metrics     = cast(#{metricsJson} as jsonb),
             trace       = cast(#{traceJson} as jsonb),
@@ -41,7 +41,7 @@
     </update>
 
     <update id="updateStatusFailed">
-        update platform_evaluation_runs
+        update lego_evaluation_runs
         set status      = 'FAILED',
             error       = #{error},
             finished_at = now()
@@ -59,7 +59,7 @@
                started_at,
                finished_at,
                created_at
-        from platform_evaluation_runs
+        from lego_evaluation_runs
         where id = #{id}
     </select>
 </mapper>

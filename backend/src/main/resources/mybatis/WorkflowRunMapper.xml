@@ -18,12 +18,12 @@
     </resultMap>
 
     <insert id="insert" parameterType="com.agentlego.backend.workflow.infrastructure.persistence.WorkflowRunDO">
-        insert into platform_workflow_runs (id, workflow_id, status, idempotency_key, input)
+        insert into lego_workflow_runs (id, workflow_id, status, idempotency_key, input)
         values (#{id}, #{workflowId}, #{status}, #{idempotencyKey}, cast(#{inputJson} as jsonb))
     </insert>
 
     <update id="updateStatusRunning">
-        update platform_workflow_runs
+        update lego_workflow_runs
         set status      = 'RUNNING',
             started_at  = now(),
             finished_at = null,
@@ -32,7 +32,7 @@
     </update>
 
     <update id="updateStatusSucceeded">
-        update platform_workflow_runs
+        update lego_workflow_runs
         set status      = 'SUCCEEDED',
             output      = cast(#{outputJson} as jsonb),
             finished_at = now()
@@ -40,7 +40,7 @@
     </update>
 
     <update id="updateStatusFailed">
-        update platform_workflow_runs
+        update lego_workflow_runs
         set status      = 'FAILED',
             error       = #{error},
             finished_at = now()
@@ -58,7 +58,7 @@
                started_at,
                finished_at,
                created_at
-        from platform_workflow_runs
+        from lego_workflow_runs
         where id = #{id}
     </select>
 </mapper>

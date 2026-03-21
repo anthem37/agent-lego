@@ -13,7 +13,7 @@ import java.util.Map;
 import java.util.Objects;
 
 /**
- * 将 {@link com.agentlego.backend.tool.domain.ToolType#HTTP} 工具注册为 AgentScope {@link AgentTool}。
+ * 将 {@link com.agentlego.backend.tool.domain.ToolType#HTTP} 工具注册为可调用 {@link AgentTool}。
  * <p>
  * 实际 HTTP 访问委托 {@link HttpToolRequestExecutor}（默认 {@link OkHttpHttpToolRequestExecutor}，基于 Square OkHttp），
  * 避免在业务代码中直接使用 JDK {@code HttpClient}。

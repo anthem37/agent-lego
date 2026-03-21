@@ -7,7 +7,7 @@ const EXECUTION_CONFIG_KEYS = [
 ] as const;
 
 /**
- * 规范化 AgentScope `GenerateOptions.executionConfig` 子对象。
+ * 规范化聊天模型 config 中的 `executionConfig` 子对象。
  */
 export function normalizeExecutionConfig(raw: unknown): Record<string, unknown> | undefined {
     if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
@@ -32,7 +32,7 @@ export function normalizeExecutionConfig(raw: unknown): Record<string, unknown> 
 }
 
 /**
- * 规范化 AgentScope `GenerateOptions.toolChoice`（字符串或对象）。
+ * 规范化聊天模型 config 中的 `toolChoice`（字符串或对象）。
  */
 export function normalizeToolChoice(raw: unknown): string | Record<string, string> | undefined {
     if (raw === undefined || raw === null) {

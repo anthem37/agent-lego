@@ -26,5 +26,10 @@ public class ModelSummaryDto {
      * 由 config 推导的短摘要，便于区分同模型多套配置。
      */
     private String configSummary;
+    /**
+     * 与 {@link com.agentlego.backend.model.domain.ModelProvider#isChatProvider()} 一致：
+     * {@code false} 表示文本嵌入类配置，仅用于向量化等，不可绑定智能体推理。
+     */
+    private Boolean chatProvider;
     private Instant createdAt;
 }

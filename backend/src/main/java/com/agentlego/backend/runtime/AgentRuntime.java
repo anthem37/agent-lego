@@ -18,9 +18,9 @@ import reactor.core.publisher.Mono;
 import java.util.Objects;
 
 /**
- * Platform-level wrapper around AgentScope.
+ * 平台侧对对话智能体运行时的封装。
  * <p>
- * Note: AgentScope Agent instances are stateful; we build a new instance per request.
+ * 注意：运行时实例有状态；每次请求新建实例。
  */
 @Component
 public class AgentRuntime {

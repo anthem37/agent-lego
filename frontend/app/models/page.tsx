@@ -1,6 +1,7 @@
 "use client";
 
 import {
+    Alert,
     Button,
     Drawer,
     Form,
@@ -63,13 +64,16 @@ type ProviderMeta = {
     supportedConfigKeys: string[];
     /** 与后端 GET /models/providers 的 chatProvider 对齐；离线 fallback 时手写 */
     chatProvider?: boolean;
+    /** 与后端 modelKind 对齐：CHAT | EMBEDDING */
+    modelKind?: string;
 };
 
-/** 与后端 ModelProvider + AgentScope GenerateOptions 白名单保持一致（供离线 fallback） */
+/** 与后端 ModelProvider 生成参数白名单保持一致（供离线 fallback） */
 const FALLBACK_PROVIDERS: ProviderMeta[] = [
     {
         provider: "DASHSCOPE",
         chatProvider: true,
+        modelKind: "CHAT",
         supportedConfigKeys: [
             "temperature",
             "topP",
@@ -91,6 +95,7 @@ const FALLBACK_PROVIDERS: ProviderMeta[] = [
     {
         provider: "OPENAI",
         chatProvider: true,
+        modelKind: "CHAT",
         supportedConfigKeys: [
             "temperature",
             "topP",
@@ -113,6 +118,7 @@ const FALLBACK_PROVIDERS: ProviderMeta[] = [
     {
         provider: "ANTHROPIC",
         chatProvider: true,
+        modelKind: "CHAT",
         supportedConfigKeys: [
             "temperature",
             "topP",
@@ -134,26 +140,14 @@ const FALLBACK_PROVIDERS: ProviderMeta[] = [
     {
         provider: "OPENAI_TEXT_EMBEDDING",
         chatProvider: false,
-        supportedConfigKeys: [
-            "dimensions",
-            "encodingFormat",
-            "endpointPath",
-            "additionalHeaders",
-            "additionalBodyParams",
-            "additionalQueryParams",
-        ],
+        modelKind: "EMBEDDING",
+        supportedConfigKeys: ["dimensions", "executionConfig"],
     },
     {
         provider: "DASHSCOPE_TEXT_EMBEDDING",
         chatProvider: false,
-        supportedConfigKeys: [
-            "dimensions",
-            "encodingFormat",
-            "endpointPath",
-            "additionalHeaders",
-            "additionalBodyParams",
-            "additionalQueryParams",
-        ],
+        modelKind: "EMBEDDING",
+        supportedConfigKeys: ["dimensions", "executionConfig"],
     },
 ];
 
@@ -191,6 +185,7 @@ function ModelsPageContent() {
     const [providers, setProviders] = React.useState<ProviderMeta[]>(FALLBACK_PROVIDERS);
     const providerValue = Form.useWatch("provider", form);
     const activeProvider = providers.find((p) => p.provider === (providerValue ?? "").trim().toUpperCase());
+    const isEmbeddingProvider = activeProvider?.chatProvider === false;
 
     const openedFromQueryRef = React.useRef<string | null>(null);
 
@@ -448,7 +443,7 @@ function ModelsPageContent() {
             <Space orientation="vertical" size={16} style={{width: "100%"}}>
                 <PageHeaderBlock
                     title="模型管理"
-                    subtitle="同一提供方、同一模型标识可保存多套「配置实例」。聊天模型 config 与 AgentScope GenerateOptions 对齐（采样、流式、惩罚、toolChoice、executionConfig 等）；Embedding 类型用于文本向量化等能力。"
+                    subtitle="同一提供方、同一模型标识可保存多套「配置实例」。聊天模型 config 支持常见生成参数（采样、流式、惩罚、toolChoice、executionConfig 等）；Embedding 类型用于文本向量化等能力。"
                     extra={
                         <Space wrap>
                             <Button onClick={() => void loadList()} loading={listLoading}>
@@ -482,8 +477,9 @@ function ModelsPageContent() {
                                     onChange={(v) => setProviderFilter(v)}
                                     options={providers.map((p) => ({
                                         value: p.provider,
-                                        label: `${providerDisplayName(p.provider)}（${p.provider}）${
-                                            p.chatProvider === false ? " · Embedding" : ""
+                                        label: `${providerDisplayName(p.provider)}（${p.provider}） · ${
+                                            p.modelKind ??
+                                            (p.chatProvider === false ? "EMBEDDING" : "CHAT")
                                         }`,
                                     }))}
                                 />
@@ -545,8 +541,9 @@ function ModelsPageContent() {
                                         placeholder="请选择提供方"
                                         options={providers.map((p) => ({
                                             value: p.provider,
-                                            label: `${providerDisplayName(p.provider)}（${p.provider}）${
-                                                p.chatProvider === false ? " · Embedding" : ""
+                                            label: `${providerDisplayName(p.provider)}（${p.provider}） · ${
+                                                p.modelKind ??
+                                                (p.chatProvider === false ? "EMBEDDING" : "CHAT")
                                             }`,
                                         }))}
                                         filterOption={(input, option) =>
@@ -575,8 +572,19 @@ function ModelsPageContent() {
                                 name="modelKey"
                                 label="模型标识（modelKey）"
                                 rules={[{required: true, message: "请输入模型标识"}]}
+                                tooltip={
+                                    isEmbeddingProvider
+                                        ? "嵌入模型名，如 text-embedding-3-small、text-embedding-v4；与聊天 modelKey 不同。"
+                                        : "厂商 API 中的模型名，如 qwen-plus、gpt-4o。"
+                                }
                             >
-                                <Input placeholder="例如 qwen-plus"/>
+                                <Input
+                                    placeholder={
+                                        isEmbeddingProvider
+                                            ? "例如 text-embedding-3-small、text-embedding-v4"
+                                            : "例如 qwen-plus、gpt-4o"
+                                    }
+                                />
                             </Form.Item>
                             <Form.Item
                                 name="apiKey"
@@ -595,15 +603,41 @@ function ModelsPageContent() {
                                 />
                             </Form.Item>
                             <Form.Item name="baseUrl" label="接口根地址（baseUrl，可选，可清空）">
-                                <Input placeholder="私有化网关或兼容 OpenAI 的接口根地址"/>
+                                <Input
+                                    placeholder={
+                                        isEmbeddingProvider
+                                            ? "嵌入网关根地址，需能访问 Embeddings 路径"
+                                            : "私有化网关或兼容 OpenAI 的接口根地址"
+                                    }
+                                />
                             </Form.Item>
+                            {activeProvider && isEmbeddingProvider ? (
+                                <Alert
+                                    type="info"
+                                    showIcon
+                                    style={{marginBottom: 12}}
+                                    message="当前为文本嵌入（Embedding）配置"
+                                    description="不会出现 temperature、maxTokens、toolChoice 等聊天采样参数；Embedding 类型仅支持 dimensions、executionConfig（超时/重试）及 baseUrl/apiKey。用于知识库向量化等。"
+                                />
+                            ) : null}
                             <Form.Item
                                 name="config"
-                                label="默认推理与请求参数（可选）"
-                                tooltip="根据提供方展示下拉与数字输入；扩展项可通过「请求头 / 正文 / 查询参数」表格填写。"
+                                label={
+                                    isEmbeddingProvider
+                                        ? "嵌入调用参数（可选）"
+                                        : "默认推理与请求参数（可选）"
+                                }
+                                tooltip={
+                                    isEmbeddingProvider
+                                        ? "嵌入模型配置：向量维度、编码、路径及附加头/正文/查询参数。"
+                                        : "根据提供方展示采样、输出长度等；扩展项可通过「请求头 / 正文 / 查询参数」填写。"
+                                }
                             >
                                 {activeProvider ? (
-                                    <ModelConfigForm supportedKeys={activeProvider.supportedConfigKeys}/>
+                                    <ModelConfigForm
+                                        supportedKeys={activeProvider.supportedConfigKeys}
+                                        chatProvider={activeProvider.chatProvider !== false}
+                                    />
                                 ) : (
                                     <Typography.Text type="secondary">请先选择提供方。</Typography.Text>
                                 )}

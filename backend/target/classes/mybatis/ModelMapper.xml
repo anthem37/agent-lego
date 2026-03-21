@@ -17,7 +17,7 @@
     </resultMap>
 
     <insert id="insert" parameterType="com.agentlego.backend.model.infrastructure.persistence.ModelDO">
-        insert into platform_models (id, name, description, provider, model_key, config, api_key_cipher, base_url)
+        insert into lego_models (id, name, description, provider, model_key, config, api_key_cipher, base_url)
         values (#{id}, #{name}, #{description}, #{provider}, #{modelKey}, cast(#{configJson} as jsonb), #{apiKeyCipher},
                 #{baseUrl})
     </insert>
@@ -32,7 +32,7 @@
                api_key_cipher,
                base_url,
                created_at
-        from platform_models
+        from lego_models
         where id = #{id}
     </select>
 
@@ -46,12 +46,12 @@
                api_key_cipher,
                base_url,
                created_at
-        from platform_models
+        from lego_models
         order by created_at desc
     </select>
 
     <update id="update" parameterType="com.agentlego.backend.model.infrastructure.persistence.ModelDO">
-        update platform_models
+        update lego_models
         set name           = #{name},
             description    = #{description},
             model_key      = #{modelKey},
@@ -63,7 +63,7 @@
 
     <delete id="deleteById" parameterType="java.lang.String">
         delete
-        from platform_models
+        from lego_models
         where id = #{id}
     </delete>
 </mapper>

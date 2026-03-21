@@ -1,4 +1,4 @@
-import {Space, Typography} from "antd";
+import {Space, Tag, Typography} from "antd";
 import React from "react";
 
 import {providerDisplayName} from "@/lib/model-config-labels";
@@ -9,6 +9,8 @@ export type ModelOptionRow = {
     provider: string;
     modelKey: string;
     configSummary?: string;
+    /** 与 GET /models 的 chatProvider 对齐：false 为嵌入类模型 */
+    chatProvider?: boolean;
 };
 
 /**
@@ -28,6 +30,15 @@ export function toModelSelectOptions(rows: ModelOptionRow[]): ModelSelectOption[
             <Space orientation="vertical" size={0} style={{width: "100%"}}>
                 <div>
                     <Typography.Text strong>{m.name}</Typography.Text>
+                    {m.chatProvider === false ? (
+                        <Tag color="blue" style={{marginLeft: 8}}>
+                            嵌入
+                        </Tag>
+                    ) : m.chatProvider === true ? (
+                        <Tag color="green" style={{marginLeft: 8}}>
+                            聊天
+                        </Tag>
+                    ) : null}
                     <Typography.Text type="secondary" style={{marginLeft: 8}}>
                         {providerDisplayName(m.provider)} · {m.modelKey}
                     </Typography.Text>

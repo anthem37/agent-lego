@@ -58,6 +58,7 @@ public class ModelController {
                     Map<String, Object> row = new LinkedHashMap<>();
                     row.put("provider", p.code());
                     row.put("chatProvider", p.isChatProvider());
+                    row.put("modelKind", p.isChatProvider() ? "CHAT" : "EMBEDDING");
                     row.put("supportedConfigKeys", p.supportedConfigKeys());
                     return row;
                 })

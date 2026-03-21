@@ -6,7 +6,8 @@ import lombok.NoArgsConstructor;
 /**
  * 模型测试结果（聊天 / 嵌入）。
  * <p>
- * {@link #message} / {@link #raw} 保留兼容旧前端；新字段提供更细粒度信息。
+ * 聊天测试成功时：{@link #message} 为简短状态摘要；{@link #raw} 为模型完整拼接文本。
+ * 仍保留两字段以兼容只读其一的旧调用方。
  */
 @Data
 @NoArgsConstructor
@@ -37,11 +38,11 @@ public class TestModelResponse {
      */
     private Integer maxTokensUsed;
     /**
-     * 主文案
+     * 状态/摘要文案（错误说明、空结果提示，或聊天成功时的短摘要）
      */
     private String message;
     /**
-     * 原始/汇总文本（聊天多为模型回复拼接）
+     * 完整输出：聊天为模型回复全文；嵌入为小数预览字符串等
      */
     private String raw;
     /**

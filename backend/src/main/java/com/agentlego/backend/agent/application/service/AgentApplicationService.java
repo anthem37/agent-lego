@@ -15,6 +15,7 @@ import com.agentlego.backend.kb.application.KbRagKnowledgeFactory;
 import com.agentlego.backend.memory.application.dto.MemoryQueryRequest;
 import com.agentlego.backend.memory.application.service.MemoryApplicationService;
 import com.agentlego.backend.model.domain.ModelAggregate;
+import com.agentlego.backend.model.domain.ModelProvider;
 import com.agentlego.backend.model.domain.ModelRepository;
 import com.agentlego.backend.runtime.AgentRuntime;
 import com.agentlego.backend.runtime.definition.AgentDefinition;
@@ -68,12 +69,43 @@ public class AgentApplicationService {
         this.agentDtoMapper = agentDtoMapper;
     }
 
+    /**
+     * 智能体推理仅允许「聊天类」模型配置；文本嵌入类配置仅用于向量化等场景。
+     */
+    private static void requireChatModelForAgent(ModelAggregate model) {
+        if (model.getProvider() == null || model.getProvider().isBlank()) {
+            throw new ApiException(
+                    "INVALID_AGENT_MODEL",
+                    "模型缺少 provider，无法绑定到智能体",
+                    HttpStatus.BAD_REQUEST
+            );
+        }
+        final ModelProvider p;
+        try {
+            p = ModelProvider.from(model.getProvider());
+        } catch (IllegalArgumentException e) {
+            throw new ApiException(
+                    "INVALID_AGENT_MODEL",
+                    "不支持的模型提供方：" + model.getProvider(),
+                    HttpStatus.BAD_REQUEST
+            );
+        }
+        if (!p.isChatProvider()) {
+            throw new ApiException(
+                    "INVALID_AGENT_MODEL",
+                    "智能体必须绑定聊天类模型配置，不能绑定文本嵌入（*_TEXT_EMBEDDING）类配置",
+                    HttpStatus.BAD_REQUEST
+            );
+        }
+    }
+
     public String createAgent(CreateAgentRequest req) {
         if (req.getToolIds() == null) {
             req.setToolIds(Collections.emptyList());
         }
-        modelRepository.findById(req.getModelId())
+        ModelAggregate boundModel = modelRepository.findById(req.getModelId())
                 .orElseThrow(() -> new ApiException("NOT_FOUND", "模型未找到", HttpStatus.NOT_FOUND));
+        requireChatModelForAgent(boundModel);
         AgentAggregate agg = new AgentAggregate();
         agg.setId(SnowflakeIdGenerator.nextId());
         agg.setName(req.getName().trim());
@@ -108,6 +140,7 @@ public class AgentApplicationService {
         ApiRequires.nonBlank(runtimeModelId, "modelId");
         ModelAggregate model = modelRepository.findById(runtimeModelId)
                 .orElseThrow(() -> new ApiException("NOT_FOUND", "模型未找到", HttpStatus.NOT_FOUND));
+        requireChatModelForAgent(model);
 
         List<ToolAggregate> tools = toolRepository.findAll().stream()
                 .filter(t -> agentAgg.getToolIds() != null && agentAgg.getToolIds().contains(t.getId()))

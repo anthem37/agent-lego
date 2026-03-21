@@ -16,13 +16,13 @@
     </resultMap>
 
     <insert id="insertPending" parameterType="com.agentlego.backend.kb.infrastructure.persistence.KbDocumentDO">
-        insert into kb_documents (id, collection_id, title, body, status, error_message, metadata, created_at,
-                                  updated_at)
+        insert into lego_kb_documents (id, collection_id, title, body, status, error_message, metadata, created_at,
+                                       updated_at)
         values (#{id}, #{collectionId}, #{title}, #{body}, 'PENDING', null, '{}'::jsonb, #{createdAt}, #{updatedAt})
     </insert>
 
     <update id="updateStatus">
-        update kb_documents
+        update lego_kb_documents
         set status        = #{status},
             error_message = #{errorMessage},
             updated_at    = now()
@@ -38,7 +38,7 @@
                error_message,
                created_at,
                updated_at
-        from kb_documents
+        from lego_kb_documents
         where id = #{id}
     </select>
 
@@ -51,14 +51,14 @@
                error_message,
                created_at,
                updated_at
-        from kb_documents
+        from lego_kb_documents
         where collection_id = #{collectionId}
         order by created_at desc
     </select>
 
     <delete id="deleteById">
         delete
-        from kb_documents
+        from lego_kb_documents
         where id = #{id}
     </delete>
 </mapper>

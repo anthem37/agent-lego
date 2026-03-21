@@ -104,7 +104,7 @@ public class ToolApplicationService {
         if (toolRepository.existsOtherWithNameIgnoreCase(trimmedName, null)) {
             throw new ApiException(
                     "CONFLICT",
-                    "工具名称「" + trimmedName + "」已被占用。平台与 AgentScope 均以工具名为键，名称需全平台唯一（大小写不敏感）。",
+                    "工具名称「" + trimmedName + "」已被占用。平台以工具名为键，名称需全平台唯一（大小写不敏感）。",
                     HttpStatus.CONFLICT
             );
         }
@@ -146,7 +146,7 @@ public class ToolApplicationService {
         if (toolRepository.existsOtherWithNameIgnoreCase(trimmedName, id)) {
             throw new ApiException(
                     "CONFLICT",
-                    "工具名称「" + trimmedName + "」已被其它工具占用。平台与 AgentScope 均以工具名为键，名称需全平台唯一（大小写不敏感）。",
+                    "工具名称「" + trimmedName + "」已被其它工具占用。平台以工具名为键，名称需全平台唯一（大小写不敏感）。",
                     HttpStatus.CONFLICT
             );
         }
@@ -195,7 +195,7 @@ public class ToolApplicationService {
         String localNames = localBuiltinToolCatalog.listMeta().stream()
                 .map(LocalBuiltinToolMetaDto::getName)
                 .collect(Collectors.joining("、"));
-        String asNameRule = "工具 name 将注册为 AgentScope Toolkit 中的名称，须全平台唯一（大小写不敏感），并与模型 function calling 对齐。";
+        String asNameRule = "工具名将作为运行时注册名，须全平台唯一（大小写不敏感），并与模型侧工具调用约定一致。";
         String localDescription = localNames.isBlank()
                 ? "由后端扫描 @Tool 自动生成；当前未发现内置实现。" + asNameRule
                 : ("内置：" + localNames + "。名称须与内置名一致，零配置联调。" + asNameRule);
@@ -211,14 +211,14 @@ public class ToolApplicationService {
                         .label("HTTP 请求")
                         .description("按 definition 调用外部 HTTP(S) API；出站请求使用 Square OkHttp（可配置超时，见 agentlego.tool.*），"
                                 + "URL 经 SSRF 校验。"
-                                + "definition.parameters / inputSchema 为 JSON Schema（OpenAI tools 子集），由 AgentScope 暴露给模型。"
+                                + "definition.parameters / inputSchema 为 JSON Schema（常见工具协议子集），供模型理解与调用。"
                                 + asNameRule)
                         .supportsTestCall(true)
                         .build(),
                 ToolTypeMetaDto.builder()
                         .code("WORKFLOW")
                         .label("工作流")
-                        .description("绑定平台 workflowId，同步执行工作流；运行时映射为 AgentTool，返回 ToolResultBlock。" + asNameRule)
+                        .description("绑定平台 workflowId，同步执行工作流；运行时作为可调用工具返回结构化结果。" + asNameRule)
                         .supportsTestCall(true)
                         .build(),
                 ToolTypeMetaDto.builder()
@@ -231,7 +231,7 @@ public class ToolApplicationService {
                                         + "POST /tools/meta/mcp/batch-import 批量导入。"
                                         + "本服务同时对外暴露 MCP（见 agentlego.mcp.server.sse-path，默认同源 /mcp）。"
                                         + "SSRF：agentlego.mcp.client.strict-ssrf=true 时与 HTTP 工具一致禁止内网地址。"
-                                        + "入参 Schema 可与 AgentScope McpTool 转换逻辑对齐。"
+                                        + "入参 Schema 建议与远端 MCP 工具定义一致。"
                                         + asNameRule
                         )
                         .supportsTestCall(true)

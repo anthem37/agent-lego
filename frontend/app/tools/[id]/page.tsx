@@ -232,9 +232,9 @@ export default function ToolDetailPage(props: { params: Promise<{ id: string }> 
     const overviewTab = tool ? (
         <Descriptions column={1} size="small" bordered>
             <Descriptions.Item label="工具名称">{tool.name}</Descriptions.Item>
-            <Descriptions.Item label="AgentScope">
+            <Descriptions.Item label="运行时标识">
                 <Typography.Text type="secondary" style={{fontSize: 13}}>
-                    运行时以此名称注册到 Toolkit，与模型 function calling 一致；平台内全平台唯一（大小写不敏感）。
+                    运行时以此名称注册工具，与模型侧工具调用一致；平台内全平台唯一（大小写不敏感）。
                 </Typography.Text>
             </Descriptions.Item>
             <Descriptions.Item label="类型">

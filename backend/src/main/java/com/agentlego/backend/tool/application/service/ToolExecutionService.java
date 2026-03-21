@@ -29,8 +29,8 @@ import java.util.*;
  * 工具执行服务。
  * <p>
  * 作用：
- * - 把平台侧的“工具定义/工具权限”映射到 AgentScope 的 Toolkit；
- * - 按类型执行工具并返回 AgentScope 标准的 ToolResultBlock。
+ * - 把平台侧的“工具定义/工具权限”映射到运行时 Toolkit；
+ * - 按类型执行工具并返回标准工具结果块。
  */
 @Service
 public class ToolExecutionService {
@@ -59,7 +59,7 @@ public class ToolExecutionService {
     }
 
     /**
-     * 构建一个只包含指定工具集合的 Toolkit，供 AgentScope Agent 挂载使用。
+     * 构建一个只包含指定工具集合的 Toolkit，供智能体运行时挂载使用。
      */
     public Toolkit buildToolkitForToolIds(List<ToolAggregate> tools) {
         Set<String> seenNames = new HashSet<>();
@@ -69,7 +69,7 @@ public class ToolExecutionService {
                 throw new ApiException(
                         "TOOLKIT_DUPLICATE_NAME",
                         "挂载的工具列表中存在重名「" + n.trim()
-                                + "」，与 AgentScope Toolkit（以工具名为键）不兼容。请调整工具名称或智能体 toolIds。",
+                                + "」，与运行时工具注册（以工具名为键）不兼容。请调整工具名称或智能体 toolIds。",
                         HttpStatus.CONFLICT
                 );
             }
@@ -198,7 +198,7 @@ public class ToolExecutionService {
     /**
      * 构建 ToolUseBlock.content（JSON object string）。
      * <p>
-     * 背景（AgentScope 约束）：
+     * 背景（运行时约束）：
      * - 本地工具在做参数校验时，会把 ToolUseBlock.content 作为“主输入”；
      * - 因此这里必须是一个 JSON object（表示工具参数），否则会触发 JSON Schema 校验失败。
      * <p>

@@ -15,7 +15,7 @@ public class LocalEchoTool {
             converter = PlainTextToolResultConverter.class
     )
     public String echo(
-            // AgentScope local-tool framework uses a single string input called `content`.
+            // 本地工具约定：单字符串入参字段 `content`。
             // We keep the name stable so ToolExecutionService can pass a consistent schema.
             @ToolParam(name = "content", required = true, description = "Text to echo") String content) {
         return content;

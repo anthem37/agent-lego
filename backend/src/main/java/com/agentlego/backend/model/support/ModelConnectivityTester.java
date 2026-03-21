@@ -1,8 +1,10 @@
 package com.agentlego.backend.model.support;
 
 import cn.hutool.core.util.StrUtil;
+import io.agentscope.core.message.ContentBlock;
 import io.agentscope.core.message.Msg;
 import io.agentscope.core.message.TextBlock;
+import io.agentscope.core.message.ThinkingBlock;
 import io.agentscope.core.model.ChatResponse;
 import io.agentscope.core.model.GenerateOptions;
 import io.agentscope.core.model.Model;
@@ -16,7 +18,7 @@ import java.util.Objects;
 import java.util.stream.Collectors;
 
 /**
- * 对 AgentScope {@link Model} 做连通性 / 能力测试。
+ * 对上游聊天 {@link Model} 做连通性 / 能力测试。
  * <p>
  * 采集多条流式 chunk（可配置上限），汇总文本并统计耗时。
  */
@@ -40,7 +42,7 @@ public class ModelConnectivityTester {
     ) {
         this.defaultTestPrompt = defaultTestPrompt;
         this.defaultMaxTokens = defaultMaxTokens;
-        this.defaultMaxStreamChunks = Math.min(128, Math.max(1, defaultMaxStreamChunks));
+        this.defaultMaxStreamChunks = Math.min(2048, Math.max(1, defaultMaxStreamChunks));
         this.timeout = timeout;
     }
 
@@ -49,12 +51,28 @@ public class ModelConnectivityTester {
             return "";
         }
         return response.getContent().stream()
-                .filter(TextBlock.class::isInstance)
-                .map(b -> ((TextBlock) b).getText())
+                .map(ModelConnectivityTester::textFromContentBlock)
                 .filter(t -> t != null && !t.isBlank())
                 .map(String::trim)
                 .filter(t -> !t.isEmpty())
                 .collect(Collectors.joining(""));
+    }
+
+    /**
+     * 流式 chunk 里除 {@link TextBlock} 外，部分厂商/推理模型只下发 {@link ThinkingBlock}，忽略会导致「有返回但聚合为空」。
+     */
+    static String textFromContentBlock(ContentBlock block) {
+        if (block == null) {
+            return "";
+        }
+        // Java 17：避免对 ContentBlock 使用 pattern switch（需 21+）
+        if (block instanceof TextBlock tb) {
+            return tb.getText();
+        }
+        if (block instanceof ThinkingBlock th) {
+            return th.getThinking();
+        }
+        return "";
     }
 
     private static String rootHint(Throwable ex) {
@@ -86,7 +104,7 @@ public class ModelConnectivityTester {
         int maxTok = maxTokensOverride != null ? maxTokensOverride : defaultMaxTokens;
         maxTok = Math.min(8192, Math.max(1, maxTok));
         int chunksCap = maxStreamChunksOverride != null ? maxStreamChunksOverride : defaultMaxStreamChunks;
-        chunksCap = Math.min(128, Math.max(1, chunksCap));
+        chunksCap = Math.min(2048, Math.max(1, chunksCap));
 
         Msg userMsg = Msg.builder().name(USER_MESSAGE_NAME).textContent(prompt).build();
         List<Msg> messages = List.of(userMsg);

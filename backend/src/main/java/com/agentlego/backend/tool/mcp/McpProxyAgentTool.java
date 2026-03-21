@@ -15,7 +15,7 @@ import java.time.Duration;
 import java.util.*;
 
 /**
- * 将平台 MCP 工具（definition.endpoint + 可选 mcpToolName）桥接为 AgentScope {@link AgentTool}。
+ * 将平台 MCP 工具（definition.endpoint + 可选 mcpToolName）桥接为可调用 {@link AgentTool}。
  */
 public final class McpProxyAgentTool implements AgentTool {
 

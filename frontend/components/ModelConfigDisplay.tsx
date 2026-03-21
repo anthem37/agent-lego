@@ -6,7 +6,7 @@ import React from "react";
 import {CONFIG_KEY_TITLE, configKeyTitle, formatScalarForDisplay} from "@/lib/model-config-labels";
 import {stringifyPretty} from "@/lib/json";
 
-/** 以键值表格展示的嵌套对象（含 AgentScope executionConfig） */
+/** 以键值表格展示的嵌套对象（含 executionConfig 等） */
 const OBJECT_KEYS = new Set([
     "additionalHeaders",
     "additionalBodyParams",

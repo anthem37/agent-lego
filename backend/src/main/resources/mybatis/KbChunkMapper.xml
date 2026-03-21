@@ -12,7 +12,7 @@
     </resultMap>
 
     <insert id="insert">
-        insert into kb_chunks (id, document_id, collection_id, chunk_index, content, embedding_vec, created_at)
+        insert into lego_kb_chunks (id, document_id, collection_id, chunk_index, content, embedding_vec, created_at)
         values (#{id}, #{documentId}, #{collectionId}, #{chunkIndex}, #{content},
                 CAST(#{embeddingVecLiteral} AS vector), now())
     </insert>
@@ -23,7 +23,7 @@
         document_id,
         content,
         (1 - (embedding_vec <![CDATA[ <=> ]]> CAST(#{queryVecLiteral} AS vector)))::float8 as similarity
-        from kb_chunks
+        from lego_kb_chunks
         where collection_id in
         <foreach collection="collectionIds" item="cid" open="(" separator="," close=")">#{cid}</foreach>
         and embedding_vec is not null

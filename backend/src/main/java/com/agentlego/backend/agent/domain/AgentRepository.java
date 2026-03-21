@@ -15,7 +15,7 @@ public interface AgentRepository {
     int countByModelId(String modelId);
 
     /**
-     * 统计引用了指定工具记录 id（platform_tools.id）的智能体数量（经 platform_agent_tools）。
+     * 统计引用了指定工具记录 id（lego_tools.id）的智能体数量（经 lego_agent_tools）。
      */
     int countByToolId(String toolId);
 

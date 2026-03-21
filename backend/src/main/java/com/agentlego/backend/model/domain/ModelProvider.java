@@ -14,7 +14,7 @@ import java.util.Locale;
  */
 public enum ModelProvider {
     /**
-     * 与 AgentScope Chat 模型及 {@code GenerateOptions} 对齐的可序列化 config 键。
+     * 与聊天模型及生成参数（采样、流式、工具选择等）对齐的可序列化 config 键。
      */
     DASHSCOPE("DASHSCOPE", List.of(
             "temperature", "topP", "topK", "maxTokens", "seed",
@@ -42,22 +42,22 @@ public enum ModelProvider {
             "additionalHeaders", "additionalBodyParams", "additionalQueryParams"
     )),
     /**
-     * 文本嵌入（embedding）模型配置。
+     * 文本嵌入模型：与 OpenAI 兼容文本嵌入能力一致——仅
+     * {@code dimensions}、执行超时/重试（config 的 {@code executionConfig}）、
+     * 以及平台侧的 {@code baseUrl} / {@code apiKey}；无 GenerateOptions / toolChoice / 采样参数。
      * <p>
-     * 当前后端尚未把这些配置真正接入 embedding 运行时；但模型管理已允许你保存 embedding 模型配置，
-     * 并校验 config key 白名单。
+     * 说明：OpenAI 嵌入实现固定使用 float 向量，平台不再暴露 {@code encodingFormat}；自定义路径/附加头请通过网关 baseUrl 或 SDK 扩展解决。
      */
     OPENAI_TEXT_EMBEDDING("OPENAI_TEXT_EMBEDDING", List.of(
             "dimensions",
-            "encodingFormat",
-            "endpointPath",
-            "additionalHeaders", "additionalBodyParams", "additionalQueryParams"
+            "executionConfig"
     ), false),
+    /**
+     * 与通义文本嵌入能力一致：{@code dimensions} + {@code executionConfig} + {@code baseUrl}/{@code apiKey}。
+     */
     DASHSCOPE_TEXT_EMBEDDING("DASHSCOPE_TEXT_EMBEDDING", List.of(
             "dimensions",
-            "encodingFormat",
-            "endpointPath",
-            "additionalHeaders", "additionalBodyParams", "additionalQueryParams"
+            "executionConfig"
     ), false);
 
     private final String code;

@@ -266,7 +266,7 @@ class ToolApplicationServiceTest {
 
         ApiException ex = assertThrows(ApiException.class, () -> service.createTool(req));
         assertEquals("CONFLICT", ex.getCode());
-        assertTrue(ex.getMessage().contains("AgentScope"));
+        assertTrue(ex.getMessage().contains("全平台唯一"));
         verify(toolRepository, never()).save(any());
     }
 

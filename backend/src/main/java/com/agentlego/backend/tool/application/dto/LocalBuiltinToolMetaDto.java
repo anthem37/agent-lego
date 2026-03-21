@@ -16,7 +16,7 @@ public class LocalBuiltinToolMetaDto {
      */
     private String name;
     /**
-     * {@link io.agentscope.core.tool.Tool#description()}（多为英文技术说明）。
+     * 内置工具说明（多为英文技术说明）。
      */
     private String description;
     /**
@@ -36,7 +36,7 @@ public class LocalBuiltinToolMetaDto {
      */
     private String outputJavaType;
     /**
-     * {@link io.agentscope.core.tool.Tool#converter()} 的简单类名。
+     * 结果转换器类的简单类名。
      */
     private String resultConverterClass;
     /**

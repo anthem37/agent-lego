@@ -14,7 +14,7 @@
     </resultMap>
 
     <insert id="insert" parameterType="com.agentlego.backend.memory.infrastructure.persistence.MemoryItemDO">
-        insert into memory_items (id, owner_scope, content, metadata, embedding)
+        insert into lego_memory_items (id, owner_scope, content, metadata, embedding)
         values (#{id}, #{ownerScope}, #{content}, cast(#{metadataJson} as jsonb), #{embeddingJson}::jsonb)
     </insert>
 
@@ -25,7 +25,7 @@
                cast(metadata as text)  as metadata_json,
                cast(embedding as text) as embedding_json,
                created_at
-        from memory_items
+        from lego_memory_items
         where owner_scope = #{ownerScope}
           and content ilike '%' || #{queryText} || '%'
         order by created_at desc

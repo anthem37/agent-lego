@@ -3,9 +3,9 @@ package com.agentlego.backend.tool.schema;
 import java.util.*;
 
 /**
- * 将 definition 中的 {@code outputSchema}（JSON Schema 子集）格式化为自然语言，追加到 {@link io.agentscope.core.tool.AgentTool#getDescription()}。
+ * 将 definition 中的 {@code outputSchema}（JSON Schema 子集）格式化为自然语言，追加到工具描述中。
  * <p>
- * AgentScope 工具模型无独立「出参」字段，故通过 description 让模型理解返回结构；运行时不对真实输出做校验。
+ * 工具侧无独立「出参」元数据时，通过 description 让模型理解返回结构；运行时不对真实输出做校验。
  */
 public final class ToolOutputSchemaDescription {
 

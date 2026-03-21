@@ -17,7 +17,7 @@ import java.util.List;
 import java.util.Objects;
 
 /**
- * 平台知识库 → AgentScope {@link Knowledge}：查询向量化后由 PostgreSQL pgvector 做余弦近邻排序。
+ * 平台知识库 → 检索 {@link Knowledge} 实现：查询向量化后由 PostgreSQL pgvector 做余弦近邻排序。
  */
 public final class KbVectorKnowledge implements Knowledge {
 

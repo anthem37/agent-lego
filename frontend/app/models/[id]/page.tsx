@@ -250,7 +250,7 @@ export default function ModelDetailPage(props: { params: Promise<{ id: string }>
                 <SectionCard title="模型测试（连通性 / 能力探测）">
                     <Space orientation="vertical" size={12} style={{width: "100%"}}>
                         <Typography.Paragraph type="secondary" style={{marginBottom: 0}}>
-                            <b>聊天模型</b>：按当前配置走 AgentScope 流式接口，默认采集多条 chunk（可限制条数），并统计耗时。
+                            <b>聊天模型</b>：按当前配置走流式生成接口，默认采集多条 chunk（可限制条数），并统计耗时。
                             留空则使用服务端默认提示词与 maxTokens（见 <Typography.Text
                             code>application.yml</Typography.Text>{" "}
                             <Typography.Text code>model.connectivity</Typography.Text>）。
@@ -325,7 +325,11 @@ export default function ModelDetailPage(props: { params: Promise<{ id: string }>
                                 ) : testResult.status === "EMPTY" ? (
                                     <Alert type="warning" showIcon title="模型返回空文本（EMPTY）"/>
                                 ) : (
-                                    <Alert type="success" showIcon title={testResult.message}/>
+                                    <Alert
+                                        type="success"
+                                        showIcon
+                                        title={testResult.message ?? "测试成功"}
+                                    />
                                 )}
                                 <Descriptions column={1} size="small" bordered>
                                     {testResult.testType ? (
@@ -378,12 +382,28 @@ export default function ModelDetailPage(props: { params: Promise<{ id: string }>
                                             </Typography.Text>
                                         </Descriptions.Item>
                                     ) : null}
-                                    <Descriptions.Item label="摘要 / message">
-                                        {testResult.message}
-                                    </Descriptions.Item>
-                                    <Descriptions.Item label="原始输出（raw）">
-                                        <pre style={{margin: 0, whiteSpace: "pre-wrap"}}>{testResult.raw}</pre>
-                                    </Descriptions.Item>
+                                    {testResult.testType === "CHAT" && testResult.status === "OK" ? (
+                                        <Descriptions.Item label="模型输出">
+                                            <pre style={{margin: 0, whiteSpace: "pre-wrap"}}>
+                                                {testResult.raw ?? testResult.message}
+                                            </pre>
+                                        </Descriptions.Item>
+                                    ) : (
+                                        <>
+                                            {testResult.message ? (
+                                                <Descriptions.Item label="摘要">
+                                                    {testResult.message}
+                                                </Descriptions.Item>
+                                            ) : null}
+                                            {testResult.raw != null && testResult.raw !== "" ? (
+                                                <Descriptions.Item label="详情 / raw">
+                                                    <pre style={{margin: 0, whiteSpace: "pre-wrap"}}>
+                                                        {testResult.raw}
+                                                    </pre>
+                                                </Descriptions.Item>
+                                            ) : null}
+                                        </>
+                                    )}
                                 </Descriptions>
                             </Space>
                         ) : (

@@ -23,9 +23,8 @@
 
 - 连接串等见 `backend/src/main/resources/application.yml`（`spring.datasource`）。
 - 迁移脚本在 `backend/src/main/resources/db/migration/`；应用启动默认执行 Flyway（可用 `FLYWAY_ENABLED=false` 关闭）。
-- **知识库 v3**：**`V18`** 起重建 `kb_*` 与 `knowledge_base_policy`；**`V19`** 启用 **pgvector**（
-  `CREATE EXTENSION vector` + `kb_chunks.embedding_vec` + HNSW）；**`V20`** 从旧 **`embedding` jsonb** 回填 *
-  *`embedding_vec`**（见 `docs/KB_REDESIGN.md`）。PostgreSQL 需支持并允许安装 `vector` 扩展；本地可选用 *
-  *`docker-compose.postgres-pgvector.yml`**。
-- 历史清理：`V15` 占位；**`V16`** 曾 `DROP` 旧 `kb_*`；**`V17`** 曾删除 `knowledge_base_policy`（已由 `V18` 恢复）。若曾修改过历史脚本
-  checksum，需在 `backend` 目录执行 `mvn flyway:repair ...` 后再迁移。
+- **知识库 v3**：当前为单文件基线 **`V1__baseline.sql`**（`CREATE EXTENSION vector`、
+  `lego_kb_chunks.embedding_vec vector(3072)`；
+  **不建** HNSW/IVFFlat：常见 pgvector 对 ANN 索引约限 2000 维）。详见 `docs/KB_REDESIGN.md`。PostgreSQL 需 **pgvector**；
+  本地可用 **`docker-compose.postgres-pgvector.yml`**。
+- 若库中已有 Flyway 历史且本地改过迁移文件 checksum，需在 `backend` 执行 `mvn flyway:repair`（或新库重跑）后再启动。

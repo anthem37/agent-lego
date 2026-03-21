@@ -41,11 +41,15 @@ const MAX_TOKEN_OPTIONS = [
     {label: "16384", value: 16384},
 ];
 
-const ENDPOINT_PATH_OPTIONS = [
+const ENDPOINT_PATH_OPTIONS_CHAT = [
     {label: "对话补全接口 · /v1/chat/completions", value: "/v1/chat/completions"},
     {label: "Responses 接口 · /v1/responses", value: "/v1/responses"},
     {label: "传统补全接口 · /v1/completions", value: "/v1/completions"},
+];
+
+const ENDPOINT_PATH_OPTIONS_EMBEDDING = [
     {label: "Embedding 接口 · /v1/embeddings", value: "/v1/embeddings"},
+    {label: "对话补全（一般不用）· /v1/chat/completions", value: "/v1/chat/completions"},
 ];
 
 const ENCODING_FORMAT_OPTIONS = [
@@ -53,7 +57,7 @@ const ENCODING_FORMAT_OPTIONS = [
     {label: "base64（向量 base64）", value: "base64"},
 ];
 
-const AGENTSCOPE_ADVANCED_KEYS = [
+const CHAT_ADVANCED_KEYS = [
     "stream",
     "frequencyPenalty",
     "presencePenalty",
@@ -67,6 +71,11 @@ type Props = {
     value?: Record<string, unknown>;
     onChange?: (next: Record<string, unknown>) => void;
     supportedKeys: string[];
+    /**
+     * 与后端 ModelProvider.isChatProvider 一致；false 表示文本嵌入类，折叠标题与 endpoint 候选项按嵌入场景展示。
+     * 未传时按 supportedKeys 推断（含 dimensions 且无 temperature 视为嵌入）。
+     */
+    chatProvider?: boolean;
 };
 
 type PairsBlockProps = {
@@ -155,8 +164,13 @@ function FieldHeading(props: { apiKey: string }) {
  * 模型 config 可视化编辑：以下拉、数字输入、键值对为主，避免手写 JSON。
  */
 export function ModelConfigForm(props: Props) {
-    const {value = {}, onChange, supportedKeys} = props;
+    const {value = {}, onChange, supportedKeys, chatProvider: chatProviderProp} = props;
     const has = React.useCallback((k: string) => supportedKeys.includes(k), [supportedKeys]);
+
+    const isChatProvider =
+        chatProviderProp !== undefined
+            ? chatProviderProp
+            : !(has("dimensions") && !has("temperature"));
 
     const patch = React.useCallback(
         (partial: Record<string, unknown>) => {
@@ -247,7 +261,9 @@ export function ModelConfigForm(props: Props) {
         }
     }
 
-    const hasAdvanced = AGENTSCOPE_ADVANCED_KEYS.some((k) => has(k));
+    const hasAdvanced =
+        CHAT_ADVANCED_KEYS.some((k) => has(k)) ||
+        (has("executionConfig") && !isChatProvider);
 
     const headerPairs = React.useMemo(() => objectToPairs(value.additionalHeaders), [value.additionalHeaders]);
     const bodyPairs = React.useMemo(() => objectToPairs(value.additionalBodyParams), [value.additionalBodyParams]);
@@ -270,6 +286,12 @@ export function ModelConfigForm(props: Props) {
             {has("dimensions") ? (
                 <div>
                     <FieldHeading apiKey="dimensions"/>
+                    {!isChatProvider ? (
+                        <Typography.Paragraph type="secondary" style={{marginBottom: 8, marginTop: 0}}>
+                            与所选 modelKey 的向量维一致（如 text-embedding-3-small 常为 1536）；知识库入库会 padding
+                            到库表固定维。
+                        </Typography.Paragraph>
+                    ) : null}
                     <Space.Compact style={{width: "100%", marginTop: 8}}>
                         <InputNumber
                             style={{width: "100%", minWidth: 120}}
@@ -286,6 +308,11 @@ export function ModelConfigForm(props: Props) {
             {has("encodingFormat") ? (
                 <div>
                     <FieldHeading apiKey="encodingFormat"/>
+                    {!isChatProvider ? (
+                        <Typography.Paragraph type="secondary" style={{marginBottom: 8, marginTop: 0}}>
+                            一般保持默认 float；仅当网关要求 base64 向量时再改。
+                        </Typography.Paragraph>
+                    ) : null}
                     <Space.Compact style={{width: "100%", marginTop: 8}}>
                         <Select
                             allowClear
@@ -479,7 +506,7 @@ export function ModelConfigForm(props: Props) {
                 <div>
                     <FieldHeading apiKey="stream"/>
                     <Typography.Paragraph type="secondary" style={{marginBottom: 8, marginTop: 0}}>
-                        对应 AgentScope <Typography.Text code>GenerateOptions.stream</Typography.Text>
+                        对应生成参数中的 <Typography.Text code>stream</Typography.Text>
                         ；关闭时不传该字段，由模型默认行为决定。
                     </Typography.Paragraph>
                     <Switch
@@ -564,7 +591,7 @@ export function ModelConfigForm(props: Props) {
                 <div>
                     <FieldHeading apiKey="toolChoice"/>
                     <Typography.Paragraph type="secondary" style={{marginBottom: 8, marginTop: 0}}>
-                        映射 AgentScope <Typography.Text code>ToolChoice</Typography.Text>
+                        映射 <Typography.Text code>toolChoice</Typography.Text>
                         （Auto / None / Required / Specific）。
                     </Typography.Paragraph>
                     <Select
@@ -593,7 +620,7 @@ export function ModelConfigForm(props: Props) {
                 <div>
                     <FieldHeading apiKey="executionConfig"/>
                     <Typography.Paragraph type="secondary" style={{marginBottom: 8, marginTop: 0}}>
-                        对应 AgentScope <Typography.Text code>ExecutionConfig</Typography.Text>
+                        对应 <Typography.Text code>executionConfig</Typography.Text>
                         ：HTTP 调用超时与重试退避（retryOn Predicate 无法 JSON 序列化，需在代码侧扩展）。
                     </Typography.Paragraph>
                     <Space orientation="vertical" size={12} style={{width: "100%"}}>
@@ -668,23 +695,31 @@ export function ModelConfigForm(props: Props) {
         </Space>
     );
 
+    const endpointOptions = isChatProvider ? ENDPOINT_PATH_OPTIONS_CHAT : ENDPOINT_PATH_OPTIONS_EMBEDDING;
+
     const endpointPanel = has("endpointPath") ? (
         <Space orientation="vertical" size={12} style={{width: "100%"}}>
             <FieldHeading apiKey="endpointPath"/>
             <Typography.Paragraph type="secondary" style={{marginBottom: 0}}>
-                多数兼容网关使用「对话补全」路径；若网关文档要求其他路径，可下拉选择或手动填写。
+                {isChatProvider
+                    ? "多数兼容网关使用「对话补全」路径；若网关文档要求其他路径，可下拉选择或手动填写。"
+                    : "文本嵌入通常走 /v1/embeddings（或 DashScope 等厂商等价路径）；与聊天补全路径不同，请勿混用。"}
             </Typography.Paragraph>
             <Select
                 allowClear
                 placeholder="选择常见路径"
                 style={{width: "100%"}}
-                value={ENDPOINT_PATH_OPTIONS.some((o) => o.value === endpointPath) ? endpointPath : undefined}
-                options={ENDPOINT_PATH_OPTIONS}
+                value={endpointOptions.some((o) => o.value === endpointPath) ? endpointPath : undefined}
+                options={endpointOptions}
                 onChange={(v) => patch({endpointPath: v ?? undefined})}
             />
             <Input
                 allowClear
-                placeholder="或手动输入路径，例如 /v1/chat/completions"
+                placeholder={
+                    isChatProvider
+                        ? "或手动输入路径，例如 /v1/chat/completions"
+                        : "或手动输入路径，例如 /v1/embeddings"
+                }
                 value={endpointPath}
                 onChange={(e) => patch({endpointPath: e.target.value.trim() === "" ? undefined : e.target.value})}
             />
@@ -723,14 +758,16 @@ export function ModelConfigForm(props: Props) {
     const items = [
         {
             key: "basic",
-            label: "采样与输出长度",
+            label: isChatProvider ? "采样与输出长度" : "向量维度与编码（嵌入专用）",
             children: basicPanel,
         },
         ...(hasAdvanced
             ? [
                 {
-                    key: "agentscope",
-                    label: "AgentScope 高级（惩罚 / 流式 / 工具 / 重试）",
+                    key: "runtime-advanced",
+                    label: isChatProvider
+                        ? "高级（惩罚 / 流式 / 工具 / 重试）"
+                        : "超时与重试（嵌入 · executionConfig）",
                     children: advancedPanel,
                 },
             ]
@@ -739,7 +776,9 @@ export function ModelConfigForm(props: Props) {
             ? [
                 {
                     key: "endpoint",
-                    label: "接口路径（兼容 OpenAI 类网关）",
+                    label: isChatProvider
+                        ? "接口路径（兼容 OpenAI 类网关）"
+                        : "接口路径（嵌入 / Embeddings）",
                     children: endpointPanel,
                 },
             ]

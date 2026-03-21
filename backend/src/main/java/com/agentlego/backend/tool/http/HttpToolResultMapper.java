@@ -9,7 +9,7 @@ import java.util.Map;
 import java.util.Objects;
 
 /**
- * 将 {@link HttpToolExecutionResult} 转为 AgentScope {@link ToolResultBlock}（纯映射，无 I/O）。
+ * 将 {@link HttpToolExecutionResult} 转为 {@link ToolResultBlock}（纯映射，无 I/O）。
  */
 public final class HttpToolResultMapper {
 

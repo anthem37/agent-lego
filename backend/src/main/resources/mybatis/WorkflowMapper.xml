@@ -12,7 +12,7 @@
     </resultMap>
 
     <insert id="insert" parameterType="com.agentlego.backend.workflow.infrastructure.persistence.WorkflowDO">
-        insert into platform_workflows (id, name, definition)
+        insert into lego_workflows (id, name, definition)
         values (#{id}, #{name}, cast(#{definitionJson} as jsonb))
     </insert>
 
@@ -21,7 +21,7 @@
                name,
                cast(definition as text) as definition_json,
                created_at
-        from platform_workflows
+        from lego_workflows
         where id = #{id}
     </select>
 </mapper>

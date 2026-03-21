@@ -30,7 +30,7 @@ import {
     HTTP_METHOD_OPTIONS,
     HTTP_PARAM_TYPE_OPTIONS,
     NAME_ID_RULES,
-    TOOL_NAME_AGENTSCOPE_HINT,
+    TOOL_NAME_RUNTIME_HINT,
     toolDtoToFormValues,
     validateHttpOutputFieldRows,
     validateHttpParameterRows,
@@ -389,7 +389,7 @@ export function ToolFormDrawer(props: Props) {
                             rules={[{required: true, message: "请选择"}]}
                             extra={
                                 <Typography.Text type="secondary" style={{fontSize: 12}}>
-                                    {TOOL_NAME_AGENTSCOPE_HINT}
+                                    {TOOL_NAME_RUNTIME_HINT}
                                 </Typography.Text>
                             }
                         >
@@ -438,7 +438,7 @@ export function ToolFormDrawer(props: Props) {
                             rules={NAME_ID_RULES}
                             extra={
                                 <Typography.Text type="secondary" style={{fontSize: 12}}>
-                                    {TOOL_NAME_AGENTSCOPE_HINT}
+                                    {TOOL_NAME_RUNTIME_HINT}
                                 </Typography.Text>
                             }
                         >
@@ -816,7 +816,7 @@ export function ToolFormDrawer(props: Props) {
                             rules={NAME_ID_RULES}
                             extra={
                                 <Typography.Text type="secondary" style={{fontSize: 12}}>
-                                    {TOOL_NAME_AGENTSCOPE_HINT}
+                                    {TOOL_NAME_RUNTIME_HINT}
                                 </Typography.Text>
                             }
                         >
@@ -972,7 +972,7 @@ export function ToolFormDrawer(props: Props) {
                             rules={NAME_ID_RULES}
                             extra={
                                 <Typography.Text type="secondary" style={{fontSize: 12}}>
-                                    {TOOL_NAME_AGENTSCOPE_HINT}
+                                    {TOOL_NAME_RUNTIME_HINT}
                                 </Typography.Text>
                             }
                         >

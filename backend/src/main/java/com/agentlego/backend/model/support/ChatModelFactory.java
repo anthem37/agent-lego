@@ -20,7 +20,7 @@ import java.util.Map;
 import java.util.Optional;
 
 /**
- * 模型构建工厂：将平台侧定义转为 AgentScope 运行时模型。
+ * 模型构建工厂：将平台侧定义转为推理运行时模型。
  *
  * <p>符合 DDD：Chat / Embedding 的构建逻辑统一收敛于此，避免分散在 embedding 包。
  * <ul>
@@ -77,7 +77,7 @@ public class ChatModelFactory {
     }
 
     /**
-     * 将平台 config 中的 {@code toolChoice} 转为 AgentScope {@link ToolChoice}。
+     * 将平台 config 中的 {@code toolChoice} 转为运行时 {@link ToolChoice}。
      * <ul>
      *     <li>字符串：{@code auto} / {@code none} / {@code required}</li>
      *     <li>对象：{@code { "toolName": "x" }} 或 {@code { "mode": "specific", "toolName": "x" }}</li>
@@ -122,7 +122,7 @@ public class ChatModelFactory {
     }
 
     /**
-     * Chat 模型：将 {@link ModelDefinition} 转为 AgentScope {@link Model}。
+     * Chat 模型：将 {@link ModelDefinition} 转为运行时 {@link Model}。
      */
     public Model from(ModelDefinition modelDef) {
         if (modelDef == null) {
@@ -293,7 +293,7 @@ public class ChatModelFactory {
     }
 
     /**
-     * Embedding 模型：将 {@link ModelAggregate} 转为 AgentScope {@link EmbeddingModel}。
+     * Embedding 模型：将 {@link ModelAggregate} 转为运行时 {@link EmbeddingModel}。
      */
     public EmbeddingModel createEmbeddingModel(ModelAggregate model) {
         if (model == null) {
@@ -313,26 +313,39 @@ public class ChatModelFactory {
         String apiKey = StrUtil.trimToEmpty(model.getApiKeyCipher());
         String safeApiKey = apiKey.isBlank() ? null : apiKey.trim();
         Map<String, Object> cfg = model.getConfig() == null ? Map.of() : model.getConfig();
-        String encodingFormat = JsonMaps.getString(cfg, "encodingFormat", "");
         String baseUrl = StrUtil.trimToEmpty(model.getBaseUrl());
         String baseUrlOrNull = baseUrl.isBlank() ? null : baseUrl;
+        Optional<ExecutionConfig> executionConfig = buildExecutionConfigFromRoot(cfg);
 
         if (provider == ModelProvider.OPENAI_TEXT_EMBEDDING) {
             Integer d = JsonMaps.getIntOpt(cfg, "dimensions");
             int dimensions = (d != null && d > 0) ? d : 1536;
-            if (StrUtil.isNotBlank(encodingFormat) && !"float".equalsIgnoreCase(encodingFormat)) {
-                throw new ApiException(
-                        "VALIDATION_ERROR",
-                        "OpenAITextEmbedding 仅支持 encodingFormat=float 用于 KB 检索",
-                        HttpStatus.BAD_REQUEST
-                );
+            ExecutionConfig ec = executionConfig.orElse(null);
+            if (StrUtil.isBlank(safeApiKey)) {
+                return new OpenAITextEmbedding(null, model.getModelKey(), dimensions, ec, baseUrlOrNull);
             }
-            return new OpenAITextEmbedding(safeApiKey, model.getModelKey(), dimensions, null, baseUrlOrNull);
+            return OpenAITextEmbedding.builder()
+                    .apiKey(safeApiKey)
+                    .modelName(model.getModelKey())
+                    .dimensions(dimensions)
+                    .executionConfig(ec)
+                    .baseUrl(baseUrlOrNull)
+                    .build();
         }
         if (provider == ModelProvider.DASHSCOPE_TEXT_EMBEDDING) {
             Integer d = JsonMaps.getIntOpt(cfg, "dimensions");
             int dimensions = (d != null && d > 0) ? d : 1024;
-            return new DashScopeTextEmbedding(safeApiKey, model.getModelKey(), dimensions, null, baseUrlOrNull);
+            ExecutionConfig ec = executionConfig.orElse(null);
+            if (StrUtil.isBlank(safeApiKey)) {
+                return new DashScopeTextEmbedding(null, model.getModelKey(), dimensions, ec, baseUrlOrNull);
+            }
+            return DashScopeTextEmbedding.builder()
+                    .apiKey(safeApiKey)
+                    .modelName(model.getModelKey())
+                    .dimensions(dimensions)
+                    .executionConfig(ec)
+                    .baseUrl(baseUrlOrNull)
+                    .build();
         }
         throw new ApiException(
                 "UNSUPPORTED_MODEL_PROVIDER",

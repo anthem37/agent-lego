@@ -299,7 +299,9 @@ public class ModelApplicationService {
         }
         String text = r.aggregatedText().trim();
         out.setStatus("OK");
-        out.setMessage(truncateForDisplay(text, 4000));
+        out.setMessage(
+                "连通成功，输出 " + text.length() + " 字符（" + r.streamChunks() + " 条流式片段）"
+        );
         out.setRaw(text);
         return out;
     }

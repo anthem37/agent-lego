@@ -55,6 +55,16 @@ export default function KnowledgeBasePage() {
     const [collectionForm] = Form.useForm<CreateCollectionForm>();
     const [ingestForm] = Form.useForm<IngestForm>();
 
+    const embeddingModelRows = React.useMemo(
+        () =>
+            modelRows.filter(
+                (m) =>
+                    m.chatProvider === false ||
+                    (m.chatProvider !== true && m.provider.toUpperCase().includes("EMBEDDING")),
+            ),
+        [modelRows],
+    );
+
     const loadCollections = React.useCallback(async () => {
         setLoadingCollections(true);
         setError(null);
@@ -212,7 +222,7 @@ export default function KnowledgeBasePage() {
             <Space orientation="vertical" size={16} style={{width: "100%"}}>
                 <PageHeaderBlock
                     title="知识库"
-                    subtitle="v3：集合绑定 embedding 模型 → 文档分片 → 智能体通过 knowledge_base_policy.collectionIds 启用 RAG。"
+                    subtitle="v3：集合绑定文本嵌入模型配置（下拉里已过滤聊天模型）→ 分片入库 → 智能体通过 knowledge_base_policy 启用 RAG。"
                 />
 
                 <ErrorAlert error={error}/>
@@ -233,7 +243,7 @@ export default function KnowledgeBasePage() {
                             <Select
                                 showSearch
                                 placeholder="须为平台中的 embedding 类型模型配置"
-                                options={toModelSelectOptions(modelRows)}
+                                options={toModelSelectOptions(embeddingModelRows)}
                                 popupMatchSelectWidth={520}
                                 filterOption={(input, option) => {
                                     const st = (option as { searchText?: string }).searchText ?? "";

@@ -28,6 +28,11 @@ export default function AgentsPage() {
     const [modelRows, setModelRows] = React.useState<ModelOptionRow[]>([]);
     const [form] = Form.useForm<CreateAgentForm>();
 
+    const chatModelRows = React.useMemo(
+        () => modelRows.filter((m) => m.chatProvider !== false),
+        [modelRows],
+    );
+
     React.useEffect(() => {
         let cancelled = false;
         void request<ModelOptionRow[]>("/models")
@@ -82,8 +87,10 @@ export default function AgentsPage() {
     return (
         <AppLayout>
             <Space orientation="vertical" size={16} style={{width: "100%"}}>
-                <PageHeaderBlock title="智能体"
-                                 subtitle="创建时从「模型配置实例」列表中选择绑定对象（可按名称、参数摘要区分同名模型）。"/>
+                <PageHeaderBlock
+                    title="智能体"
+                    subtitle="绑定对象须为聊天类模型配置（非文本嵌入）。下拉里已隐藏嵌入类配置。"
+                />
 
                 <ErrorAlert error={error}/>
 
@@ -108,7 +115,7 @@ export default function AgentsPage() {
                                 showSearch
                                 allowClear={false}
                                 placeholder="搜索配置名称、模型标识或编号"
-                                options={toModelSelectOptions(modelRows)}
+                                options={toModelSelectOptions(chatModelRows)}
                                 popupMatchSelectWidth={520}
                                 filterOption={(input, option) => {
                                     const st = (option as { searchText?: string }).searchText ?? "";

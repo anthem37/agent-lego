@@ -44,6 +44,11 @@ export default function AgentDetailPage(props: { params: Promise<{ id: string }>
     const [error, setError] = React.useState<unknown>(null);
     const [form] = Form.useForm<RunAgentForm>();
 
+    const chatModelRows = React.useMemo(
+        () => modelRows.filter((m) => m.chatProvider !== false),
+        [modelRows],
+    );
+
     React.useEffect(() => {
         let cancelled = false;
         void request<ModelOptionRow[]>("/models")
@@ -200,7 +205,7 @@ export default function AgentDetailPage(props: { params: Promise<{ id: string }>
                                         ? `默认：${agent.modelDisplayName}`
                                         : "默认使用上方绑定配置；可在此临时切换"
                                 }
-                                options={toModelSelectOptions(modelRows)}
+                                options={toModelSelectOptions(chatModelRows)}
                                 popupMatchSelectWidth={520}
                                 filterOption={(input, option) => {
                                     const st = (option as { searchText?: string }).searchText ?? "";

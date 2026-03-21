@@ -16,7 +16,7 @@ public class LocalNowTool {
             converter = PlainTextToolResultConverter.class
     )
     public String now(
-            // Some AgentScope tool frameworks model tool input as a single string field `content`.
+            // 单字符串入参字段 `content`。
             // Mark it optional so the tool can be invoked with or without input.
             @io.agentscope.core.tool.ToolParam(
                     name = "content",

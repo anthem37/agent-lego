@@ -59,6 +59,6 @@ model:
   connectivity:
     testPrompt: "Reply with a single word: OK."
     maxTokens: 256
-    maxStreamChunks: 32
+    maxStreamChunks: 512
     timeout: PT2M
 

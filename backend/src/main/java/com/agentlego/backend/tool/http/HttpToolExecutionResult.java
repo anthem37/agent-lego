@@ -2,7 +2,7 @@ package com.agentlego.backend.tool.http;
 
 /**
  * HTTP 工具单次调用的执行结果（由 {@link HttpToolRequestExecutor} 产生，供 {@link HttpProxyAgentTool} 转为
- * {@link io.agentscope.core.message.ToolResultBlock}）。
+ * 工具结果块）。
  */
 public sealed interface HttpToolExecutionResult {
 

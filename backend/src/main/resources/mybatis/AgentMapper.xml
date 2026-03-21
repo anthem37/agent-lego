@@ -16,7 +16,7 @@
     </resultMap>
 
     <insert id="insert" parameterType="com.agentlego.backend.agent.infrastructure.persistence.AgentDO">
-        insert into platform_agents (id, name, system_prompt, model_id, memory_policy, knowledge_base_policy)
+        insert into lego_agents (id, name, system_prompt, model_id, memory_policy, knowledge_base_policy)
         values (#{id},
                 #{name},
                 #{systemPrompt},
@@ -26,7 +26,7 @@
     </insert>
 
     <insert id="insertAgentTools">
-        insert into platform_agent_tools (agent_id, tool_id) values
+        insert into lego_agent_tools (agent_id, tool_id) values
         <foreach collection="toolIds" item="tid" separator=",">
             (#{agentId}, #{tid})
         </foreach>
@@ -41,42 +41,42 @@
                cast(a.memory_policy as text)                               as memory_policy_json,
                cast(a.knowledge_base_policy as text)                       as knowledge_base_policy_json,
                a.created_at
-        from platform_agents a
-                 left join platform_agent_tools t on t.agent_id = a.id
+        from lego_agents a
+                 left join lego_agent_tools t on t.agent_id = a.id
         where a.id = #{id}
         group by a.id, a.name, a.system_prompt, a.model_id, a.memory_policy, a.knowledge_base_policy, a.created_at
     </select>
 
     <select id="countByModelId" parameterType="java.lang.String" resultType="int">
         select count(*) ::int
-        from platform_agents
+        from lego_agents
         where model_id = #{modelId}
     </select>
 
     <select id="countByToolId" resultType="int">
         select count(*) ::int
-        from platform_agent_tools
+        from lego_agent_tools
         where tool_id = #{toolId}
     </select>
 
     <select id="listAgentIdsByToolId" resultType="java.lang.String">
         select a.id
-        from platform_agents a
-                 inner join platform_agent_tools t on t.agent_id = a.id
+        from lego_agents a
+                 inner join lego_agent_tools t on t.agent_id = a.id
         where t.tool_id = #{toolId}
         order by a.created_at desc limit 20
     </select>
 
     <select id="listAgentIdsReferencingKbCollection" resultType="java.lang.String">
         select id
-        from platform_agents
+        from lego_agents
         where jsonb_typeof(knowledge_base_policy - > 'collectionIds') = 'array'
           and knowledge_base_policy - > 'collectionIds' @> jsonb_build_array(#{collectionId})
         order by created_at desc
     </select>
 
     <update id="updateKnowledgeBasePolicy">
-        update platform_agents
+        update lego_agents
         set knowledge_base_policy = cast(#{knowledgeBasePolicyJson} as jsonb)
         where id = #{id}
     </update>

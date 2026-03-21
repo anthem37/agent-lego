@@ -541,6 +541,6 @@ export const NAME_ID_RULES = [
     },
 ];
 
-/** 与后端 AgentScope Toolkit 注册及全平台唯一 name 策略一致 */
-export const TOOL_NAME_AGENTSCOPE_HINT =
-    "该名称会注册为 AgentScope Toolkit 工具名并参与模型 function calling；全平台唯一（与其它类型也不能重名，大小写不敏感）。";
+/** 与后端运行时工具注册及全平台唯一 name 策略一致 */
+export const TOOL_NAME_RUNTIME_HINT =
+    "该名称将作为运行时工具标识并参与模型侧工具调用；全平台唯一（与其它类型也不能重名，大小写不敏感）。";

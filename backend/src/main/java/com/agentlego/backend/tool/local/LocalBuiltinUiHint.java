@@ -8,7 +8,7 @@ import java.lang.annotation.Target;
 /**
  * 可选：为内置 LOCAL 工具提供前端展示用中文文案（名称/联调说明）。
  * <p>
- * 扫描 {@link LocalBuiltinToolCatalog} 时会读取；未标注时 {@code label} 回退为 {@link io.agentscope.core.tool.Tool#name()}。
+ * 扫描 {@link LocalBuiltinToolCatalog} 时会读取；未标注时 {@code label} 回退为工具 {@code name}。
  */
 @Target(ElementType.TYPE)
 @Retention(RetentionPolicy.RUNTIME)

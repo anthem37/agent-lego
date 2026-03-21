@@ -119,7 +119,10 @@ class ModelApplicationServiceTest {
         assertEquals("OK", response.getStatus());
         assertEquals(15L, response.getLatencyMs());
         assertEquals(2, response.getStreamChunks());
-        assertEquals("OK", response.getMessage());
+        assertTrue(
+                response.getMessage() != null && response.getMessage().contains("连通成功"),
+                () -> "message=" + response.getMessage()
+        );
         assertEquals("OK", response.getRaw());
         verify(connectivityTester).testChat(eq(model), isNull(), isNull(), isNull());
     }
@@ -143,7 +146,7 @@ class ModelApplicationServiceTest {
     }
 
     @Test
-    void createModel_withAgentScopeExtendedConfig_shouldSucceed() {
+    void createModel_withExtendedChatConfig_shouldSucceed() {
         CreateModelRequest req = new CreateModelRequest();
         req.setName("n");
         req.setProvider("OPENAI");

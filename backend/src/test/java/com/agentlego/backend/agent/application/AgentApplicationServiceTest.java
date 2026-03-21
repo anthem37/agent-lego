@@ -7,6 +7,7 @@ import com.agentlego.backend.agent.application.mapper.AgentDtoMapper;
 import com.agentlego.backend.agent.application.service.AgentApplicationService;
 import com.agentlego.backend.agent.domain.AgentAggregate;
 import com.agentlego.backend.agent.domain.AgentRepository;
+import com.agentlego.backend.api.ApiException;
 import com.agentlego.backend.kb.application.KbRagKnowledgeFactory;
 import com.agentlego.backend.memory.application.dto.MemoryItemDto;
 import com.agentlego.backend.memory.application.dto.MemoryQueryRequest;
@@ -28,6 +29,7 @@ import org.mapstruct.factory.Mappers;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.http.HttpStatus;
 import reactor.core.publisher.Mono;
 
 import java.time.Instant;
@@ -80,6 +82,7 @@ class AgentApplicationServiceTest {
 
         ModelAggregate model = new ModelAggregate();
         model.setId("model1");
+        model.setProvider("DASHSCOPE");
         when(modelRepository.findById("model1")).thenReturn(Optional.of(model));
         when(agentRepository.save(any())).thenReturn("agent-id-1");
 
@@ -213,5 +216,34 @@ class AgentApplicationServiceTest {
         ArgumentCaptor<AgentDefinition> defCaptor = ArgumentCaptor.forClass(AgentDefinition.class);
         verify(agentRuntime).call(defCaptor.capture(), eq("question"), any(Toolkit.class));
         assertEquals("SYS", defCaptor.getValue().systemPrompt());
+    }
+
+    @Test
+    void createAgent_withEmbeddingModel_shouldReject() {
+        AgentApplicationService service = new AgentApplicationService(
+                agentRepository,
+                modelRepository,
+                toolRepository,
+                toolExecutionService,
+                agentRuntime,
+                memoryApplicationService,
+                kbRagKnowledgeFactory,
+                AGENT_DTO_MAPPER
+        );
+
+        CreateAgentRequest req = new CreateAgentRequest();
+        req.setName("a");
+        req.setSystemPrompt("SYS");
+        req.setModelId("emb1");
+
+        ModelAggregate emb = new ModelAggregate();
+        emb.setId("emb1");
+        emb.setProvider("OPENAI_TEXT_EMBEDDING");
+        when(modelRepository.findById("emb1")).thenReturn(Optional.of(emb));
+
+        ApiException ex = assertThrows(ApiException.class, () -> service.createAgent(req));
+        assertEquals("INVALID_AGENT_MODEL", ex.getCode());
+        assertEquals(HttpStatus.BAD_REQUEST, ex.getStatus());
+        verify(agentRepository, never()).save(any());
     }
 }

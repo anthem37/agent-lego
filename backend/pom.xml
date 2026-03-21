@@ -65,7 +65,7 @@
             <scope>runtime</scope>
         </dependency>
 
-        <!-- AgentScope baseline (for later modules); keep in backend from day one -->
+        <!-- Agent runtime baseline (for later modules); keep in backend from day one -->
         <dependency>
             <groupId>io.agentscope</groupId>
             <artifactId>agentscope</artifactId>

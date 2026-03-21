@@ -13,7 +13,7 @@
     </resultMap>
 
     <insert id="insert" parameterType="com.agentlego.backend.eval.infrastructure.persistence.EvaluationDO">
-        insert into platform_evaluations (id, agent_id, name, config)
+        insert into lego_evaluations (id, agent_id, name, config)
         values (#{id}, #{agentId}, #{name}, cast(#{configJson} as jsonb))
     </insert>
 
@@ -23,7 +23,7 @@
                name,
                cast(config as text) as config_json,
                created_at
-        from platform_evaluations
+        from lego_evaluations
         where id = #{id}
     </select>
 </mapper>
