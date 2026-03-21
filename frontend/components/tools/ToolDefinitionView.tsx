@@ -63,8 +63,6 @@ function ValueBlock(props: { value: unknown; depth?: number }) {
 
 type HeaderRow = { name: string; value: string };
 
-type ParamRow = { name: string; typ: string; required: boolean; desc: string };
-
 function headersTable(headers: unknown): React.ReactNode {
     if (!headers || typeof headers !== "object" || Array.isArray(headers)) {
         return <Typography.Text type="secondary">—</Typography.Text>;
@@ -85,6 +83,160 @@ function headersTable(headers: unknown): React.ReactNode {
 }
 
 type SchemaTableRole = "input" | "output";
+
+const MAX_SCHEMA_DETAIL_DEPTH = 14;
+
+function asSchemaRecord(spec: unknown): Record<string, unknown> {
+    return spec && typeof spec === "object" && !Array.isArray(spec) ? (spec as Record<string, unknown>) : {};
+}
+
+/** JSON Schema type 字段：支持 string 与 ["string","null"] */
+function jsonSchemaTypeString(raw: unknown): string | undefined {
+    if (typeof raw === "string") {
+        return raw;
+    }
+    if (Array.isArray(raw)) {
+        for (const x of raw) {
+            if (typeof x === "string" && x !== "null") {
+                return x;
+            }
+        }
+    }
+    return undefined;
+}
+
+function requiredArrayToSet(raw: unknown): Set<string> {
+    if (!Array.isArray(raw)) {
+        return new Set();
+    }
+    return new Set(raw.map((x) => String(x)));
+}
+
+/** 与表单/校验一致的逻辑类型推断（缺 type 但有 properties/items） */
+function effectiveSchemaNodeType(s: Record<string, unknown>): string {
+    const fromType = jsonSchemaTypeString(s.type);
+    if (fromType) {
+        return fromType;
+    }
+    const p = s.properties;
+    if (p != null && typeof p === "object" && !Array.isArray(p)) {
+        return "object";
+    }
+    const it = s.items;
+    if (it != null && typeof it === "object" && !Array.isArray(it)) {
+        return "array";
+    }
+    return "—";
+}
+
+function describeItemsShape(im: Record<string, unknown>): string {
+    const t = effectiveSchemaNodeType(im);
+    if (t === "array") {
+        const inner = im.items;
+        if (inner && typeof inner === "object" && !Array.isArray(inner)) {
+            return `array<${describeItemsShape(inner as Record<string, unknown>)}>`;
+        }
+        return "array";
+    }
+    if (t === "object") {
+        const p = im.properties;
+        const n = p && typeof p === "object" && !Array.isArray(p) ? Object.keys(p as object).length : 0;
+        return n > 0 ? `object{${n} 字段}` : "object";
+    }
+    return t;
+}
+
+/** 单行展示用类型文案（含 array&lt;…&gt;、object 子字段数） */
+function describeSchemaNode(s: Record<string, unknown>): string {
+    const t = effectiveSchemaNodeType(s);
+    if (t === "array") {
+        const items = s.items;
+        if (items && typeof items === "object" && !Array.isArray(items)) {
+            return `array<${describeItemsShape(items as Record<string, unknown>)}>`;
+        }
+        return "array";
+    }
+    if (t === "object") {
+        const p = s.properties;
+        const n = p && typeof p === "object" && !Array.isArray(p) ? Object.keys(p as object).length : 0;
+        return n > 0 ? `object{${n} 字段}` : "object";
+    }
+    return t;
+}
+
+type NestedParamRow = {
+    rowKey: string;
+    path: string;
+    typ: string;
+    required: boolean;
+    desc: string;
+    depth: number;
+};
+
+/**
+ * 将 JSON Schema object.properties 递归展平为表格行（object 子属性、array&lt;object&gt; 下属性用 path[] 表示元素）。
+ */
+function flattenSchemaPropertyRows(
+    properties: Record<string, unknown>,
+    requiredKeys: Set<string>,
+    pathPrefix: string,
+    depth: number,
+): NestedParamRow[] {
+    if (depth > MAX_SCHEMA_DETAIL_DEPTH) {
+        return [];
+    }
+    const rows: NestedParamRow[] = [];
+    for (const name of Object.keys(properties)) {
+        const spec = properties[name];
+        const s = asSchemaRecord(spec);
+        const path = pathPrefix ? `${pathPrefix}.${name}` : name;
+        const typ = describeSchemaNode(s);
+        const desc = typeof s.description === "string" ? s.description : "—";
+        rows.push({
+            rowKey: path,
+            path,
+            typ,
+            required: requiredKeys.has(name),
+            desc,
+            depth,
+        });
+        if (depth >= MAX_SCHEMA_DETAIL_DEPTH) {
+            continue;
+        }
+        const childProps = s.properties;
+        if (childProps && typeof childProps === "object" && !Array.isArray(childProps)) {
+            const childReq = requiredArrayToSet(s.required);
+            rows.push(
+                ...flattenSchemaPropertyRows(
+                    childProps as Record<string, unknown>,
+                    childReq,
+                    path,
+                    depth + 1,
+                ),
+            );
+        }
+        const items = s.items;
+        if (items && typeof items === "object" && !Array.isArray(items)) {
+            const im = items as Record<string, unknown>;
+            if (effectiveSchemaNodeType(im) === "object") {
+                const ip = im.properties;
+                if (ip && typeof ip === "object" && !Array.isArray(ip)) {
+                    const childReq = requiredArrayToSet(im.required);
+                    const arrayPath = `${path}[]`;
+                    rows.push(
+                        ...flattenSchemaPropertyRows(
+                            ip as Record<string, unknown>,
+                            childReq,
+                            arrayPath,
+                            depth + 1,
+                        ),
+                    );
+                }
+            }
+        }
+    }
+    return rows;
+}
 
 function schemaPropertiesTable(raw: unknown, role: SchemaTableRole): React.ReactNode {
     if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
@@ -130,40 +282,63 @@ function schemaPropertiesTable(raw: unknown, role: SchemaTableRole): React.React
     if (keys.length === 0) {
         return <Typography.Text type="secondary">（properties 为空）</Typography.Text>;
     }
-    const required = Array.isArray(schema.required)
-        ? new Set((schema.required as unknown[]).map((x) => String(x)))
-        : new Set<string>();
-    const data: ParamRow[] = keys.map((name) => {
-        const spec = propMap[name];
-        const s = spec && typeof spec === "object" && !Array.isArray(spec) ? (spec as Record<string, unknown>) : {};
-        const typ = typeof s.type === "string" ? s.type : "—";
-        const desc = typeof s.description === "string" ? s.description : "—";
-        return {
-            name,
-            typ,
-            required: required.has(name),
-            desc,
-        };
-    });
-    const fieldTitle = role === "input" ? "参数名" : "出参字段";
+    const required = requiredArrayToSet(schema.required);
+    const data = flattenSchemaPropertyRows(propMap, required, "", 0);
+    const fieldTitle = role === "input" ? "参数路径" : "字段路径";
     const reqTitle = role === "input" ? "必填" : "必有";
-    const columns: ColumnsType<ParamRow> = [
+    const columns: ColumnsType<NestedParamRow> = [
         {
             title: fieldTitle,
-            dataIndex: "name",
-            width: "22%",
-            render: (v) => <Typography.Text code>{v}</Typography.Text>
+            dataIndex: "path",
+            width: "30%",
+            render: (_v, record) => (
+                <span style={{display: "block", paddingLeft: record.depth * 12}}>
+                    <Typography.Text code style={{fontSize: 12}}>
+                        {record.path}
+                    </Typography.Text>
+                </span>
+            ),
         },
-        {title: "类型", dataIndex: "typ", width: "14%"},
+        {
+            title: "类型",
+            dataIndex: "typ",
+            width: "22%",
+            render: (v) => (
+                <Typography.Text code style={{fontSize: 12, wordBreak: "break-word"}}>
+                    {v}
+                </Typography.Text>
+            ),
+        },
         {
             title: reqTitle,
             dataIndex: "required",
             width: "10%",
             render: (v: boolean) => (v ? <Tag color="red">是</Tag> : <Tag>否</Tag>),
         },
-        {title: "说明", dataIndex: "desc", render: (v) => <span style={{wordBreak: "break-word"}}>{v}</span>},
+        {
+            title: "说明",
+            dataIndex: "desc",
+            render: (v) => <span style={{wordBreak: "break-word"}}>{v}</span>,
+        },
     ];
-    return <Table<ParamRow> size="small" pagination={false} rowKey="name" columns={columns} dataSource={data}/>;
+    const hasArrayElementPaths = data.some((d) => d.path.includes("[]"));
+    return (
+        <>
+            <Table<NestedParamRow>
+                size="small"
+                pagination={false}
+                rowKey="rowKey"
+                columns={columns}
+                dataSource={data}
+            />
+            {hasArrayElementPaths ? (
+                <Typography.Paragraph type="secondary" style={{marginBottom: 0, marginTop: 8, fontSize: 12}}>
+                    路径中含 <Typography.Text code>[]</Typography.Text> 表示<strong>数组元素</strong>内的字段（例如{" "}
+                    <Typography.Text code>items[].id</Typography.Text>）。
+                </Typography.Paragraph>
+            ) : null}
+        </>
+    );
 }
 
 function httpParametersTable(raw: unknown): React.ReactNode {

@@ -43,6 +43,11 @@ public class ToolController {
         return ApiResponse.ok(toolService.listToolTypeMeta());
     }
 
+    @GetMapping("/meta/tool-categories")
+    public ApiResponse<List<ToolCategoryMetaDto>> toolCategoryMeta() {
+        return ApiResponse.ok(toolService.listToolCategoryMeta());
+    }
+
     @GetMapping("/meta/local-builtins")
     public ApiResponse<List<LocalBuiltinToolMetaDto>> localBuiltinsMeta() {
         return ApiResponse.ok(toolService.listLocalBuiltins());

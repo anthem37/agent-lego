@@ -4,6 +4,7 @@ import com.agentlego.backend.kb.domain.KbDocumentRepository;
 import com.agentlego.backend.kb.domain.KbDocumentRow;
 import com.agentlego.backend.kb.infrastructure.persistence.KbDocumentDO;
 import com.agentlego.backend.kb.infrastructure.persistence.KbDocumentMapper;
+import com.agentlego.backend.kb.support.KbDocumentToolBindings;
 import org.springframework.stereotype.Repository;
 
 import java.util.List;
@@ -19,12 +20,27 @@ public class KbDocumentRepositoryImpl implements KbDocumentRepository {
     }
 
     @Override
-    public void insertPending(String id, String collectionId, String title, String body) {
+    public void insertPending(
+            String id,
+            String collectionId,
+            String title,
+            String body,
+            String linkedToolIdsJson,
+            String toolOutputBindingsJson
+    ) {
         KbDocumentDO row = new KbDocumentDO();
         row.setId(id);
         row.setCollectionId(collectionId);
         row.setTitle(title);
         row.setBody(body);
+        row.setLinkedToolIdsJson(
+                linkedToolIdsJson == null || linkedToolIdsJson.isBlank() ? "[]" : linkedToolIdsJson
+        );
+        row.setToolOutputBindingsJson(
+                toolOutputBindingsJson == null || toolOutputBindingsJson.isBlank()
+                        ? KbDocumentToolBindings.defaultBindingsJson()
+                        : toolOutputBindingsJson
+        );
         row.setCreatedAt(java.time.Instant.now());
         row.setUpdatedAt(row.getCreatedAt());
         mapper.insertPending(row);
@@ -72,6 +88,16 @@ public class KbDocumentRepositoryImpl implements KbDocumentRepository {
         r.setBody(row.getBody());
         r.setStatus(row.getStatus());
         r.setErrorMessage(row.getErrorMessage());
+        r.setLinkedToolIdsJson(
+                row.getLinkedToolIdsJson() == null || row.getLinkedToolIdsJson().isBlank()
+                        ? "[]"
+                        : row.getLinkedToolIdsJson()
+        );
+        r.setToolOutputBindingsJson(
+                row.getToolOutputBindingsJson() == null || row.getToolOutputBindingsJson().isBlank()
+                        ? KbDocumentToolBindings.defaultBindingsJson()
+                        : row.getToolOutputBindingsJson()
+        );
         r.setCreatedAt(row.getCreatedAt());
         r.setUpdatedAt(row.getUpdatedAt());
         return r;

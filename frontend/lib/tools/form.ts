@@ -1,4 +1,5 @@
 import type {
+    HttpArrayItemPrimitiveType,
     HttpHeaderRow,
     HttpParameterRow,
     HttpParamType,
@@ -6,10 +7,59 @@ import type {
     ToolFormValues,
     ToolTypeCode,
 } from "@/lib/tools/types";
-import {HTTP_PARAM_TYPES} from "@/lib/tools/types";
+import {HTTP_ARRAY_ITEM_PRIMITIVE_TYPES, HTTP_PARAM_TYPES} from "@/lib/tools/types";
+
+const HTTP_PARAM_TYPE_LABELS: Record<string, string> = {
+    string: "文本 string",
+    number: "数字 number",
+    integer: "整数 integer",
+    boolean: "布尔 boolean",
+    object: "对象 object",
+    array: "数组 array",
+};
 
 /** HTTP 入参类型下拉 */
-export const HTTP_PARAM_TYPE_OPTIONS = HTTP_PARAM_TYPES.map((t) => ({value: t, label: t}));
+export const HTTP_PARAM_TYPE_OPTIONS = HTTP_PARAM_TYPES.map((t) => ({
+    value: t,
+    label: HTTP_PARAM_TYPE_LABELS[t] ?? t,
+}));
+
+/** 数组元素类型（基本类型或对象） */
+export const HTTP_ARRAY_ITEM_TYPE_OPTIONS = HTTP_ARRAY_ITEM_PRIMITIVE_TYPES.map((t) => ({
+    value: t,
+    label: HTTP_PARAM_TYPE_LABELS[t] ?? t,
+}));
+
+/** 与表单编辑器、校验一致的最大嵌套层数（含 object 属性与 array items 对象属性） */
+export const MAX_NESTED_HTTP_PARAM_DEPTH = 8;
+
+const SCHEMA_EXOTIC_KEYS = new Set([
+    "allOf",
+    "oneOf",
+    "anyOf",
+    "not",
+    "$ref",
+    "prefixItems",
+    "if",
+    "then",
+    "else",
+    "dependentSchemas",
+    "contains",
+    "unevaluatedProperties",
+]);
+
+const LEAF_SCHEMA_KEYS = new Set([
+    "type",
+    "description",
+    "title",
+    "default",
+    "enum",
+    "format",
+    "minimum",
+    "maximum",
+    "minLength",
+    "maxLength",
+]);
 
 const HTTP_METHODS_BODY = new Set(["POST", "PUT", "PATCH"]);
 
@@ -71,9 +121,109 @@ function isDefaultLooseBackendParameterSchema(o: Record<string, unknown>): boole
     return keys.every((k) => ["type", "additionalProperties", "description"].includes(k));
 }
 
+/** 解析 JSON Schema 的 type 字段（支持 string 或 ["string","null"] 等） */
+function jsonSchemaTypeString(raw: unknown): string | undefined {
+    if (typeof raw === "string") {
+        return raw;
+    }
+    if (Array.isArray(raw)) {
+        for (const x of raw) {
+            if (typeof x === "string" && x !== "null") {
+                return x;
+            }
+        }
+    }
+    return undefined;
+}
+
 /**
- * 单看一份 schema：是否可用当前「表格入参」无损编辑。
- * 含 allOf/$ref/嵌套对象属性等时返回 false。
+ * 从属性 schema 推断逻辑类型：缺省 type 但有 properties / items 时仍按 object / array 判断（与 rowFromPropertySchema 一致）。
+ */
+function effectivePropertySchemaType(s: Record<string, unknown>): string {
+    const fromType = jsonSchemaTypeString(s.type);
+    const props = s.properties;
+    const hasProps = props != null && typeof props === "object" && !Array.isArray(props);
+    const items = s.items;
+    const hasItems = items != null && typeof items === "object" && !Array.isArray(items);
+    if (fromType) {
+        return fromType;
+    }
+    if (hasProps) {
+        return "object";
+    }
+    if (hasItems) {
+        return "array";
+    }
+    return "string";
+}
+
+/**
+ * 单个 JSON Schema 属性节点是否可用当前表格递归编辑（支持 object / array 嵌套）。
+ */
+function isPropertySchemaNodeFormEditable(spec: unknown, depth: number): boolean {
+    if (depth > MAX_NESTED_HTTP_PARAM_DEPTH) {
+        return false;
+    }
+    if (spec == null || typeof spec !== "object" || Array.isArray(spec)) {
+        return false;
+    }
+    const s = spec as Record<string, unknown>;
+    if (Object.keys(s).some((k) => SCHEMA_EXOTIC_KEYS.has(k))) {
+        return false;
+    }
+    const t = effectivePropertySchemaType(s);
+    const scalar = new Set(["string", "number", "integer", "boolean"]);
+    if (scalar.has(t)) {
+        return Object.keys(s).every((k) => LEAF_SCHEMA_KEYS.has(k));
+    }
+    if (t === "object") {
+        if (s.additionalProperties === true) {
+            return false;
+        }
+        const allowed = new Set([
+            "type",
+            "properties",
+            "required",
+            "description",
+            "title",
+            "additionalProperties",
+        ]);
+        if (Object.keys(s).some((k) => !allowed.has(k))) {
+            return false;
+        }
+        const props = s.properties;
+        if (props == null) {
+            return true;
+        }
+        if (typeof props !== "object" || Array.isArray(props)) {
+            return false;
+        }
+        const propMap = props as Record<string, unknown>;
+        for (const v of Object.values(propMap)) {
+            if (!isPropertySchemaNodeFormEditable(v, depth + 1)) {
+                return false;
+            }
+        }
+        const req = s.required;
+        return req == null || Array.isArray(req);
+    }
+    if (t === "array") {
+        const allowed = new Set(["type", "items", "description", "title", "minItems", "maxItems"]);
+        if (Object.keys(s).some((k) => !allowed.has(k))) {
+            return false;
+        }
+        const items = s.items;
+        if (items == null || Array.isArray(items) || typeof items !== "object") {
+            return false;
+        }
+        return isPropertySchemaNodeFormEditable(items, depth + 1);
+    }
+    return false;
+}
+
+/**
+ * 单看一份 schema：是否可用当前「表格入参」无损编辑（含嵌套 object / array）。
+ * 含 allOf/$ref/tuple items 等时返回 false。
  */
 export function isHttpParameterSchemaFormEditable(raw: unknown): boolean {
     if (raw === undefined || raw === null) {
@@ -83,8 +233,7 @@ export function isHttpParameterSchemaFormEditable(raw: unknown): boolean {
         return false;
     }
     const o = raw as Record<string, unknown>;
-    const exotic = ["allOf", "oneOf", "anyOf", "not", "$ref", "prefixItems", "if", "then", "else", "dependentSchemas"];
-    if (exotic.some((k) => o[k] != null)) {
+    if (Object.keys(o).some((k) => SCHEMA_EXOTIC_KEYS.has(k))) {
         return false;
     }
     if (isDefaultLooseBackendParameterSchema(o)) {
@@ -99,6 +248,9 @@ export function isHttpParameterSchemaFormEditable(raw: unknown): boolean {
         "additionalProperties",
     ]);
     if (Object.keys(o).some((k) => !allowedTop.has(k))) {
+        return false;
+    }
+    if (o.type !== "object") {
         return false;
     }
     const props = o.properties;
@@ -117,23 +269,12 @@ export function isHttpParameterSchemaFormEditable(raw: unknown): boolean {
         }
         return true;
     }
-    const propAllowed = new Set(["type", "description", "default", "enum", "title"]);
     for (const pk of propKeys) {
-        const spec = propMap[pk];
-        if (spec != null && typeof spec === "object" && !Array.isArray(spec)) {
-            const s = spec as Record<string, unknown>;
-            if (Object.keys(s).some((k) => !propAllowed.has(k))) {
-                return false;
-            }
-            const tp = s.type;
-            if (tp != null) {
-                if (typeof tp !== "string" || !(HTTP_PARAM_TYPES as readonly string[]).includes(tp)) {
-                    return false;
-                }
-            }
+        if (!isPropertySchemaNodeFormEditable(propMap[pk], 0)) {
+            return false;
         }
     }
-    return true;
+    return req == null || Array.isArray(req);
 }
 
 /**
@@ -187,6 +328,13 @@ export function extractHttpUrlPlaceholderNames(url: string): string[] {
     return out;
 }
 
+/** 仅顶层参数名（URL `{name}` 占位符只与顶层字段对齐，嵌套属性不参与） */
+export function collectRootHttpParameterNames(rows: HttpParameterRow[] | undefined): string[] {
+    return (rows ?? [])
+        .map((r) => (r.paramName ?? "").trim())
+        .filter(Boolean);
+}
+
 /**
  * URL 中每个 `{name}` 须在入参表格中有同名参数，否则模型不知道要填什么。
  */
@@ -198,11 +346,7 @@ export function validateHttpUrlPlaceholdersHaveParameterRows(
     if (placeholders.length === 0) {
         return null;
     }
-    const declared = new Set(
-        (rows ?? [])
-            .map((r) => (r.paramName ?? "").trim())
-            .filter(Boolean),
-    );
+    const declared = new Set(collectRootHttpParameterNames(rows));
     const missing = placeholders.filter((p) => !declared.has(p));
     if (missing.length === 0) {
         return null;
@@ -211,8 +355,15 @@ export function validateHttpUrlPlaceholdersHaveParameterRows(
     return `URL 中的占位符 ${show} 未在「调用参数」中声明同名参数；请补全表格或修改 URL。`;
 }
 
-/** 保存前校验：名称合法、不重复（与后端 URL 占位符 `[a-zA-Z0-9_]+` 一致） */
+/** 保存前校验：名称合法、不重复（与后端 URL 占位符 `[a-zA-Z0-9_]+` 一致）；递归校验嵌套 */
 export function validateHttpParameterRows(rows: HttpParameterRow[] | undefined): string | null {
+    return validateHttpParameterRowsAtLevel(rows, 0);
+}
+
+function validateHttpParameterRowsAtLevel(rows: HttpParameterRow[] | undefined, depth: number): string | null {
+    if (depth > MAX_NESTED_HTTP_PARAM_DEPTH) {
+        return `参数嵌套超过 ${MAX_NESTED_HTTP_PARAM_DEPTH} 层，请简化或使用「高级入参」保留 JSON Schema`;
+    }
     const names = (rows ?? [])
         .map((r) => (r.paramName ?? "").trim())
         .filter(Boolean);
@@ -226,11 +377,39 @@ export function validateHttpParameterRows(rows: HttpParameterRow[] | undefined):
         }
         seen.add(n);
     }
+    for (const r of rows ?? []) {
+        const nm = (r.paramName ?? "").trim();
+        if (!nm) {
+            continue;
+        }
+        if (r.paramType === "object") {
+            const err = validateHttpParameterRowsAtLevel(r.children, depth + 1);
+            if (err) {
+                return err;
+            }
+        }
+        if (r.paramType === "array") {
+            const el = r.arrayItemsPrimitiveType ?? "string";
+            if (el === "object") {
+                const err = validateHttpParameterRowsAtLevel(r.arrayItemProperties, depth + 1);
+                if (err) {
+                    return err;
+                }
+            }
+        }
+    }
     return null;
 }
 
-/** 出参字段名校验（不与 URL 占位符关联） */
+/** 出参字段名校验（不与 URL 占位符关联）；支持嵌套 object/array */
 export function validateHttpOutputFieldRows(rows: HttpParameterRow[] | undefined): string | null {
+    return validateHttpOutputFieldRowsAtLevel(rows, 0);
+}
+
+function validateHttpOutputFieldRowsAtLevel(rows: HttpParameterRow[] | undefined, depth: number): string | null {
+    if (depth > MAX_NESTED_HTTP_PARAM_DEPTH) {
+        return `出参嵌套超过 ${MAX_NESTED_HTTP_PARAM_DEPTH} 层，请简化或使用高级 outputSchema`;
+    }
     const names = (rows ?? [])
         .map((r) => (r.paramName ?? "").trim())
         .filter(Boolean);
@@ -243,6 +422,26 @@ export function validateHttpOutputFieldRows(rows: HttpParameterRow[] | undefined
             return `出参字段名重复：${n}`;
         }
         seen.add(n);
+    }
+    for (const r of rows ?? []) {
+        if (!(r.paramName ?? "").trim()) {
+            continue;
+        }
+        if (r.paramType === "object") {
+            const err = validateHttpOutputFieldRowsAtLevel(r.children, depth + 1);
+            if (err) {
+                return err;
+            }
+        }
+        if (r.paramType === "array") {
+            const el = r.arrayItemsPrimitiveType ?? "string";
+            if (el === "object") {
+                const err = validateHttpOutputFieldRowsAtLevel(r.arrayItemProperties, depth + 1);
+                if (err) {
+                    return err;
+                }
+            }
+        }
     }
     return null;
 }
@@ -261,6 +460,61 @@ function headersFromRows(rows: HttpHeaderRow[] | undefined): Record<string, stri
     return Object.keys(out).length > 0 ? out : undefined;
 }
 
+function buildPropertySchemaFromRow(r: HttpParameterRow): Record<string, unknown> | undefined {
+    const name = (r.paramName ?? "").trim();
+    if (!name) {
+        return undefined;
+    }
+    const desc = (r.paramDescription ?? "").trim();
+    const withDesc = (o: Record<string, unknown>) => {
+        if (desc) {
+            o.description = desc;
+        }
+        return o;
+    };
+    switch (r.paramType) {
+        case "string":
+        case "number":
+        case "integer":
+        case "boolean":
+            return withDesc({type: r.paramType});
+        case "object": {
+            const inner = parametersSchemaFromRows(r.children);
+            const o: Record<string, unknown> = {type: "object"};
+            if (inner?.properties != null) {
+                o.properties = inner.properties;
+            } else {
+                o.properties = {};
+            }
+            if (Array.isArray(inner?.required) && (inner.required as string[]).length > 0) {
+                o.required = inner.required;
+            }
+            return withDesc(o);
+        }
+        case "array": {
+            const prim = r.arrayItemsPrimitiveType ?? "string";
+            let items: Record<string, unknown>;
+            if (prim === "object") {
+                const inner = parametersSchemaFromRows(r.arrayItemProperties);
+                items = {type: "object"};
+                if (inner?.properties != null) {
+                    items.properties = inner.properties;
+                } else {
+                    items.properties = {};
+                }
+                if (Array.isArray(inner?.required) && (inner.required as string[]).length > 0) {
+                    items.required = inner.required;
+                }
+            } else {
+                items = {type: prim};
+            }
+            return withDesc({type: "array", items});
+        }
+        default:
+            return withDesc({type: "string"});
+    }
+}
+
 function parametersSchemaFromRows(rows: HttpParameterRow[] | undefined): Record<string, unknown> | undefined {
     const valid = (rows ?? []).filter((r) => (r.paramName ?? "").trim());
     if (valid.length === 0) {
@@ -270,11 +524,9 @@ function parametersSchemaFromRows(rows: HttpParameterRow[] | undefined): Record<
     const required: string[] = [];
     for (const r of valid) {
         const name = r.paramName.trim();
-        const typ = HTTP_PARAM_TYPES.includes(r.paramType) ? r.paramType : "string";
-        const desc = (r.paramDescription ?? "").trim();
-        const prop: Record<string, unknown> = {type: typ};
-        if (desc) {
-            prop.description = desc;
+        const prop = buildPropertySchemaFromRow(r);
+        if (!prop) {
+            continue;
         }
         properties[name] = prop;
         if (r.required) {
@@ -313,7 +565,114 @@ function rowsFromHeaders(headers: unknown): { headerName: string; value: string 
     }));
 }
 
-/** 从任意 object schema 根节点还原表格行 */
+/** 编辑/回显前规范化嵌套行：补全 boolean、子数组，避免 Form 受控组件异常 */
+export function normalizeHttpParameterRowTree(rows: HttpParameterRow[] | undefined): HttpParameterRow[] {
+    const list = rows?.length ? rows : [];
+    return list.map((r) => normalizeHttpParameterRowOne(r));
+}
+
+function normalizeHttpParameterRowOne(r: HttpParameterRow): HttpParameterRow {
+    const paramType = r.paramType ?? "string";
+    const out: HttpParameterRow = {
+        paramName: r.paramName ?? "",
+        paramType: (HTTP_PARAM_TYPES as readonly string[]).includes(paramType) ? (paramType as HttpParamType) : "string",
+        required: r.required === true,
+        paramDescription: typeof r.paramDescription === "string" ? r.paramDescription : "",
+    };
+    if (out.paramType === "object") {
+        out.children = normalizeHttpParameterRowTree(r.children);
+    }
+    if (out.paramType === "array") {
+        const prim = r.arrayItemsPrimitiveType ?? "string";
+        out.arrayItemsPrimitiveType = (HTTP_ARRAY_ITEM_PRIMITIVE_TYPES as readonly string[]).includes(
+            prim as HttpArrayItemPrimitiveType,
+        )
+            ? (prim as HttpArrayItemPrimitiveType)
+            : "string";
+        if (out.arrayItemsPrimitiveType === "object") {
+            out.arrayItemProperties = normalizeHttpParameterRowTree(r.arrayItemProperties);
+        }
+    }
+    return out;
+}
+
+function rowFromPropertySchema(name: string, spec: unknown, required: Set<string>): HttpParameterRow {
+    const s = spec && typeof spec === "object" && !Array.isArray(spec) ? (spec as Record<string, unknown>) : {};
+    const ty = effectivePropertySchemaType(s);
+    const desc = typeof s.description === "string" ? s.description : "";
+    const base = {
+        paramName: name,
+        required: required.has(name),
+        paramDescription: desc,
+    };
+
+    if (ty === "object") {
+        const props = s.properties;
+        let children: HttpParameterRow[] | undefined;
+        if (props && typeof props === "object" && !Array.isArray(props)) {
+            children = rowsFromObjectSchemaRoot({
+                type: "object",
+                properties: props,
+                required: s.required,
+            });
+        }
+        return {
+            ...base,
+            paramType: "object",
+            children: children?.length ? children : [],
+        };
+    }
+
+    if (ty === "array") {
+        const items = s.items;
+        if (items && typeof items === "object" && !Array.isArray(items)) {
+            const im = items as Record<string, unknown>;
+            const itemTy = jsonSchemaTypeString(im.type);
+            const ip = im.properties;
+            const hasItemProps = ip != null && typeof ip === "object" && !Array.isArray(ip);
+            const it = itemTy ?? (hasItemProps ? "object" : "string");
+            if (it === "object") {
+                let arrayItemProperties: HttpParameterRow[] | undefined;
+                if (hasItemProps && ip && typeof ip === "object" && !Array.isArray(ip)) {
+                    arrayItemProperties = rowsFromObjectSchemaRoot({
+                        type: "object",
+                        properties: ip,
+                        required: im.required,
+                    });
+                }
+                return {
+                    ...base,
+                    paramType: "array",
+                    arrayItemsPrimitiveType: "object",
+                    arrayItemProperties: arrayItemProperties?.length ? arrayItemProperties : [],
+                };
+            }
+            const apt = (HTTP_ARRAY_ITEM_PRIMITIVE_TYPES as readonly string[]).includes(it as HttpArrayItemPrimitiveType)
+                ? (it as HttpArrayItemPrimitiveType)
+                : "string";
+            return {
+                ...base,
+                paramType: "array",
+                arrayItemsPrimitiveType: apt === "object" ? "string" : apt,
+            };
+        }
+        return {
+            ...base,
+            paramType: "array",
+            arrayItemsPrimitiveType: "string",
+        };
+    }
+
+    const paramType: HttpParamType = (HTTP_PARAM_TYPES as readonly string[]).includes(ty)
+        ? (ty as HttpParamType)
+        : "string";
+    return {
+        ...base,
+        paramType,
+    };
+}
+
+/** 从任意 object schema 根节点还原表格行（递归 object / array） */
 export function rowsFromObjectSchemaRoot(raw: unknown): HttpParameterRow[] {
     if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
         return [defaultHttpParameterRow()];
@@ -331,20 +690,7 @@ export function rowsFromObjectSchemaRoot(raw: unknown): HttpParameterRow[] {
     const required = Array.isArray(schema.required)
         ? new Set((schema.required as unknown[]).map((x) => String(x)))
         : new Set<string>();
-    return keys.map((name) => {
-        const spec = propMap[name];
-        const s = spec && typeof spec === "object" && !Array.isArray(spec) ? (spec as Record<string, unknown>) : {};
-        const ty = typeof s.type === "string" ? s.type : "string";
-        const paramType: HttpParamType = (HTTP_PARAM_TYPES as readonly string[]).includes(ty)
-            ? (ty as HttpParamType)
-            : "string";
-        return {
-            paramName: name,
-            paramType,
-            required: required.has(name),
-            paramDescription: typeof s.description === "string" ? s.description : "",
-        };
-    });
+    return keys.map((name) => rowFromPropertySchema(name, propMap[name], required));
 }
 
 /**
@@ -450,6 +796,10 @@ export function buildToolDefinition(values: ToolFormValues, options?: BuildDefin
 export function toolDtoToFormValues(tool: ToolDto): Partial<ToolFormValues> {
     const raw = (tool.toolType || "LOCAL").toUpperCase();
     const t = (["LOCAL", "MCP", "HTTP", "WORKFLOW"].includes(raw) ? raw : "LOCAL") as ToolTypeCode;
+    const cat =
+        String(tool.toolCategory ?? "ACTION").toUpperCase() === "QUERY" ? ("QUERY" as const) : ("ACTION" as const);
+    const displayLabel = typeof tool.displayLabel === "string" ? tool.displayLabel : undefined;
+    const platformDescription = typeof tool.description === "string" ? tool.description : undefined;
     const def = {...(tool.definition ?? {})};
     const desc = typeof def.description === "string" ? def.description : undefined;
 
@@ -461,7 +811,10 @@ export function toolDtoToFormValues(tool: ToolDto): Partial<ToolFormValues> {
     if (t === "LOCAL") {
         return {
             toolType: "LOCAL",
+            toolCategory: cat,
             name: tool.name,
+            displayLabel,
+            platformDescription,
             toolDescription: desc,
             httpMethod: "GET",
             sendJsonBody: true,
@@ -472,10 +825,20 @@ export function toolDtoToFormValues(tool: ToolDto): Partial<ToolFormValues> {
     }
     if (t === "MCP") {
         const preserveParams = shouldPreserveHttpParameterFields(def);
-        const mcpParamRows = preserveParams ? [defaultHttpParameterRow()] : rowsFromParametersSchema(def);
+        const mcpParamRows = preserveParams
+            ? [defaultHttpParameterRow()]
+            : normalizeHttpParameterRowTree(
+                (() => {
+                    const raw = rowsFromParametersSchema(def);
+                    return raw.length ? raw : [defaultHttpParameterRow()];
+                })(),
+            );
         return {
             toolType: "MCP",
+            toolCategory: cat,
             name: tool.name,
+            displayLabel,
+            platformDescription,
             toolDescription: desc,
             mcpEndpoint: typeof def.endpoint === "string" ? def.endpoint : undefined,
             mcpRemoteToolName: typeof def.mcpToolName === "string" ? def.mcpToolName : undefined,
@@ -491,11 +854,28 @@ export function toolDtoToFormValues(tool: ToolDto): Partial<ToolFormValues> {
     if (t === "HTTP") {
         const preserve = shouldPreserveHttpParameterFields(def);
         const preserveOut = shouldPreserveHttpOutputFields(def);
-        const paramRows = preserve ? [defaultHttpParameterRow()] : rowsFromParametersSchema(def);
-        const outRows = preserveOut ? [defaultHttpParameterRow()] : rowsFromOutputSchema(def);
+        const paramRows = preserve
+            ? [defaultHttpParameterRow()]
+            : normalizeHttpParameterRowTree(
+                (() => {
+                    const raw = rowsFromParametersSchema(def);
+                    return raw.length ? raw : [defaultHttpParameterRow()];
+                })(),
+            );
+        const outRows = preserveOut
+            ? [defaultHttpParameterRow()]
+            : normalizeHttpParameterRowTree(
+                (() => {
+                    const raw = rowsFromOutputSchema(def);
+                    return raw.length ? raw : [defaultHttpParameterRow()];
+                })(),
+            );
         return {
             toolType: "HTTP",
+            toolCategory: cat,
             name: tool.name,
+            displayLabel,
+            platformDescription,
             toolDescription: desc,
             httpUrl: String(def.url ?? ""),
             httpMethod: String(def.method ?? "GET"),
@@ -510,7 +890,10 @@ export function toolDtoToFormValues(tool: ToolDto): Partial<ToolFormValues> {
     if (t === "WORKFLOW") {
         return {
             toolType: "WORKFLOW",
+            toolCategory: cat,
             name: tool.name,
+            displayLabel,
+            platformDescription,
             toolDescription: desc,
             workflowId: String(def.workflowId ?? ""),
             httpMethod: "GET",
@@ -522,7 +905,10 @@ export function toolDtoToFormValues(tool: ToolDto): Partial<ToolFormValues> {
     }
     return {
         toolType: "LOCAL",
+        toolCategory: cat,
         name: tool.name,
+        displayLabel,
+        platformDescription,
         httpMethod: "GET",
         sendJsonBody: true,
         httpHeaderRows: [],

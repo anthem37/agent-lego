@@ -18,6 +18,7 @@ import {request} from "@/lib/api/request";
 import {
     deleteTool,
     fetchLocalBuiltinToolsMeta,
+    fetchToolCategoryMeta,
     fetchToolReferences,
     fetchToolTypeMeta,
     getTool,
@@ -27,7 +28,13 @@ import {shouldPreserveHttpOutputFields, shouldPreserveHttpParameterFields} from 
 import {buildDefaultTestCallParamRows} from "@/lib/tools/test-call";
 import {toolTypeDisplayName} from "@/lib/tool-labels";
 import {toolTypeTagColor} from "@/lib/tools/ui";
-import type {LocalBuiltinToolMetaDto, ToolDto, ToolReferencesDto, ToolTypeMetaDto} from "@/lib/tools/types";
+import type {
+    LocalBuiltinToolMetaDto,
+    ToolCategoryMetaDto,
+    ToolDto,
+    ToolReferencesDto,
+    ToolTypeMetaDto,
+} from "@/lib/tools/types";
 
 type TestToolCallForm = {
     /** 扁平入参：名称 + 取值，无需整段 JSON */
@@ -103,6 +110,7 @@ export default function ToolDetailPage(props: { params: Promise<{ id: string }> 
     const [toolId, setToolId] = React.useState<string | null>(null);
     const [tool, setTool] = React.useState<ToolDto | null>(null);
     const [meta, setMeta] = React.useState<ToolTypeMetaDto[]>([]);
+    const [categoryMeta, setCategoryMeta] = React.useState<ToolCategoryMetaDto[]>([]);
     const [localBuiltins, setLocalBuiltins] = React.useState<LocalBuiltinToolMetaDto[]>([]);
     const [loading, setLoading] = React.useState(false);
     const [testing, setTesting] = React.useState(false);
@@ -146,14 +154,16 @@ export default function ToolDetailPage(props: { params: Promise<{ id: string }> 
             setError(null);
             setLoading(true);
             try {
-                const [data, m, r, builtins] = await Promise.all([
+                const [data, m, cats, r, builtins] = await Promise.all([
                     getTool(id),
                     fetchToolTypeMeta(),
+                    fetchToolCategoryMeta().catch(() => [] as ToolCategoryMetaDto[]),
                     fetchToolReferences(id),
                     fetchLocalBuiltinToolsMeta(),
                 ]);
                 setTool(data);
                 setMeta(m);
+                setCategoryMeta(cats);
                 setRefs(r);
                 setLocalBuiltins(builtins);
                 const localMeta =
@@ -232,6 +242,18 @@ export default function ToolDetailPage(props: { params: Promise<{ id: string }> 
     const overviewTab = tool ? (
         <Descriptions column={1} size="small" bordered>
             <Descriptions.Item label="工具名称">{tool.name}</Descriptions.Item>
+            <Descriptions.Item label="展示名（中文名）">
+                {tool.displayLabel?.trim() ? tool.displayLabel : "—"}
+            </Descriptions.Item>
+            <Descriptions.Item label="平台说明">
+                {tool.description?.trim() ? (
+                    <Typography.Paragraph style={{marginBottom: 0, whiteSpace: "pre-wrap"}}>
+                        {tool.description}
+                    </Typography.Paragraph>
+                ) : (
+                    "—"
+                )}
+            </Descriptions.Item>
             <Descriptions.Item label="运行时标识">
                 <Typography.Text type="secondary" style={{fontSize: 13}}>
                     运行时以此名称注册工具，与模型侧工具调用一致；平台内全平台唯一（大小写不敏感）。
@@ -244,6 +266,11 @@ export default function ToolDetailPage(props: { params: Promise<{ id: string }> 
                     </Typography.Text>
                     <Typography.Text type="secondary">{toolTypeDisplayName(tool.toolType)}</Typography.Text>
                 </Typography.Text>
+            </Descriptions.Item>
+            <Descriptions.Item label="分类">
+                <Tag color={(tool.toolCategory ?? "ACTION").toUpperCase() === "QUERY" ? "blue" : "default"}>
+                    {(tool.toolCategory ?? "ACTION").toUpperCase() === "QUERY" ? "查询 QUERY" : "操作 ACTION"}
+                </Tag>
             </Descriptions.Item>
             <Descriptions.Item label="联调能力">
                 {typeMeta?.supportsTestCall === false ? (
@@ -491,6 +518,7 @@ export default function ToolDetailPage(props: { params: Promise<{ id: string }> 
                         mode="edit"
                         editingTool={tool}
                         toolTypeMeta={meta}
+                        toolCategoryMeta={categoryMeta}
                         localBuiltins={localBuiltins}
                         onClose={() => setEditOpen(false)}
                         onSaved={async () => {

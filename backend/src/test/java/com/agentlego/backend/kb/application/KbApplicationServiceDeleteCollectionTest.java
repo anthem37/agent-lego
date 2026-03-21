@@ -11,6 +11,7 @@ import com.agentlego.backend.kb.domain.KbCollectionRepository;
 import com.agentlego.backend.kb.domain.KbDocumentRepository;
 import com.agentlego.backend.model.domain.ModelRepository;
 import com.agentlego.backend.model.support.ModelEmbeddingClient;
+import com.agentlego.backend.tool.domain.ToolRepository;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
@@ -43,6 +44,8 @@ class KbApplicationServiceDeleteCollectionTest {
     @Mock
     private AgentRepository agentRepository;
     @Mock
+    private ToolRepository toolRepository;
+    @Mock
     private KbDtoMapper kbDtoMapper;
     @Mock
     private PlatformTransactionManager transactionManager;
@@ -56,6 +59,7 @@ class KbApplicationServiceDeleteCollectionTest {
                 modelRepository,
                 embeddingClient,
                 agentRepository,
+                toolRepository,
                 kbDtoMapper,
                 transactionManager,
                 524_288,

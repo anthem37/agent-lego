@@ -1,14 +1,15 @@
 "use client";
 
 import {
-    ApartmentOutlined,
-    ApiOutlined,
-    DeploymentUnitOutlined,
+    BookOutlined,
+    BranchesOutlined,
+    CloudServerOutlined,
+    DatabaseOutlined,
     ExperimentOutlined,
-    FileSearchOutlined,
     HomeOutlined,
+    PlayCircleOutlined,
     RobotOutlined,
-    ShareAltOutlined,
+    TeamOutlined,
     ToolOutlined,
 } from "@ant-design/icons";
 import {Badge, Layout, Menu, Tag, Typography} from "antd";
@@ -40,17 +41,18 @@ function toSelectedKey(pathname: string): string {
 export function AppLayout(props: { children: React.ReactNode }) {
     const pathname = usePathname();
     const selectedKey = toSelectedKey(pathname);
+    /** 与各业务域语义对齐：模型=算力与配置、工作流=编排分支、运行=执行轨迹、知识库=文档语料、记忆=持久存储、A2A=多智能体协作 */
     const menuIconMap: Record<string, React.ReactNode> = {
         dashboard: <HomeOutlined/>,
-        models: <ApiOutlined/>,
+        models: <CloudServerOutlined/>,
         tools: <ToolOutlined/>,
         agents: <RobotOutlined/>,
-        workflows: <DeploymentUnitOutlined/>,
-        runs: <FileSearchOutlined/>,
-        memory: <ApartmentOutlined/>,
-        kb: <ShareAltOutlined/>,
+        workflows: <BranchesOutlined/>,
+        runs: <PlayCircleOutlined/>,
+        memory: <DatabaseOutlined/>,
+        kb: <BookOutlined/>,
         evaluations: <ExperimentOutlined/>,
-        a2a: <ShareAltOutlined/>,
+        a2a: <TeamOutlined/>,
     };
 
     return (

@@ -26,6 +26,8 @@ public class KbCollectionRepositoryImpl implements KbCollectionRepository {
         row.setDescription(aggregate.getDescription());
         row.setEmbeddingModelId(aggregate.getEmbeddingModelId());
         row.setEmbeddingDims(aggregate.getEmbeddingDims());
+        row.setChunkStrategy(aggregate.getChunkStrategy());
+        row.setChunkParamsJson(aggregate.getChunkParamsJson());
         row.setCreatedAt(aggregate.getCreatedAt());
         row.setUpdatedAt(aggregate.getUpdatedAt());
         mapper.insert(row);
@@ -71,6 +73,12 @@ public class KbCollectionRepositoryImpl implements KbCollectionRepository {
         a.setDescription(row.getDescription());
         a.setEmbeddingModelId(row.getEmbeddingModelId());
         a.setEmbeddingDims(row.getEmbeddingDims() == null ? 1536 : row.getEmbeddingDims());
+        a.setChunkStrategy(row.getChunkStrategy() == null ? "FIXED_WINDOW" : row.getChunkStrategy());
+        a.setChunkParamsJson(
+                row.getChunkParamsJson() == null || row.getChunkParamsJson().isBlank()
+                        ? "{\"maxChars\":900,\"overlap\":120}"
+                        : row.getChunkParamsJson()
+        );
         a.setCreatedAt(row.getCreatedAt());
         a.setUpdatedAt(row.getUpdatedAt());
         return a;

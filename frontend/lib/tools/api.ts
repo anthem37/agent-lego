@@ -5,6 +5,7 @@ import type {
     BatchImportMcpToolsResponse,
     LocalBuiltinToolMetaDto,
     RemoteMcpToolMetaDto,
+    ToolCategoryMetaDto,
     ToolDto,
     ToolPageDto,
     ToolReferencesDto,
@@ -45,9 +46,17 @@ export async function getTool(id: string): Promise<ToolDto> {
     return request<ToolDto>(`/tools/${id}`);
 }
 
+export async function fetchToolCategoryMeta(): Promise<ToolCategoryMetaDto[]> {
+    const data = await request<ToolCategoryMetaDto[]>("/tools/meta/tool-categories");
+    return Array.isArray(data) ? data : [];
+}
+
 export async function createTool(body: {
     toolType: string;
     name: string;
+    toolCategory?: string;
+    displayLabel?: string;
+    description?: string;
     definition?: Record<string, unknown>
 }): Promise<string> {
     return request<string>("/tools", {method: "POST", body});
@@ -55,7 +64,14 @@ export async function createTool(body: {
 
 export async function updateTool(
     id: string,
-    body: { toolType: string; name: string; definition?: Record<string, unknown> },
+    body: {
+        toolType: string;
+        name: string;
+        toolCategory?: string;
+        displayLabel?: string;
+        description?: string;
+        definition?: Record<string, unknown>
+    },
 ): Promise<void> {
     await request<unknown>(`/tools/${id}`, {method: "PUT", body});
 }

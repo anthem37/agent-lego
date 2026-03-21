@@ -13,12 +13,18 @@ import {McpBatchImportModal} from "@/components/tools/McpBatchImportModal";
 import {ToolFormDrawer} from "@/components/tools/ToolFormDrawer";
 import {PageHeaderBlock} from "@/components/PageHeaderBlock";
 import {SectionCard} from "@/components/SectionCard";
-import {deleteTool, fetchLocalBuiltinToolsMeta, fetchToolTypeMeta, listToolsPage} from "@/lib/tools/api";
+import {
+    deleteTool,
+    fetchLocalBuiltinToolsMeta,
+    fetchToolCategoryMeta,
+    fetchToolTypeMeta,
+    listToolsPage,
+} from "@/lib/tools/api";
 import {tablePaginationFriendly} from "@/lib/table-pagination";
 import {toolTypeDisplayName} from "@/lib/tool-labels";
 import {summarizeToolDefinition} from "@/lib/tools/summary";
 import {toolTypeTagColor} from "@/lib/tools/ui";
-import type {LocalBuiltinToolMetaDto, ToolDto, ToolTypeMetaDto} from "@/lib/tools/types";
+import type {LocalBuiltinToolMetaDto, ToolCategoryMetaDto, ToolDto, ToolTypeMetaDto} from "@/lib/tools/types";
 
 export default function ToolsPage() {
     const [tools, setTools] = React.useState<ToolDto[]>([]);
@@ -26,6 +32,7 @@ export default function ToolsPage() {
     const [page, setPage] = React.useState(1);
     const [pageSize, setPageSize] = React.useState(20);
     const [meta, setMeta] = React.useState<ToolTypeMetaDto[]>([]);
+    const [categoryMeta, setCategoryMeta] = React.useState<ToolCategoryMetaDto[]>([]);
     const [localBuiltins, setLocalBuiltins] = React.useState<LocalBuiltinToolMetaDto[]>([]);
     const [loading, setLoading] = React.useState(false);
     const [error, setError] = React.useState<unknown>(null);
@@ -54,12 +61,14 @@ export default function ToolsPage() {
         let cancelled = false;
         void (async () => {
             try {
-                const [m, builtins] = await Promise.all([
+                const [m, cats, builtins] = await Promise.all([
                     fetchToolTypeMeta(),
+                    fetchToolCategoryMeta().catch(() => [] as ToolCategoryMetaDto[]),
                     fetchLocalBuiltinToolsMeta(),
                 ]);
                 if (!cancelled) {
                     setMeta(m);
+                    setCategoryMeta(cats);
                     setLocalBuiltins(builtins);
                 }
             } catch (e) {
@@ -109,7 +118,7 @@ export default function ToolsPage() {
         setError(null);
         setLoading(true);
         try {
-            const [pageData, m, builtins] = await Promise.all([
+            const [pageData, m, cats, builtins] = await Promise.all([
                 listToolsPage({
                     page,
                     pageSize,
@@ -117,11 +126,13 @@ export default function ToolsPage() {
                     toolType: filterToolType,
                 }),
                 fetchToolTypeMeta(),
+                fetchToolCategoryMeta().catch(() => [] as ToolCategoryMetaDto[]),
                 fetchLocalBuiltinToolsMeta(),
             ]);
             setTools(pageData.items);
             setTotal(pageData.total);
             setMeta(m);
+            setCategoryMeta(cats);
             setLocalBuiltins(builtins);
         } catch (e) {
             setError(e);
@@ -193,10 +204,49 @@ export default function ToolsPage() {
             ),
         },
         {
+            title: "展示名",
+            dataIndex: "displayLabel",
+            width: 120,
+            ellipsis: true,
+            render: (v: string | undefined) => v?.trim() || "—",
+        },
+        {
+            title: "说明",
+            key: "platformDesc",
+            width: 200,
+            ellipsis: true,
+            render: (_: unknown, record: ToolDto) => {
+                const t = record.description?.trim();
+                if (t) {
+                    return (
+                        <Tooltip title={t}>
+                            <Typography.Text ellipsis style={{maxWidth: 180}}>
+                                {t}
+                            </Typography.Text>
+                        </Tooltip>
+                    );
+                }
+                return <Typography.Text type="secondary">—</Typography.Text>;
+            },
+        },
+        {
             title: "类型",
             dataIndex: "toolType",
             width: 140,
             render: (v: string) => <Tag color={toolTypeTagColor(v)}>{toolTypeDisplayName(v)}</Tag>,
+        },
+        {
+            title: "分类",
+            dataIndex: "toolCategory",
+            width: 108,
+            render: (v: string | undefined) => {
+                const c = (v ?? "ACTION").toUpperCase();
+                return (
+                    <Tag color={c === "QUERY" ? "blue" : "default"}>
+                        {c === "QUERY" ? "查询" : "操作"}
+                    </Tag>
+                );
+            },
         },
         {
             title: "配置摘要",
@@ -263,7 +313,7 @@ export default function ToolsPage() {
                     title="工具管理"
                     subtitle={
                         <Tooltip
-                            title="支持列表检索与类型筛选、新建/编辑/删除、详情页联调与 test-call；类型说明来自 /tools/meta/tool-types，便于扩展新类型。"
+                            title="支持列表检索与类型筛选、新建/编辑/删除、详情页联调与 test-call；工具 name 全平台唯一（大小写不敏感）。类型说明来自 /tools/meta/tool-types。"
                         >
                             <span>
                                 检索与类型筛选、CRUD、详情联调；MCP 支持批量导入。鼠标悬停查看说明。
@@ -371,6 +421,7 @@ export default function ToolsPage() {
                     mode={drawerMode}
                     editingTool={editing}
                     toolTypeMeta={meta}
+                    toolCategoryMeta={categoryMeta}
                     localBuiltins={localBuiltins}
                     onClose={() => {
                         setDrawerOpen(false);

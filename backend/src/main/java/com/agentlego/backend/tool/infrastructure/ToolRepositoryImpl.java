@@ -2,6 +2,7 @@ package com.agentlego.backend.tool.infrastructure;
 
 import com.agentlego.backend.common.JsonMaps;
 import com.agentlego.backend.tool.domain.ToolAggregate;
+import com.agentlego.backend.tool.domain.ToolCategory;
 import com.agentlego.backend.tool.domain.ToolRepository;
 import com.agentlego.backend.tool.domain.ToolType;
 import com.agentlego.backend.tool.infrastructure.persistence.ToolDO;
@@ -31,7 +32,12 @@ public class ToolRepositoryImpl implements ToolRepository {
         ToolDO toolDO = new ToolDO();
         toolDO.setId(aggregate.getId());
         toolDO.setToolType(aggregate.getToolType().name());
+        toolDO.setToolCategory(
+                aggregate.getToolCategory() == null ? ToolCategory.ACTION.name() : aggregate.getToolCategory().name()
+        );
         toolDO.setName(aggregate.getName());
+        toolDO.setDisplayLabel(aggregate.getDisplayLabel());
+        toolDO.setDescription(aggregate.getDescription());
         toolDO.setDefinitionJson(JsonMaps.toJson(aggregate.getDefinition()));
         mapper.insert(toolDO);
         return aggregate.getId();
@@ -42,7 +48,12 @@ public class ToolRepositoryImpl implements ToolRepository {
         ToolDO toolDO = new ToolDO();
         toolDO.setId(aggregate.getId());
         toolDO.setToolType(aggregate.getToolType().name());
+        toolDO.setToolCategory(
+                aggregate.getToolCategory() == null ? ToolCategory.ACTION.name() : aggregate.getToolCategory().name()
+        );
         toolDO.setName(aggregate.getName());
+        toolDO.setDisplayLabel(aggregate.getDisplayLabel());
+        toolDO.setDescription(aggregate.getDescription());
         toolDO.setDefinitionJson(JsonMaps.toJson(aggregate.getDefinition()));
         mapper.update(toolDO);
     }
@@ -50,16 +61,6 @@ public class ToolRepositoryImpl implements ToolRepository {
     @Override
     public int deleteById(String id) {
         return mapper.deleteById(id);
-    }
-
-    @Override
-    public boolean existsByToolTypeAndName(ToolType toolType, String name) {
-        return mapper.countByTypeAndName(toolType.name(), name) > 0;
-    }
-
-    @Override
-    public boolean existsByToolTypeAndNameExcludingId(ToolType toolType, String name, String excludeId) {
-        return mapper.countByTypeAndNameExcludeId(toolType.name(), name, excludeId) > 0;
     }
 
     @Override
@@ -76,7 +77,10 @@ public class ToolRepositoryImpl implements ToolRepository {
         ToolAggregate agg = new ToolAggregate();
         agg.setId(toolDO.getId());
         agg.setToolType(ToolType.valueOf(toolDO.getToolType()));
+        agg.setToolCategory(ToolCategory.fromStorage(toolDO.getToolCategory()));
         agg.setName(toolDO.getName());
+        agg.setDisplayLabel(toolDO.getDisplayLabel());
+        agg.setDescription(toolDO.getDescription());
         agg.setDefinition(JsonMaps.parseObject(toolDO.getDefinitionJson()));
         agg.setCreatedAt(toolDO.getCreatedAt());
         return Optional.of(agg);
@@ -109,7 +113,10 @@ public class ToolRepositoryImpl implements ToolRepository {
         ToolAggregate agg = new ToolAggregate();
         agg.setId(r.getId());
         agg.setToolType(ToolType.valueOf(r.getToolType()));
+        agg.setToolCategory(ToolCategory.fromStorage(r.getToolCategory()));
         agg.setName(r.getName());
+        agg.setDisplayLabel(r.getDisplayLabel());
+        agg.setDescription(r.getDescription());
         agg.setDefinition(JsonMaps.parseObject(r.getDefinitionJson()));
         agg.setCreatedAt(r.getCreatedAt());
         return agg;

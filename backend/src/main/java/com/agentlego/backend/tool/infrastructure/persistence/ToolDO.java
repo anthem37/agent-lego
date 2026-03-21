@@ -22,9 +22,21 @@ public class ToolDO {
      */
     private String toolType;
     /**
+     * 语义分类：QUERY / ACTION。
+     */
+    private String toolCategory;
+    /**
      * 工具名称（name）。
      */
     private String name;
+    /**
+     * 展示名/中文名（可选）。
+     */
+    private String displayLabel;
+    /**
+     * 平台侧说明（可选）。
+     */
+    private String description;
     /**
      * 工具定义 JSON（序列化后的字符串）。
      */

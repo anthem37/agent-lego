@@ -10,10 +10,6 @@ public interface ToolRepository {
 
     int deleteById(String id);
 
-    boolean existsByToolTypeAndName(ToolType toolType, String name);
-
-    boolean existsByToolTypeAndNameExcludingId(ToolType toolType, String name, String excludeId);
-
     /**
      * 全平台工具名是否与已有记录冲突（大小写不敏感）。更新时传入 {@code excludeId} 排除自身。
      */

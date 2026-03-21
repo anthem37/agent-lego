@@ -9,6 +9,7 @@ import com.agentlego.backend.mcp.properties.McpClientProperties;
 import com.agentlego.backend.tool.application.dto.*;
 import com.agentlego.backend.tool.application.mapper.ToolDtoMapper;
 import com.agentlego.backend.tool.domain.ToolAggregate;
+import com.agentlego.backend.tool.domain.ToolCategory;
 import com.agentlego.backend.tool.domain.ToolRepository;
 import com.agentlego.backend.tool.domain.ToolType;
 import com.agentlego.backend.tool.http.HttpToolSpec;
@@ -32,6 +33,9 @@ import java.util.stream.Collectors;
  * 职责：
  * - 工具注册与查询（LOCAL / MCP / HTTP / WORKFLOW 等）；
  * - 提供 test-call 能力（用于联调与健康检查）。
+ * <p>
+ * 名称策略：工具 {@code name} 全平台唯一（大小写不敏感，任意 {@code toolType} 间也不可重名），与表
+ * {@code lego_tools} 上索引 {@code ux_lego_tools_name_lower} 一致；不再按「类型 + 名称」单独判重。
  * <p>
  * 说明：
  * - test-call：LOCAL、HTTP、WORKFLOW、MCP 可执行（MCP 走外部 SSE endpoint）。
@@ -90,6 +94,49 @@ public class ToolApplicationService {
         return s;
     }
 
+    /**
+     * 批量导入 MCP 时拟创建的平台工具名校验（与前端 NAME_ID_RULES 一致）。
+     */
+    private static boolean isValidPlatformToolNameForImport(String name) {
+        if (name == null || name.isBlank()) {
+            return false;
+        }
+        return name.matches("^[a-zA-Z][a-zA-Z0-9_-]*$");
+    }
+
+    private static String resolvePlatformNameForRemote(BatchImportMcpToolsRequest req, String prefix, String remoteName) {
+        Map<String, String> overrides = req.getPlatformNamesByRemote();
+        if (overrides != null) {
+            String v = overrides.get(remoteName);
+            if (v != null) {
+                return v.trim();
+            }
+        }
+        return sanitizePlatformToolName(prefix, remoteName);
+    }
+
+    private static String normalizeOptionalLine(String raw, int maxLen) {
+        if (raw == null) {
+            return null;
+        }
+        String t = raw.trim().replace('\n', ' ').replace('\r', ' ');
+        if (t.isEmpty()) {
+            return null;
+        }
+        return t.length() <= maxLen ? t : t.substring(0, maxLen);
+    }
+
+    private static String normalizeOptionalMultiline(String raw, int maxLen) {
+        if (raw == null) {
+            return null;
+        }
+        String t = raw.strip();
+        if (t.isEmpty()) {
+            return null;
+        }
+        return t.length() <= maxLen ? t : t.substring(0, maxLen);
+    }
+
     public String createTool(CreateToolRequest req) {
         ToolType toolType = parseToolType(req.getToolType());
         String name = ApiRequires.nonBlank(req.getName(), "name");
@@ -101,26 +148,15 @@ public class ToolApplicationService {
         validateDefinitionForType(toolType, definition);
 
         String trimmedName = name.trim();
-        if (toolRepository.existsOtherWithNameIgnoreCase(trimmedName, null)) {
-            throw new ApiException(
-                    "CONFLICT",
-                    "工具名称「" + trimmedName + "」已被占用。平台以工具名为键，名称需全平台唯一（大小写不敏感）。",
-                    HttpStatus.CONFLICT
-            );
-        }
-
-        if (toolRepository.existsByToolTypeAndName(toolType, name.trim())) {
-            throw new ApiException(
-                    "CONFLICT",
-                    "同一类型下已存在同名工具: " + toolType + "/" + name.trim(),
-                    HttpStatus.CONFLICT
-            );
-        }
+        requireGloballyUniqueToolName(trimmedName, null);
 
         ToolAggregate agg = new ToolAggregate();
         agg.setId(SnowflakeIdGenerator.nextId());
         agg.setToolType(toolType);
+        agg.setToolCategory(resolveToolCategory(req.getToolCategory()));
         agg.setName(name.trim());
+        agg.setDisplayLabel(normalizeOptionalLine(req.getDisplayLabel(), 256));
+        agg.setDescription(normalizeOptionalMultiline(req.getDescription(), 4000));
         agg.setDefinition(definition);
         agg.setCreatedAt(Instant.now());
 
@@ -143,27 +179,20 @@ public class ToolApplicationService {
         validateDefinitionForType(toolType, definition);
 
         String trimmedName = name.trim();
-        if (toolRepository.existsOtherWithNameIgnoreCase(trimmedName, id)) {
-            throw new ApiException(
-                    "CONFLICT",
-                    "工具名称「" + trimmedName + "」已被其它工具占用。平台以工具名为键，名称需全平台唯一（大小写不敏感）。",
-                    HttpStatus.CONFLICT
-            );
-        }
-
-        if (toolRepository.existsByToolTypeAndNameExcludingId(toolType, name.trim(), id)) {
-            throw new ApiException(
-                    "CONFLICT",
-                    "同一类型下已存在同名工具: " + toolType + "/" + name.trim(),
-                    HttpStatus.CONFLICT
-            );
-        }
+        requireGloballyUniqueToolName(trimmedName, id);
 
         existing.setToolType(toolType);
+        existing.setToolCategory(resolveToolCategory(req.getToolCategory()));
         existing.setName(name.trim());
+        existing.setDisplayLabel(normalizeOptionalLine(req.getDisplayLabel(), 256));
+        existing.setDescription(normalizeOptionalMultiline(req.getDescription(), 4000));
         existing.setDefinition(definition);
         toolRepository.update(existing);
     }
+
+    /**
+     * 工具类型元数据（前端表单、列表提示、能力开关）。
+     */
 
     /**
      * 删除工具；若仍被智能体 toolIds 引用则拒绝（409）。
@@ -189,8 +218,23 @@ public class ToolApplicationService {
     }
 
     /**
-     * 工具类型元数据（前端表单、列表提示、能力开关）。
+     * 工具语义分类元数据（与 toolType 正交）。
      */
+    public List<ToolCategoryMetaDto> listToolCategoryMeta() {
+        return List.of(
+                ToolCategoryMetaDto.builder()
+                        .code("QUERY")
+                        .label("查询工具")
+                        .description("偏只读查询；知识库可将工具 JSON 出参字段映射到文档中的 {{占位符}}。")
+                        .build(),
+                ToolCategoryMetaDto.builder()
+                        .code("ACTION")
+                        .label("操作工具")
+                        .description("可能产生副作用或通用工具（默认分类）。")
+                        .build()
+        );
+    }
+
     public List<ToolTypeMetaDto> listToolTypeMeta() {
         String localNames = localBuiltinToolCatalog.listMeta().stream()
                 .map(LocalBuiltinToolMetaDto::getName)
@@ -228,7 +272,7 @@ public class ToolApplicationService {
                                 "登记外部 MCP Server（SSE URL 写入 definition.endpoint）；"
                                         + "可选 definition.mcpToolName 指定远端工具名（默认与平台工具 name 一致）。"
                                         + "可使用 GET /tools/meta/mcp/remote-tools 发现远端工具列表，"
-                                        + "POST /tools/meta/mcp/batch-import 批量导入。"
+                                        + "POST /tools/meta/mcp/batch-import 批量导入（默认同名记入 nameConflicts 可改名重试；skipExisting=true 则跳过）。"
                                         + "本服务同时对外暴露 MCP（见 agentlego.mcp.server.sse-path，默认同源 /mcp）。"
                                         + "SSRF：agentlego.mcp.client.strict-ssrf=true 时与 HTTP 工具一致禁止内网地址。"
                                         + "入参 Schema 建议与远端 MCP 工具定义一致。"
@@ -254,6 +298,9 @@ public class ToolApplicationService {
 
     /**
      * 按远端工具批量创建平台 MCP 工具（每条含 endpoint + mcpToolName，可选写入 description/inputSchema）。
+     * <p>
+     * 名称冲突：默认（{@code skipExisting} 为 false/省略）记入 {@code nameConflicts}，不中断整批；为 true 时记入 {@code skipped}。
+     * 可通过 {@link BatchImportMcpToolsRequest#getPlatformNamesByRemote()} 为每条远端工具指定平台名以消除冲突。
      */
     public BatchImportMcpToolsResponse batchImportMcpTools(BatchImportMcpToolsRequest req) {
         if (req == null) {
@@ -277,11 +324,13 @@ public class ToolApplicationService {
                     .toList();
         }
 
-        boolean skipExisting = req.getSkipExisting() == null || req.getSkipExisting();
+        boolean skipExisting = Boolean.TRUE.equals(req.getSkipExisting());
         String prefix = req.getNamePrefix() == null ? "" : req.getNamePrefix().trim();
 
         List<BatchImportMcpToolsResponse.Created> created = new ArrayList<>();
         List<BatchImportMcpToolsResponse.Skipped> skipped = new ArrayList<>();
+        List<BatchImportMcpToolsResponse.NameConflict> nameConflicts = new ArrayList<>();
+        Set<String> batchReservedLower = new LinkedHashSet<>();
 
         for (String remoteName : orderedRemoteNames) {
             McpSchema.Tool rt = byRemoteName.get(remoteName);
@@ -292,20 +341,43 @@ public class ToolApplicationService {
                         .build());
                 continue;
             }
-            String platformName = sanitizePlatformToolName(prefix, remoteName);
-            if (toolRepository.existsByToolTypeAndName(ToolType.MCP, platformName)) {
+            String platformName = resolvePlatformNameForRemote(req, prefix, remoteName);
+            if (!isValidPlatformToolNameForImport(platformName)) {
+                String reason = "平台工具名无效：须字母开头，仅含字母、数字、下划线、短横线";
+                if (skipExisting) {
+                    skipped.add(BatchImportMcpToolsResponse.Skipped.builder()
+                            .name(platformName.isEmpty() ? remoteName : platformName)
+                            .reason(reason)
+                            .build());
+                } else {
+                    nameConflicts.add(BatchImportMcpToolsResponse.NameConflict.builder()
+                            .remoteToolName(remoteName)
+                            .attemptedPlatformName(platformName)
+                            .reason(reason)
+                            .build());
+                }
+                continue;
+            }
+            String platformLc = platformName.toLowerCase(Locale.ROOT);
+            boolean takenInDb = toolRepository.existsOtherWithNameIgnoreCase(platformName, null);
+            boolean duplicateInBatch = batchReservedLower.contains(platformLc);
+            if (takenInDb || duplicateInBatch) {
+                String reason = duplicateInBatch
+                        ? "本批导入中与其它行拟创建的平台名重复（全平台唯一）"
+                        : "已存在全平台同名工具（任意类型）";
                 if (skipExisting) {
                     skipped.add(BatchImportMcpToolsResponse.Skipped.builder()
                             .name(platformName)
-                            .reason("已存在同名 MCP 工具")
+                            .reason(reason)
                             .build());
-                    continue;
+                } else {
+                    nameConflicts.add(BatchImportMcpToolsResponse.NameConflict.builder()
+                            .remoteToolName(remoteName)
+                            .attemptedPlatformName(platformName)
+                            .reason(reason)
+                            .build());
                 }
-                throw new ApiException(
-                        "CONFLICT",
-                        "同一类型下已存在同名工具: MCP/" + platformName,
-                        HttpStatus.CONFLICT
-                );
+                continue;
             }
 
             Map<String, Object> definition = new LinkedHashMap<>();
@@ -334,6 +406,7 @@ public class ToolApplicationService {
             create.setName(platformName);
             create.setDefinition(definition);
             String id = createTool(create);
+            batchReservedLower.add(platformLc);
             created.add(BatchImportMcpToolsResponse.Created.builder()
                     .id(id)
                     .name(platformName)
@@ -344,6 +417,7 @@ public class ToolApplicationService {
         return BatchImportMcpToolsResponse.builder()
                 .created(created)
                 .skipped(skipped)
+                .nameConflicts(nameConflicts)
                 .build();
     }
 
@@ -415,6 +489,21 @@ public class ToolApplicationService {
         return resp;
     }
 
+    private ToolCategory resolveToolCategory(String raw) {
+        if (raw == null || raw.isBlank()) {
+            return ToolCategory.ACTION;
+        }
+        try {
+            return ToolCategory.valueOf(raw.trim().toUpperCase(Locale.ROOT));
+        } catch (IllegalArgumentException e) {
+            throw new ApiException(
+                    "VALIDATION_ERROR",
+                    "toolCategory 无效，允许：QUERY、ACTION",
+                    HttpStatus.BAD_REQUEST
+            );
+        }
+    }
+
     /**
      * 解析工具类型。
      * <p>
@@ -443,6 +532,24 @@ public class ToolApplicationService {
             return ToolType.valueOf(t.trim().toUpperCase());
         } catch (IllegalArgumentException e) {
             throw new ApiException("VALIDATION_ERROR", "无效的 toolType：" + toolTypeRaw, HttpStatus.BAD_REQUEST);
+        }
+    }
+
+    /**
+     * 新建或更新时校验 {@code name} 不与任意类型的已有工具冲突（大小写不敏感）。
+     *
+     * @param excludeId 更新时排除自身工具 id；新建传 {@code null}
+     */
+    private void requireGloballyUniqueToolName(String trimmedName, String excludeId) {
+        if (trimmedName == null || trimmedName.isEmpty()) {
+            return;
+        }
+        if (toolRepository.existsOtherWithNameIgnoreCase(trimmedName, excludeId)) {
+            boolean creating = excludeId == null || excludeId.isBlank();
+            String msg = creating
+                    ? "工具名称「" + trimmedName + "」已被占用。名称须全平台唯一（大小写不敏感），任意工具类型间也不可重名。"
+                    : "工具名称「" + trimmedName + "」已被其它工具占用。名称须全平台唯一（大小写不敏感），任意工具类型间也不可重名。";
+            throw new ApiException("CONFLICT", msg, HttpStatus.CONFLICT);
         }
     }
 

@@ -21,8 +21,13 @@ public class KbController {
 
     @PostMapping("/collections")
     @ResponseStatus(HttpStatus.CREATED)
-    public ApiResponse<String> createCollection(@Valid @RequestBody CreateKbCollectionRequest req) {
+    public ApiResponse<KbCollectionDto> createCollection(@Valid @RequestBody CreateKbCollectionRequest req) {
         return ApiResponse.created(kbApplicationService.createCollection(req));
+    }
+
+    @GetMapping("/meta/chunk-strategies")
+    public ApiResponse<List<KbChunkStrategyMetaDto>> listChunkStrategies() {
+        return ApiResponse.ok(KbChunkStrategyMetaDto.standardList());
     }
 
     @GetMapping("/collections")
@@ -40,9 +45,26 @@ public class KbController {
         return ApiResponse.ok(kbApplicationService.listDocuments(id));
     }
 
+    @GetMapping("/collections/{collectionId}/documents/{documentId}")
+    public ApiResponse<KbDocumentDto> getDocument(
+            @PathVariable("collectionId") String collectionId,
+            @PathVariable("documentId") String documentId
+    ) {
+        return ApiResponse.ok(kbApplicationService.getDocument(collectionId, documentId));
+    }
+
+    @PostMapping("/collections/{collectionId}/documents/{documentId}/render")
+    public ApiResponse<RenderKbDocumentResponse> renderDocumentBody(
+            @PathVariable("collectionId") String collectionId,
+            @PathVariable("documentId") String documentId,
+            @RequestBody(required = false) RenderKbDocumentRequest req
+    ) {
+        return ApiResponse.ok(kbApplicationService.renderDocumentBody(collectionId, documentId, req));
+    }
+
     @PostMapping("/collections/{id}/documents")
     @ResponseStatus(HttpStatus.CREATED)
-    public ApiResponse<String> ingestDocument(
+    public ApiResponse<KbDocumentDto> ingestDocument(
             @PathVariable("id") String id,
             @Valid @RequestBody IngestKbDocumentRequest req
     ) {

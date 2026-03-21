@@ -240,8 +240,7 @@ class ToolApplicationServiceTest {
 
     @Test
     void createTool_duplicateName_shouldThrowConflict() {
-        when(toolRepository.existsOtherWithNameIgnoreCase("echo", null)).thenReturn(false);
-        when(toolRepository.existsByToolTypeAndName(ToolType.LOCAL, "echo")).thenReturn(true);
+        when(toolRepository.existsOtherWithNameIgnoreCase("echo", null)).thenReturn(true);
         ToolApplicationService service = service();
 
         CreateToolRequest req = new CreateToolRequest();
@@ -251,6 +250,7 @@ class ToolApplicationServiceTest {
 
         ApiException ex = assertThrows(ApiException.class, () -> service.createTool(req));
         assertEquals("CONFLICT", ex.getCode());
+        assertTrue(ex.getMessage().contains("全平台唯一"));
         verify(toolRepository, never()).save(any());
     }
 
@@ -273,7 +273,6 @@ class ToolApplicationServiceTest {
     @Test
     void createTool_local_ok_shouldSave() {
         when(toolRepository.existsOtherWithNameIgnoreCase("echo", null)).thenReturn(false);
-        when(toolRepository.existsByToolTypeAndName(ToolType.LOCAL, "echo")).thenReturn(false);
         when(toolRepository.save(any(ToolAggregate.class))).thenAnswer(inv -> inv.getArgument(0, ToolAggregate.class).getId());
 
         CreateToolRequest req = new CreateToolRequest();
@@ -310,7 +309,6 @@ class ToolApplicationServiceTest {
 
         when(toolRepository.findById("t1")).thenReturn(Optional.of(existing));
         when(toolRepository.existsOtherWithNameIgnoreCase("newname", "t1")).thenReturn(false);
-        when(toolRepository.existsByToolTypeAndNameExcludingId(ToolType.HTTP, "newname", "t1")).thenReturn(false);
 
         ToolApplicationService service = service();
 

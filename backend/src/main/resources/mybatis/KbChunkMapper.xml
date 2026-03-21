@@ -12,8 +12,11 @@
     </resultMap>
 
     <insert id="insert">
-        insert into lego_kb_chunks (id, document_id, collection_id, chunk_index, content, embedding_vec, created_at)
+        insert into lego_kb_chunks (id, document_id, collection_id, chunk_index, content, embedding_text, metadata,
+                                    embedding_vec, created_at)
         values (#{id}, #{documentId}, #{collectionId}, #{chunkIndex}, #{content},
+                #{embeddingText},
+                CAST(#{metadataJson} AS jsonb),
                 CAST(#{embeddingVecLiteral} AS vector), now())
     </insert>
 
@@ -28,6 +31,19 @@
         <foreach collection="collectionIds" item="cid" open="(" separator="," close=")">#{cid}</foreach>
         and embedding_vec is not null
         order by embedding_vec <![CDATA[ <=> ]]> CAST(#{queryVecLiteral} AS vector) asc
+        limit #{limit}
+    </select>
+
+    <select id="searchByFullText" resultMap="KbChunkDOMap">
+        select id,
+        document_id,
+        content,
+        ts_rank_cd(content_tsv, plainto_tsquery('simple', #{query}))::float8 as similarity
+        from lego_kb_chunks
+        where collection_id in
+        <foreach collection="collectionIds" item="cid" open="(" separator="," close=")">#{cid}</foreach>
+        and content_tsv @@ plainto_tsquery('simple', #{query})
+        order by similarity desc
         limit #{limit}
     </select>
 </mapper>

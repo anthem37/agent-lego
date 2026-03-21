@@ -11,14 +11,18 @@
         <result property="body" column="body"/>
         <result property="status" column="status"/>
         <result property="errorMessage" column="error_message"/>
+        <result property="linkedToolIdsJson" column="linked_tool_ids_json"/>
+        <result property="toolOutputBindingsJson" column="tool_output_bindings_json"/>
         <result property="createdAt" column="created_at"/>
         <result property="updatedAt" column="updated_at"/>
     </resultMap>
 
     <insert id="insertPending" parameterType="com.agentlego.backend.kb.infrastructure.persistence.KbDocumentDO">
-        insert into lego_kb_documents (id, collection_id, title, body, status, error_message, metadata, created_at,
-                                       updated_at)
-        values (#{id}, #{collectionId}, #{title}, #{body}, 'PENDING', null, '{}'::jsonb, #{createdAt}, #{updatedAt})
+        insert into lego_kb_documents (id, collection_id, title, body, status, error_message, metadata,
+                                       linked_tool_ids, tool_output_bindings, created_at, updated_at)
+        values (#{id}, #{collectionId}, #{title}, #{body}, 'PENDING', null, '{}'::jsonb,
+                CAST(#{linkedToolIdsJson} AS jsonb), CAST(#{toolOutputBindingsJson} AS jsonb),
+                #{createdAt}, #{updatedAt})
     </insert>
 
     <update id="updateStatus">
@@ -36,7 +40,7 @@
                body,
                status,
                error_message,
-               created_at,
+               linked_tool_ids::text as linked_tool_ids_json, tool_output_bindings::text as tool_output_bindings_json, created_at,
                updated_at
         from lego_kb_documents
         where id = #{id}
@@ -49,7 +53,7 @@
                body,
                status,
                error_message,
-               created_at,
+               linked_tool_ids::text as linked_tool_ids_json, tool_output_bindings::text as tool_output_bindings_json, created_at,
                updated_at
         from lego_kb_documents
         where collection_id = #{collectionId}

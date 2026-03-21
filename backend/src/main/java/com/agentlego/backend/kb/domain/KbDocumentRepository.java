@@ -5,7 +5,14 @@ import java.util.Optional;
 
 public interface KbDocumentRepository {
 
-    void insertPending(String id, String collectionId, String title, String body);
+    void insertPending(
+            String id,
+            String collectionId,
+            String title,
+            String body,
+            String linkedToolIdsJson,
+            String toolOutputBindingsJson
+    );
 
     void markReady(String id);
 

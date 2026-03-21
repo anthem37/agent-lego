@@ -11,6 +11,8 @@ public class KbCollectionDO {
     private String description;
     private String embeddingModelId;
     private Integer embeddingDims;
+    private String chunkStrategy;
+    private String chunkParamsJson;
     private Instant createdAt;
     private Instant updatedAt;
 }

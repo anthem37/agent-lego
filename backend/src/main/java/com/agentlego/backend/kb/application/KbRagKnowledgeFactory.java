@@ -9,6 +9,7 @@ import com.agentlego.backend.kb.runtime.KbVectorKnowledge;
 import com.agentlego.backend.kb.support.KbPolicies;
 import com.agentlego.backend.model.support.ModelEmbeddingClient;
 import io.agentscope.core.rag.Knowledge;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Component;
 
@@ -29,15 +30,18 @@ public class KbRagKnowledgeFactory {
     private final KbCollectionRepository collectionRepository;
     private final KbChunkRepository chunkRepository;
     private final ModelEmbeddingClient embeddingClient;
+    private final boolean defaultFullTextEnabled;
 
     public KbRagKnowledgeFactory(
             KbCollectionRepository collectionRepository,
             KbChunkRepository chunkRepository,
-            ModelEmbeddingClient embeddingClient
+            ModelEmbeddingClient embeddingClient,
+            @Value("${agentlego.kb.retrieve.fulltext-enabled:true}") boolean defaultFullTextEnabled
     ) {
         this.collectionRepository = collectionRepository;
         this.chunkRepository = chunkRepository;
         this.embeddingClient = embeddingClient;
+        this.defaultFullTextEnabled = defaultFullTextEnabled;
     }
 
     public Optional<KnowledgeBinding> resolve(AgentAggregate agent) {
@@ -62,12 +66,14 @@ public class KbRagKnowledgeFactory {
         String override = KbPolicies.embeddingModelOverride(agent.getKnowledgeBasePolicy());
         String embeddingModelId = override.isBlank() ? expectedModel : override;
 
+        boolean fullText = KbPolicies.fullTextEnabled(agent.getKnowledgeBasePolicy(), defaultFullTextEnabled);
         Knowledge knowledge = new KbVectorKnowledge(
                 ids,
                 embeddingModelId,
                 chunkRepository,
                 embeddingClient,
-                DEFAULT_CANDIDATE_LIMIT
+                DEFAULT_CANDIDATE_LIMIT,
+                fullText
         );
         int topK = KbPolicies.topK(agent.getKnowledgeBasePolicy(), 5);
         double threshold = KbPolicies.scoreThreshold(agent.getKnowledgeBasePolicy(), 0.25d);

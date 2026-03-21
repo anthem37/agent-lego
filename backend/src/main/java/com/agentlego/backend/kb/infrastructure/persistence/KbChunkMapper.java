@@ -14,12 +14,20 @@ public interface KbChunkMapper {
             @Param("collectionId") String collectionId,
             @Param("chunkIndex") int chunkIndex,
             @Param("content") String content,
+            @Param("embeddingText") String embeddingText,
+            @Param("metadataJson") String metadataJson,
             @Param("embeddingVecLiteral") String embeddingVecLiteral
     );
 
     List<KbChunkDO> searchByCosineSimilarity(
             @Param("collectionIds") List<String> collectionIds,
             @Param("queryVecLiteral") String queryVecLiteral,
+            @Param("limit") int limit
+    );
+
+    List<KbChunkDO> searchByFullText(
+            @Param("collectionIds") List<String> collectionIds,
+            @Param("query") String query,
             @Param("limit") int limit
     );
 }

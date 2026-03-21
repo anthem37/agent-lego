@@ -10,30 +10,50 @@
         <result property="description" column="description"/>
         <result property="embeddingModelId" column="embedding_model_id"/>
         <result property="embeddingDims" column="embedding_dims"/>
+        <result property="chunkStrategy" column="chunk_strategy"/>
+        <result property="chunkParamsJson" column="chunk_params_json"/>
         <result property="createdAt" column="created_at"/>
         <result property="updatedAt" column="updated_at"/>
     </resultMap>
 
     <insert id="insert" parameterType="com.agentlego.backend.kb.infrastructure.persistence.KbCollectionDO">
-        insert into lego_kb_collections (id, name, description, embedding_model_id, embedding_dims, created_at,
-                                         updated_at)
-        values (#{id}, #{name}, #{description}, #{embeddingModelId}, #{embeddingDims}, #{createdAt}, #{updatedAt})
+        insert into lego_kb_collections (id, name, description, embedding_model_id, embedding_dims, chunk_strategy,
+                                         chunk_params, created_at, updated_at)
+        values (#{id}, #{name}, #{description}, #{embeddingModelId}, #{embeddingDims},
+                #{chunkStrategy}, CAST(#{chunkParamsJson} AS jsonb),
+                #{createdAt}, #{updatedAt})
     </insert>
 
     <select id="findById" resultMap="KbCollectionDOMap">
-        select id, name, description, embedding_model_id, embedding_dims, created_at, updated_at
+        select id,
+               name,
+               description,
+               embedding_model_id,
+               embedding_dims,
+               chunk_strategy,
+               chunk_params::text as chunk_params_json, created_at,
+               updated_at
         from lego_kb_collections
         where id = #{id}
     </select>
 
     <select id="listAll" resultMap="KbCollectionDOMap">
-        select id, name, description, embedding_model_id, embedding_dims, created_at, updated_at
+        select id,
+               name,
+               description,
+               embedding_model_id,
+               embedding_dims,
+               chunk_strategy,
+               chunk_params::text as chunk_params_json, created_at,
+               updated_at
         from lego_kb_collections
         order by created_at desc
     </select>
 
     <select id="findByIds" resultMap="KbCollectionDOMap">
-        select id, name, description, embedding_model_id, embedding_dims, created_at, updated_at
+        select id, name, description, embedding_model_id, embedding_dims, chunk_strategy,
+        chunk_params::text as chunk_params_json,
+        created_at, updated_at
         from lego_kb_collections
         where id in
         <foreach collection="ids" item="id" open="(" separator="," close=")">#{id}</foreach>

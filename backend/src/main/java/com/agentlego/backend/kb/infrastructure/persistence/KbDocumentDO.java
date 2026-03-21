@@ -12,6 +12,8 @@ public class KbDocumentDO {
     private String body;
     private String status;
     private String errorMessage;
+    private String linkedToolIdsJson;
+    private String toolOutputBindingsJson;
     private Instant createdAt;
     private Instant updatedAt;
 }

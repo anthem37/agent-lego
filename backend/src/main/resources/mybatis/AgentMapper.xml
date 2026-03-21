@@ -70,8 +70,8 @@
     <select id="listAgentIdsReferencingKbCollection" resultType="java.lang.String">
         select id
         from lego_agents
-        where jsonb_typeof(knowledge_base_policy - > 'collectionIds') = 'array'
-          and knowledge_base_policy - > 'collectionIds' @> jsonb_build_array(#{collectionId})
+        where jsonb_typeof(knowledge_base_policy - &gt; 'collectionIds') = 'array'
+          and knowledge_base_policy - &gt; 'collectionIds' @> jsonb_build_array(#{collectionId})
         order by created_at desc
     </select>
 

@@ -3,28 +3,54 @@ import type {ToolDto} from "@/lib/tools/types";
 const URL_MAX = 52;
 const HTTP_METHODS_WITH_JSON_BODY = new Set(["POST", "PUT", "PATCH"]);
 
-function countHttpParameterProps(def: Record<string, unknown>): number {
-    const raw = def.parameters ?? def.inputSchema;
-    if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
+const MAX_COUNT_SCHEMA_DEPTH = 14;
+
+function asObj(v: unknown): Record<string, unknown> | null {
+    return v && typeof v === "object" && !Array.isArray(v) ? (v as Record<string, unknown>) : null;
+}
+
+/** 统计 schema 中「可展示字段」数量：含嵌套 object 属性与 array&lt;object&gt; 内属性（与详情页展平一致） */
+function countNestedSchemaFields(raw: unknown, depth: number): number {
+    if (depth > MAX_COUNT_SCHEMA_DEPTH) {
         return 0;
     }
-    const props = (raw as Record<string, unknown>).properties;
+    const schema = asObj(raw);
+    if (!schema) {
+        return 0;
+    }
+    const props = schema.properties;
     if (!props || typeof props !== "object" || Array.isArray(props)) {
         return 0;
     }
-    return Object.keys(props as Record<string, unknown>).length;
+    const map = props as Record<string, unknown>;
+    let n = 0;
+    for (const name of Object.keys(map)) {
+        n += 1;
+        const s = asObj(map[name]);
+        if (!s) {
+            continue;
+        }
+        const childProps = s.properties;
+        if (childProps && typeof childProps === "object" && !Array.isArray(childProps)) {
+            n += countNestedSchemaFields({type: "object", properties: childProps}, depth + 1);
+        }
+        const items = s.items;
+        if (items && typeof items === "object" && !Array.isArray(items)) {
+            const im = asObj(items);
+            if (im?.properties && typeof im.properties === "object" && !Array.isArray(im.properties)) {
+                n += countNestedSchemaFields({type: "object", properties: im.properties}, depth + 1);
+            }
+        }
+    }
+    return n;
+}
+
+function countHttpParameterProps(def: Record<string, unknown>): number {
+    return countNestedSchemaFields(def.parameters ?? def.inputSchema, 0);
 }
 
 function countHttpOutputProps(def: Record<string, unknown>): number {
-    const raw = def.outputSchema;
-    if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
-        return 0;
-    }
-    const props = (raw as Record<string, unknown>).properties;
-    if (!props || typeof props !== "object" || Array.isArray(props)) {
-        return 0;
-    }
-    return Object.keys(props as Record<string, unknown>).length;
+    return countNestedSchemaFields(def.outputSchema, 0);
 }
 
 function trunc(s: string, max: number): string {

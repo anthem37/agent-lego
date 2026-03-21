@@ -13,14 +13,6 @@ public interface ToolMapper {
 
     int deleteById(@Param("id") String id);
 
-    int countByTypeAndName(@Param("toolType") String toolType, @Param("name") String name);
-
-    int countByTypeAndNameExcludeId(
-            @Param("toolType") String toolType,
-            @Param("name") String name,
-            @Param("excludeId") String excludeId
-    );
-
     /**
      * 是否存在其它记录占用该名称（大小写不敏感）；{@code excludeId} 非空时排除该 id（用于更新）。
      */

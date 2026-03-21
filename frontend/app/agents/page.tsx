@@ -133,7 +133,12 @@ export default function AgentsPage() {
                         <Form.Item name="knowledgeBasePolicyJson" label="knowledgeBasePolicy（JSON，可选）">
                             <JsonTextArea
                                 rows={8}
-                                sample={{collectionIds: ["集合ID"], topK: 5, scoreThreshold: 0.25}}
+                                sample={{
+                                    collectionIds: ["集合ID"],
+                                    topK: 5,
+                                    scoreThreshold: 0.25,
+                                    fullTextEnabled: true,
+                                }}
                             />
                         </Form.Item>
                         <Form.Item>

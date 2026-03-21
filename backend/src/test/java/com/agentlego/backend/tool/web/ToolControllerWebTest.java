@@ -156,6 +156,7 @@ class ToolControllerWebTest {
                         .remoteToolName("t1")
                         .build()))
                 .skipped(List.of())
+                .nameConflicts(List.of())
                 .build();
         when(toolApplicationService.batchImportMcpTools(any())).thenReturn(resp);
 

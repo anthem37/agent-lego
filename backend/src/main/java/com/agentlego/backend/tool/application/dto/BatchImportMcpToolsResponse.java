@@ -11,6 +11,18 @@ public class BatchImportMcpToolsResponse {
 
     private List<Created> created;
     private List<Skipped> skipped;
+    /**
+     * 当 {@code skipExisting} 为 false/省略且拟创建的平台名与已有工具（或本批已创建）冲突时返回，便于用户改名后重试。
+     */
+    private List<NameConflict> nameConflicts;
+
+    @Data
+    @Builder
+    public static class NameConflict {
+        private String remoteToolName;
+        private String attemptedPlatformName;
+        private String reason;
+    }
 
     @Data
     @Builder

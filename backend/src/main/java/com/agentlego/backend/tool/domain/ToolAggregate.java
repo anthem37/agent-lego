@@ -23,9 +23,21 @@ public class ToolAggregate {
      */
     private ToolType toolType;
     /**
+     * 语义分类：查询 / 操作等（与 toolType 正交）。
+     */
+    private ToolCategory toolCategory = ToolCategory.ACTION;
+    /**
      * 工具名称（name），用于在 agent/toolkit 中引用。
      */
     private String name;
+    /**
+     * 展示名/中文名（可选），用于管理端与知识库展示。
+     */
+    private String displayLabel;
+    /**
+     * 平台侧工具说明（可选），给人阅读；与 {@code definition} 内模型描述可并存。
+     */
+    private String description;
     /**
      * 工具定义（JSON object）。
      */

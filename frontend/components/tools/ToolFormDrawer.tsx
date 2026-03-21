@@ -20,15 +20,16 @@ import React from "react";
 
 import {DRAWER_WIDTH_COMPLEX} from "@/lib/ui/sizes";
 import {ErrorAlert} from "@/components/ErrorAlert";
+import {HttpParameterRowsEditor} from "@/components/tools/HttpParameterRowsEditor";
 import {LocalBuiltinIoPreview} from "@/components/tools/LocalBuiltinIoPreview";
 import {McpBatchImportModal} from "@/components/tools/McpBatchImportModal";
 import {createTool, updateTool} from "@/lib/tools/api";
 import {
     buildToolDefinition,
+    collectRootHttpParameterNames,
     defaultHttpParameterRow,
     extractHttpUrlPlaceholderNames,
     HTTP_METHOD_OPTIONS,
-    HTTP_PARAM_TYPE_OPTIONS,
     NAME_ID_RULES,
     TOOL_NAME_RUNTIME_HINT,
     toolDtoToFormValues,
@@ -37,7 +38,13 @@ import {
     validateHttpUrlPlaceholdersHaveParameterRows,
 } from "@/lib/tools/form";
 import {toolTypeDisplayName} from "@/lib/tool-labels";
-import type {LocalBuiltinToolMetaDto, ToolDto, ToolFormValues, ToolTypeMetaDto} from "@/lib/tools/types";
+import type {
+    LocalBuiltinToolMetaDto,
+    ToolCategoryMetaDto,
+    ToolDto,
+    ToolFormValues,
+    ToolTypeMetaDto,
+} from "@/lib/tools/types";
 
 type Props = {
     open: boolean;
@@ -45,6 +52,8 @@ type Props = {
     /** 编辑模式下必填 */
     editingTool: ToolDto | null;
     toolTypeMeta: ToolTypeMetaDto[];
+    /** 语义分类元数据（可选；缺省使用内置 QUERY/ACTION 选项） */
+    toolCategoryMeta?: ToolCategoryMetaDto[];
     /** 后端扫描得到的 LOCAL 内置工具（下拉与提示） */
     localBuiltins: LocalBuiltinToolMetaDto[];
     onClose: () => void;
@@ -58,7 +67,7 @@ function defaultLocalBuiltinName(builtins: LocalBuiltinToolMetaDto[]): string {
 }
 
 export function ToolFormDrawer(props: Props) {
-    const {open, mode, editingTool, toolTypeMeta, localBuiltins, onClose, onSaved} = props;
+    const {open, mode, editingTool, toolTypeMeta, toolCategoryMeta, localBuiltins, onClose, onSaved} = props;
     const [form] = Form.useForm<ToolFormValues>();
     const [submitting, setSubmitting] = React.useState(false);
     const [localError, setLocalError] = React.useState<unknown>(null);
@@ -70,6 +79,19 @@ export function ToolFormDrawer(props: Props) {
     const watchedPreserveHttpParams = Form.useWatch("httpParametersAdvancedPreserve", form) === true;
     const watchedPreserveHttpOutput = Form.useWatch("httpOutputSchemaAdvancedPreserve", form) === true;
     const watchedPreserveMcpParams = Form.useWatch("mcpParametersAdvancedPreserve", form) === true;
+
+    const categoryOptions = React.useMemo(() => {
+        if (toolCategoryMeta && toolCategoryMeta.length > 0) {
+            return toolCategoryMeta.map((m) => ({
+                value: m.code,
+                label: `${m.label}（${m.code}）`,
+            }));
+        }
+        return [
+            {value: "ACTION", label: "操作工具（ACTION）"},
+            {value: "QUERY", label: "查询工具（QUERY）"},
+        ];
+    }, [toolCategoryMeta]);
 
     const typeOptions = React.useMemo(() => {
         if (toolTypeMeta.length > 0) {
@@ -101,6 +123,9 @@ export function ToolFormDrawer(props: Props) {
             const partial = toolDtoToFormValues(editingTool);
             form.setFieldsValue({
                 toolType: partial.toolType ?? "LOCAL",
+                toolCategory: partial.toolCategory ?? "ACTION",
+                displayLabel: partial.displayLabel ?? "",
+                platformDescription: partial.platformDescription ?? "",
                 name: partial.name ?? "",
                 toolDescription: partial.toolDescription,
                 mcpEndpoint: partial.mcpEndpoint,
@@ -130,6 +155,9 @@ export function ToolFormDrawer(props: Props) {
             form.resetFields();
             form.setFieldsValue({
                 toolType: "LOCAL",
+                toolCategory: "ACTION",
+                displayLabel: "",
+                platformDescription: "",
                 name: defaultLocalBuiltinName(localBuiltins),
                 httpMethod: "GET",
                 sendJsonBody: true,
@@ -268,6 +296,11 @@ export function ToolFormDrawer(props: Props) {
             const body = {
                 toolType: values.toolType,
                 name: values.name.trim(),
+                toolCategory: values.toolCategory ?? "ACTION",
+                ...(values.displayLabel?.trim() ? {displayLabel: values.displayLabel.trim()} : {}),
+                ...(values.platformDescription?.trim()
+                    ? {description: values.platformDescription.trim()}
+                    : {}),
                 definition,
             };
             if (mode === "create") {
@@ -339,8 +372,10 @@ export function ToolFormDrawer(props: Props) {
             ) : null}
 
             <Typography.Paragraph type="secondary" style={{marginTop: 0}}>
-                同一 <Typography.Text code>toolType + name</Typography.Text>{" "}
-                组合全局唯一。修改类型或名称后请同步检查已引用该工具 ID 的智能体配置。
+                工具 <Typography.Text
+                code>name</Typography.Text> 为<strong>全平台唯一</strong>（大小写不敏感，任意类型间也不可重名），与运行时注册及知识库{" "}
+                <Typography.Text code>{"{{tool:name}}"}</Typography.Text> 一致。修改名称后请同步检查已引用该工具 ID
+                的智能体与知识正文。
             </Typography.Paragraph>
 
             <Form<ToolFormValues>
@@ -367,6 +402,36 @@ export function ToolFormDrawer(props: Props) {
                         disabled={false}
                         showSearch
                         optionFilterProp="label"
+                    />
+                </Form.Item>
+
+                <Form.Item
+                    name="toolCategory"
+                    label="工具分类"
+                    rules={[{required: true, message: "请选择分类"}]}
+                    initialValue="ACTION"
+                    extra="与「工具类型」正交：查询类常用于知识库将工具 JSON 出参映射到正文 {{占位符}}。"
+                >
+                    <Select options={categoryOptions} placeholder="选择语义分类"/>
+                </Form.Item>
+
+                <Form.Item
+                    name="displayLabel"
+                    label="展示名（中文名，可选）"
+                    extra="用于工具列表、知识库选工具、{{tool:…}} 展开时的可读名称；运行时仍以「工具名称」为唯一标识。"
+                >
+                    <Input placeholder="例如：订单查询" maxLength={256} showCount/>
+                </Form.Item>
+                <Form.Item
+                    name="platformDescription"
+                    label="工具说明（可选）"
+                    extra="给人阅读的用途与场景。各类型下方的「描述/Schema」仍面向模型与协议，可与本字段并存。"
+                >
+                    <Input.TextArea
+                        rows={3}
+                        placeholder="例如：用户问物流进度时调用，返回结构化运单信息"
+                        maxLength={4000}
+                        showCount
                     />
                 </Form.Item>
 
@@ -463,7 +528,8 @@ export function ToolFormDrawer(props: Props) {
                                             <Typography.Text code>inputSchema</Typography.Text>{" "}
                                             中存在<strong>无法用本页表格无损表达</strong>的内容（例如{" "}
                                             <Typography.Text code>$ref</Typography.Text>、
-                                            <Typography.Text code>allOf</Typography.Text>、嵌套对象类型等）。
+                                            <Typography.Text code>allOf</Typography.Text>、
+                                            <Typography.Text code>oneOf</Typography.Text> 等）。
                                             你仍可在下方修改 URL、请求头等；<strong>保存时不会覆盖</strong>
                                             上述高级入参字段。请在「工具详情 → 概览」查看完整 definition，或通过 API 维护。
                                         </>
@@ -505,8 +571,10 @@ export function ToolFormDrawer(props: Props) {
                                         <>
                                             此处定义模型调用工具时可见的<strong>参数名、类型、是否必填与说明</strong>，会写入{" "}
                                             <Typography.Text code>definition.parameters</Typography.Text>
-                                            （JSON Schema 子集）。参数名须与 URL 中{" "}
-                                            <Typography.Text code>&#123;参数名&#125;</Typography.Text> 一致。
+                                            （JSON Schema 子集）。支持<strong>对象嵌套</strong>与<strong>数组</strong>
+                                            （含元素为对象时的子字段）。URL 占位符{" "}
+                                            <Typography.Text code>&#123;参数名&#125;</Typography.Text>{" "}
+                                            仅与<strong>顶层</strong>参数名一致。
                                             {showHttpBodySwitch ? (
                                                 <>
                                                     {" "}
@@ -529,11 +597,7 @@ export function ToolFormDrawer(props: Props) {
                                         if (ph.length === 0) {
                                             return null;
                                         }
-                                        const declared = new Set(
-                                            (rows ?? [])
-                                                .map((r) => (r?.paramName ?? "").trim())
-                                                .filter(Boolean),
-                                        );
+                                        const declared = new Set(collectRootHttpParameterNames(rows));
                                         const missing = ph.filter((p) => !declared.has(p));
                                         if (missing.length > 0) {
                                             return (
@@ -557,63 +621,14 @@ export function ToolFormDrawer(props: Props) {
                                     }}
                                 </Form.Item>
                                 <Form.Item label="调用参数（建议与 URL 占位符一致）">
-                                    <Form.List name="httpParameterRows">
-                                        {(fields, {add, remove}) => (
-                                            <>
-                                                {fields.map(({key, name, ...restField}) => (
-                                                    <Space
-                                                        key={key}
-                                                        style={{display: "flex", marginBottom: 8, flexWrap: "wrap"}}
-                                                        align="start"
-                                                    >
-                                                        <Form.Item
-                                                            {...restField}
-                                                            name={[name, "paramName"]}
-                                                            style={{width: 140, marginBottom: 0}}
-                                                        >
-                                                            <Input placeholder="参数名"/>
-                                                        </Form.Item>
-                                                        <Form.Item
-                                                            {...restField}
-                                                            name={[name, "paramType"]}
-                                                            style={{width: 112, marginBottom: 0}}
-                                                        >
-                                                            <Select options={HTTP_PARAM_TYPE_OPTIONS}/>
-                                                        </Form.Item>
-                                                        <Form.Item
-                                                            {...restField}
-                                                            name={[name, "required"]}
-                                                            valuePropName="checked"
-                                                            style={{marginBottom: 0, lineHeight: "32px"}}
-                                                        >
-                                                            <Checkbox>必填</Checkbox>
-                                                        </Form.Item>
-                                                        <Form.Item
-                                                            {...restField}
-                                                            name={[name, "paramDescription"]}
-                                                            style={{flex: 1, minWidth: 160, marginBottom: 0}}
-                                                        >
-                                                            <Input placeholder="给模型看的说明（可选）"/>
-                                                        </Form.Item>
-                                                        <MinusCircleOutlined
-                                                            style={{marginTop: 8}}
-                                                            onClick={() => remove(name)}
-                                                        />
-                                                    </Space>
-                                                ))}
-                                                <Form.Item style={{marginBottom: 0}}>
-                                                    <Button
-                                                        type="dashed"
-                                                        onClick={() => add(defaultHttpParameterRow())}
-                                                        block
-                                                        icon={<PlusOutlined/>}
-                                                    >
-                                                        添加入参
-                                                    </Button>
-                                                </Form.Item>
-                                            </>
-                                        )}
-                                    </Form.List>
+                                    <HttpParameterRowsEditor
+                                        listName="httpParameterRows"
+                                        storePathToList={["httpParameterRows"]}
+                                        addButtonLabel="添加入参"
+                                        requiredCheckboxLabel="必填"
+                                        namePlaceholder="参数名"
+                                        descriptionPlaceholder="给模型看的说明（可选）"
+                                    />
                                 </Form.Item>
                             </>
                         )}
@@ -667,70 +682,21 @@ export function ToolFormDrawer(props: Props) {
                                         <>
                                             描述<strong>响应体</strong>（多为 JSON 文本）里有哪些字段，写入{" "}
                                             <Typography.Text code>definition.outputSchema</Typography.Text>。
-                                            运行时<strong>不校验</strong>真实 HTTP 响应；后端会把说明合并进工具
+                                            支持嵌套对象与数组结构。运行时<strong>不校验</strong>真实 HTTP 响应；后端会把说明合并进工具
                                             description，供模型理解接口返回含义。
                                         </>
                                     }
                                     style={{marginBottom: 16}}
                                 />
                                 <Form.Item label="出参字段（可选）">
-                                    <Form.List name="httpOutputParameterRows">
-                                        {(fields, {add, remove}) => (
-                                            <>
-                                                {fields.map(({key, name, ...restField}) => (
-                                                    <Space
-                                                        key={key}
-                                                        style={{display: "flex", marginBottom: 8, flexWrap: "wrap"}}
-                                                        align="start"
-                                                    >
-                                                        <Form.Item
-                                                            {...restField}
-                                                            name={[name, "paramName"]}
-                                                            style={{width: 140, marginBottom: 0}}
-                                                        >
-                                                            <Input placeholder="字段名"/>
-                                                        </Form.Item>
-                                                        <Form.Item
-                                                            {...restField}
-                                                            name={[name, "paramType"]}
-                                                            style={{width: 112, marginBottom: 0}}
-                                                        >
-                                                            <Select options={HTTP_PARAM_TYPE_OPTIONS}/>
-                                                        </Form.Item>
-                                                        <Form.Item
-                                                            {...restField}
-                                                            name={[name, "required"]}
-                                                            valuePropName="checked"
-                                                            style={{marginBottom: 0, lineHeight: "32px"}}
-                                                        >
-                                                            <Checkbox>响应中必有</Checkbox>
-                                                        </Form.Item>
-                                                        <Form.Item
-                                                            {...restField}
-                                                            name={[name, "paramDescription"]}
-                                                            style={{flex: 1, minWidth: 160, marginBottom: 0}}
-                                                        >
-                                                            <Input placeholder="字段含义（可选）"/>
-                                                        </Form.Item>
-                                                        <MinusCircleOutlined
-                                                            style={{marginTop: 8}}
-                                                            onClick={() => remove(name)}
-                                                        />
-                                                    </Space>
-                                                ))}
-                                                <Form.Item style={{marginBottom: 0}}>
-                                                    <Button
-                                                        type="dashed"
-                                                        onClick={() => add(defaultHttpParameterRow())}
-                                                        block
-                                                        icon={<PlusOutlined/>}
-                                                    >
-                                                        添加出参字段
-                                                    </Button>
-                                                </Form.Item>
-                                            </>
-                                        )}
-                                    </Form.List>
+                                    <HttpParameterRowsEditor
+                                        listName="httpOutputParameterRows"
+                                        storePathToList={["httpOutputParameterRows"]}
+                                        addButtonLabel="添加出参字段"
+                                        requiredCheckboxLabel="响应中必有"
+                                        namePlaceholder="字段名"
+                                        descriptionPlaceholder="字段含义（可选）"
+                                    />
                                 </Form.Item>
                             </>
                         )}
@@ -894,70 +860,21 @@ export function ToolFormDrawer(props: Props) {
                                         <>
                                             写入 <Typography.Text code>definition.parameters</Typography.Text>
                                             ，与 HTTP 工具相同为 JSON Schema
-                                            子集；用于智能体侧工具描述与详情页展示。不填则运行时由后端按远端{" "}
+                                            子集，支持嵌套对象与数组。用于智能体侧工具描述与详情页展示。不填则运行时由后端按远端{" "}
                                             <Typography.Text code>list_tools</Typography.Text> 推断或使用宽松 object。
                                         </>
                                     }
                                     style={{marginBottom: 12}}
                                 />
                                 <Form.Item label="参数表（parameters）">
-                                    <Form.List name="mcpParameterRows">
-                                        {(fields, {add, remove}) => (
-                                            <>
-                                                {fields.map(({key, name, ...restField}) => (
-                                                    <Space
-                                                        key={key}
-                                                        style={{display: "flex", marginBottom: 8, flexWrap: "wrap"}}
-                                                        align="start"
-                                                    >
-                                                        <Form.Item
-                                                            {...restField}
-                                                            name={[name, "paramName"]}
-                                                            style={{width: 140, marginBottom: 0}}
-                                                        >
-                                                            <Input placeholder="参数名"/>
-                                                        </Form.Item>
-                                                        <Form.Item
-                                                            {...restField}
-                                                            name={[name, "paramType"]}
-                                                            style={{width: 112, marginBottom: 0}}
-                                                        >
-                                                            <Select options={HTTP_PARAM_TYPE_OPTIONS}/>
-                                                        </Form.Item>
-                                                        <Form.Item
-                                                            {...restField}
-                                                            name={[name, "required"]}
-                                                            valuePropName="checked"
-                                                            style={{marginBottom: 0, lineHeight: "32px"}}
-                                                        >
-                                                            <Checkbox>必填</Checkbox>
-                                                        </Form.Item>
-                                                        <Form.Item
-                                                            {...restField}
-                                                            name={[name, "paramDescription"]}
-                                                            style={{flex: 1, minWidth: 160, marginBottom: 0}}
-                                                        >
-                                                            <Input placeholder="说明"/>
-                                                        </Form.Item>
-                                                        <MinusCircleOutlined
-                                                            style={{marginTop: 8}}
-                                                            onClick={() => remove(name)}
-                                                        />
-                                                    </Space>
-                                                ))}
-                                                <Form.Item style={{marginBottom: 0}}>
-                                                    <Button
-                                                        type="dashed"
-                                                        onClick={() => add(defaultHttpParameterRow())}
-                                                        block
-                                                        icon={<PlusOutlined/>}
-                                                    >
-                                                        添加参数
-                                                    </Button>
-                                                </Form.Item>
-                                            </>
-                                        )}
-                                    </Form.List>
+                                    <HttpParameterRowsEditor
+                                        listName="mcpParameterRows"
+                                        storePathToList={["mcpParameterRows"]}
+                                        addButtonLabel="添加参数"
+                                        requiredCheckboxLabel="必填"
+                                        namePlaceholder="参数名"
+                                        descriptionPlaceholder="说明"
+                                    />
                                 </Form.Item>
                             </>
                         )}

@@ -7,21 +7,28 @@
     <resultMap id="ToolDOMap" type="com.agentlego.backend.tool.infrastructure.persistence.ToolDO">
         <id property="id" column="id"/>
         <result property="toolType" column="tool_type"/>
+        <result property="toolCategory" column="tool_category"/>
         <result property="name" column="name"/>
+        <result property="displayLabel" column="display_label"/>
+        <result property="description" column="description"/>
         <result property="definitionJson" column="definition_json"/>
         <result property="createdAt" column="created_at"/>
     </resultMap>
 
     <insert id="insert" parameterType="com.agentlego.backend.tool.infrastructure.persistence.ToolDO">
-        insert into lego_tools (id, tool_type, name, definition, created_at)
-        values (#{id}, #{toolType}, #{name}, cast(#{definitionJson} as jsonb), now())
+        insert into lego_tools (id, tool_type, tool_category, name, display_label, description, definition, created_at)
+        values (#{id}, #{toolType}, #{toolCategory}, #{name}, #{displayLabel}, #{description},
+                cast(#{definitionJson} as jsonb), now())
     </insert>
 
     <update id="update" parameterType="com.agentlego.backend.tool.infrastructure.persistence.ToolDO">
         update lego_tools
-        set tool_type  = #{toolType},
-            name       = #{name},
-            definition = cast(#{definitionJson} as jsonb)
+        set tool_type     = #{toolType},
+            tool_category = #{toolCategory},
+            name          = #{name},
+            display_label = #{displayLabel},
+            description   = #{description},
+            definition    = cast(#{definitionJson} as jsonb)
         where id = #{id}
     </update>
 
@@ -30,21 +37,6 @@
         from lego_tools
         where id = #{id}
     </delete>
-
-    <select id="countByTypeAndName" resultType="int">
-        select count(*) ::int
-        from lego_tools
-        where tool_type = #{toolType}
-          and name = #{name}
-    </select>
-
-    <select id="countByTypeAndNameExcludeId" resultType="int">
-        select count(*) ::int
-        from lego_tools
-        where tool_type = #{toolType}
-          and name = #{name}
-          and id != #{excludeId}
-    </select>
 
     <!-- 全平台 name 唯一（大小写不敏感），与运行时工具注册以名为键对齐；excludeId 为空时不排除 -->
     <select id="countByNameIgnoreCaseExcluding" resultType="int">
@@ -59,7 +51,10 @@
     <select id="findById" parameterType="java.lang.String" resultMap="ToolDOMap">
         select id,
                tool_type,
+               tool_category,
                name,
+               display_label,
+               description,
                cast(definition as text) as definition_json,
                created_at
         from lego_tools
@@ -69,7 +64,10 @@
     <select id="findAll" resultMap="ToolDOMap">
         select id,
                tool_type,
+               tool_category,
                name,
+               display_label,
+               description,
                cast(definition as text) as definition_json,
                created_at
         from lego_tools
@@ -86,6 +84,8 @@
                 name ilike concat('%', #{q}, '%')
                 or id ilike concat('%', #{q}, '%')
                 or tool_type ilike concat('%', #{q}, '%')
+                or coalesce(display_label, '') ilike concat('%', #{q}, '%')
+                or coalesce(description, '') ilike concat('%', #{q}, '%')
                 or cast(definition as text) ilike concat('%', #{q}, '%')
                 )
             </if>
@@ -101,7 +101,10 @@
     <select id="findPageByQuery" resultMap="ToolDOMap">
         select id,
         tool_type,
+        tool_category,
         name,
+        display_label,
+        description,
         cast(definition as text) as definition_json,
         created_at
         from lego_tools

@@ -14,6 +14,10 @@ public final class KbPolicies {
     public static final String KEY_TOP_K = "topK";
     public static final String KEY_SCORE_THRESHOLD = "scoreThreshold";
     public static final String KEY_EMBEDDING_MODEL_ID = "embeddingModelId";
+    /**
+     * 是否启用全文检索通道并与向量做混合召回（RRF）；未设置时沿用应用配置默认值。
+     */
+    public static final String KEY_FULLTEXT_ENABLED = "fullTextEnabled";
 
     private KbPolicies() {
     }
@@ -47,6 +51,14 @@ public final class KbPolicies {
 
     public static String embeddingModelOverride(Map<String, Object> policy) {
         return JsonMaps.getString(policy == null ? Map.of() : policy, KEY_EMBEDDING_MODEL_ID, "").trim();
+    }
+
+    /**
+     * 是否启用 KB 全文检索分支；策略中显式设置时优先生效，否则使用应用层默认值（如 {@code agentlego.kb.retrieve.fulltext-enabled}）。
+     */
+    public static boolean fullTextEnabled(Map<String, Object> policy, boolean defaultWhenAbsent) {
+        Boolean b = JsonMaps.getBooleanOpt(policy == null ? Map.of() : policy, KEY_FULLTEXT_ENABLED);
+        return b != null ? b : defaultWhenAbsent;
     }
 
     /**
