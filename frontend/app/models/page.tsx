@@ -448,7 +448,7 @@ function ModelsPageContent() {
             <Space orientation="vertical" size={16} style={{width: "100%"}}>
                 <PageHeaderBlock
                     title="模型管理"
-                    subtitle="同一提供方、同一模型标识可保存多套「配置实例」。聊天模型 config 与 AgentScope GenerateOptions 对齐（采样、流式、惩罚、toolChoice、executionConfig 等）；Embedding 用于知识库向量化。"
+                    subtitle="同一提供方、同一模型标识可保存多套「配置实例」。聊天模型 config 与 AgentScope GenerateOptions 对齐（采样、流式、惩罚、toolChoice、executionConfig 等）；Embedding 类型用于文本向量化等能力。"
                     extra={
                         <Space wrap>
                             <Button onClick={() => void loadList()} loading={listLoading}>

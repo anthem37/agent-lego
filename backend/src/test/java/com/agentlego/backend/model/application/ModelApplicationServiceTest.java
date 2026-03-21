@@ -4,6 +4,7 @@ import com.agentlego.backend.agent.domain.AgentRepository;
 import com.agentlego.backend.api.ApiException;
 import com.agentlego.backend.model.application.dto.CreateModelRequest;
 import com.agentlego.backend.model.application.dto.TestModelResponse;
+import com.agentlego.backend.model.application.service.ModelApplicationService;
 import com.agentlego.backend.model.domain.ModelAggregate;
 import com.agentlego.backend.model.domain.ModelRepository;
 import com.agentlego.backend.model.support.ChatModelFactory;

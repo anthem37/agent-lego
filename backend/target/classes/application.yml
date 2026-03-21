@@ -43,6 +43,11 @@ agentlego:
     http-connect-timeout-seconds: 10
     # true 时注册 Slf4jHttpToolOkHttpInterceptor（仅打 method/host/path/状态码/耗时，不含 query）
     http-request-logging: false
+  # 知识库：控制单次入库体量，防止 embedding 调用与 DB 事务过大（业务层另有校验）
+  kb:
+    ingest:
+      max-document-chars: 524288
+      max-chunks: 2000
 
 mybatis:
   mapper-locations: classpath*:mybatis/*.xml

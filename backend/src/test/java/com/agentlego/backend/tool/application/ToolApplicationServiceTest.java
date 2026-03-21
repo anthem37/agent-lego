@@ -2,12 +2,15 @@ package com.agentlego.backend.tool.application;
 
 import com.agentlego.backend.agent.domain.AgentRepository;
 import com.agentlego.backend.api.ApiException;
-import com.agentlego.backend.mcp.McpClientProperties;
-import com.agentlego.backend.mcp.McpClientRegistry;
+import com.agentlego.backend.mcp.client.McpClientRegistry;
+import com.agentlego.backend.mcp.properties.McpClientProperties;
 import com.agentlego.backend.tool.application.dto.CreateToolRequest;
 import com.agentlego.backend.tool.application.dto.TestToolCallRequest;
 import com.agentlego.backend.tool.application.dto.TestToolCallResponse;
 import com.agentlego.backend.tool.application.dto.UpdateToolRequest;
+import com.agentlego.backend.tool.application.mapper.ToolDtoMapper;
+import com.agentlego.backend.tool.application.service.ToolApplicationService;
+import com.agentlego.backend.tool.application.service.ToolExecutionService;
 import com.agentlego.backend.tool.domain.ToolAggregate;
 import com.agentlego.backend.tool.domain.ToolRepository;
 import com.agentlego.backend.tool.domain.ToolType;
@@ -16,6 +19,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import io.agentscope.core.message.ToolResultBlock;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mapstruct.factory.Mappers;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import reactor.core.publisher.Mono;
@@ -39,15 +43,13 @@ import static org.mockito.Mockito.*;
 @ExtendWith(MockitoExtension.class)
 class ToolApplicationServiceTest {
 
+    private static final ToolDtoMapper TOOL_DTO_MAPPER = Mappers.getMapper(ToolDtoMapper.class);
     @Mock
     private ToolRepository toolRepository;
-
     @Mock
     private ToolExecutionService toolExecutionService;
-
     @Mock
     private AgentRepository agentRepository;
-
     @Mock
     private McpClientRegistry mcpClientRegistry;
 
@@ -68,7 +70,8 @@ class ToolApplicationServiceTest {
                 localCatalog(),
                 mcpClientRegistry,
                 new ObjectMapper(),
-                mcpClientProperties
+                mcpClientProperties,
+                TOOL_DTO_MAPPER
         );
     }
 

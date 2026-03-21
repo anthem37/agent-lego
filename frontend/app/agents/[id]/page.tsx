@@ -175,9 +175,10 @@ export default function AgentDetailPage(props: { params: Promise<{ id: string }>
                                 }}>{stringifyPretty(agent.memoryPolicy ?? {})}</pre>
                             </Descriptions.Item>
                             <Descriptions.Item label="knowledgeBasePolicy">
-                <pre style={{margin: 0, whiteSpace: "pre-wrap"}}>
-                  {stringifyPretty(agent.knowledgeBasePolicy ?? {})}
-                </pre>
+                                <pre style={{
+                                    margin: 0,
+                                    whiteSpace: "pre-wrap"
+                                }}>{stringifyPretty(agent.knowledgeBasePolicy ?? {})}</pre>
                             </Descriptions.Item>
                             <Descriptions.Item label="systemPrompt">
                                 <pre style={{margin: 0, whiteSpace: "pre-wrap"}}>{agent.systemPrompt}</pre>

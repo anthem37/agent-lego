@@ -1,12 +1,11 @@
 package com.agentlego.backend.workflow.infrastructure;
 
+import com.agentlego.backend.common.JsonMaps;
 import com.agentlego.backend.workflow.domain.WorkflowRunAggregate;
 import com.agentlego.backend.workflow.domain.WorkflowRunRepository;
 import com.agentlego.backend.workflow.domain.WorkflowRunStatus;
 import com.agentlego.backend.workflow.infrastructure.persistence.WorkflowRunDO;
 import com.agentlego.backend.workflow.infrastructure.persistence.WorkflowRunMapper;
-import com.fasterxml.jackson.core.type.TypeReference;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.stereotype.Repository;
 
 import java.util.Map;
@@ -15,11 +14,9 @@ import java.util.Map;
 public class WorkflowRunRepositoryImpl implements WorkflowRunRepository {
 
     private final WorkflowRunMapper mapper;
-    private final ObjectMapper objectMapper;
 
-    public WorkflowRunRepositoryImpl(WorkflowRunMapper mapper, ObjectMapper objectMapper) {
+    public WorkflowRunRepositoryImpl(WorkflowRunMapper mapper) {
         this.mapper = mapper;
-        this.objectMapper = objectMapper;
     }
 
     @Override
@@ -30,7 +27,7 @@ public class WorkflowRunRepositoryImpl implements WorkflowRunRepository {
         row.setWorkflowId(workflowId);
         row.setStatus(WorkflowRunStatus.PENDING.name());
         row.setIdempotencyKey(idempotencyKey);
-        row.setInputJson(toJson(input));
+        row.setInputJson(JsonMaps.toJson(input));
         mapper.insert(row);
         return id;
     }
@@ -42,7 +39,7 @@ public class WorkflowRunRepositoryImpl implements WorkflowRunRepository {
 
     @Override
     public void markSucceeded(String runId, Map<String, Object> output) {
-        mapper.updateStatusSucceeded(runId, toJson(output));
+        mapper.updateStatusSucceeded(runId, JsonMaps.toJson(output));
     }
 
     @Override
@@ -61,32 +58,13 @@ public class WorkflowRunRepositoryImpl implements WorkflowRunRepository {
         agg.setWorkflowId(row.getWorkflowId());
         agg.setStatus(row.getStatus() == null ? null : WorkflowRunStatus.valueOf(row.getStatus()));
         agg.setError(row.getError());
-        agg.setInput(fromJson(row.getInputJson()));
-        agg.setOutput(fromJson(row.getOutputJson()));
+        agg.setInput(JsonMaps.parseObject(row.getInputJson()));
+        agg.setOutput(JsonMaps.parseObject(row.getOutputJson()));
         agg.setStartedAt(row.getStartedAt());
         agg.setFinishedAt(row.getFinishedAt());
         agg.setCreatedAt(row.getCreatedAt());
         return agg;
     }
 
-    private String toJson(Map<String, Object> map) {
-        try {
-            return objectMapper.writeValueAsString(map == null ? Map.of() : map);
-        } catch (Exception e) {
-            throw new RuntimeException("serialize workflow run json failed", e);
-        }
-    }
-
-    private Map<String, Object> fromJson(String json) {
-        if (json == null || json.isBlank()) {
-            return Map.of();
-        }
-        try {
-            return objectMapper.readValue(json, new TypeReference<Map<String, Object>>() {
-            });
-        } catch (Exception e) {
-            throw new RuntimeException("deserialize workflow run json failed", e);
-        }
-    }
 }
 

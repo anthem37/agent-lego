@@ -1,13 +1,14 @@
 package com.agentlego.backend.tool.application;
 
 import com.agentlego.backend.api.ApiException;
-import com.agentlego.backend.mcp.McpClientRegistry;
+import com.agentlego.backend.mcp.client.McpClientRegistry;
+import com.agentlego.backend.tool.application.service.ToolExecutionService;
 import com.agentlego.backend.tool.domain.ToolAggregate;
 import com.agentlego.backend.tool.domain.ToolType;
 import com.agentlego.backend.tool.http.HttpToolRequestExecutor;
 import com.agentlego.backend.tool.local.LocalBuiltinToolCatalog;
-import com.agentlego.backend.workflow.application.WorkflowApplicationService;
 import com.agentlego.backend.workflow.application.dto.RunWorkflowRequest;
+import com.agentlego.backend.workflow.application.service.WorkflowApplicationService;
 import io.agentscope.core.message.ContentBlock;
 import io.agentscope.core.message.TextBlock;
 import io.agentscope.core.message.ToolResultBlock;

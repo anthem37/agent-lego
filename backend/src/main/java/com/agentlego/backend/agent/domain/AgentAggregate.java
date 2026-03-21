@@ -40,7 +40,7 @@ public class AgentAggregate {
      */
     private Map<String, Object> memoryPolicy;
     /**
-     * 知识库检索/注入策略（JSON object）。
+     * 知识库 RAG 策略（JSON object），例如 collectionIds、topK、scoreThreshold。
      */
     private Map<String, Object> knowledgeBasePolicy;
     /**

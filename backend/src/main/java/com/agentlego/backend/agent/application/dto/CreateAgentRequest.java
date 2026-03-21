@@ -9,9 +9,10 @@ import java.util.Map;
 /**
  * 创建智能体请求 DTO。
  * <p>
- * - systemPrompt：作为 agent 的 system message（可被 memory/KB 策略注入额外上下文）
+ * - systemPrompt：作为 agent 的 system message（可被 memory 策略注入额外上下文）
  * - toolIds：允许使用的工具列表（工具权限）
- * - memoryPolicy / knowledgeBasePolicy：检索与注入策略（当前以 JSON object 形式承载）
+ * - memoryPolicy：记忆检索与注入策略（当前以 JSON object 形式承载）
+ * - knowledgeBasePolicy：知识库 RAG 策略（collectionIds 等）
  */
 @Data
 public class CreateAgentRequest {
@@ -45,7 +46,7 @@ public class CreateAgentRequest {
     private Map<String, Object> memoryPolicy;
 
     /**
-     * 知识库策略（knowledge base policy），例如 kbId、topK、queryTemplate 等。
+     * 知识库策略（knowledge base policy），例如 collectionIds、topK、scoreThreshold。
      */
     private Map<String, Object> knowledgeBasePolicy;
 }

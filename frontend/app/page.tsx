@@ -33,7 +33,7 @@ export default function HomePage() {
                         智能体平台控制台
                     </Typography.Title>
                     <Typography.Text type="secondary">
-                        聚合模型、工具、智能体、工作流、记忆、知识库、评测与 A2A 委派能力的统一入口。
+                        聚合模型、工具、智能体、工作流、记忆、评测与 A2A 委派能力的统一入口。
                     </Typography.Text>
                 </div>
 

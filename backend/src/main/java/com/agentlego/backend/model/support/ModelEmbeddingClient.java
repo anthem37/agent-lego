@@ -1,6 +1,7 @@
 package com.agentlego.backend.model.support;
 
 import com.agentlego.backend.api.ApiException;
+import com.agentlego.backend.common.Throwables;
 import com.agentlego.backend.model.domain.ModelAggregate;
 import com.agentlego.backend.model.domain.ModelRepository;
 import io.agentscope.core.embedding.EmbeddingModel;
@@ -67,9 +68,7 @@ public class ModelEmbeddingClient {
             } catch (Exception e) {
                 throw new ApiException(
                         "UPSTREAM_ERROR",
-                        "embedding 失败：" + (e.getMessage() == null || e.getMessage().isBlank()
-                                ? e.getClass().getSimpleName()
-                                : e.getMessage()),
+                        "embedding 失败：" + Throwables.messageOrSimpleName(e),
                         HttpStatus.BAD_GATEWAY
                 );
             }

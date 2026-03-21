@@ -1,0 +1,19 @@
+# 可选：本地 PostgreSQL + pgvector（与 application.yml 默认库名/用户一致）
+# 启动：docker compose -f docker-compose.postgres-pgvector.yml up -d
+# 换过新容器后 Flyway 使用单文件 V1__baseline.sql；旧 volume 若含历史 flyway_schema_history 请先删 volume 或建新库。
+
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: agent-lego-pgvector
+    environment:
+      POSTGRES_USER: agentlego
+      POSTGRES_PASSWORD: agentlego
+      POSTGRES_DB: agentlego
+    ports:
+      - "5432:5432"
+    volumes:
+      - agentlego_pgdata:/var/lib/postgresql/data
+
+volumes:
+  agentlego_pgdata:

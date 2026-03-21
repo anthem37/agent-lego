@@ -4,10 +4,11 @@ import com.agentlego.backend.agent.domain.AgentAggregate;
 import com.agentlego.backend.agent.domain.AgentRepository;
 import com.agentlego.backend.agent.infrastructure.persistence.AgentDO;
 import com.agentlego.backend.agent.infrastructure.persistence.AgentMapper;
-import com.fasterxml.jackson.core.type.TypeReference;
-import com.fasterxml.jackson.databind.ObjectMapper;
+import com.agentlego.backend.common.JsonMaps;
 import org.springframework.stereotype.Repository;
+import org.springframework.transaction.annotation.Transactional;
 
+import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -16,24 +17,46 @@ import java.util.Optional;
 public class AgentRepositoryImpl implements AgentRepository {
 
     private final AgentMapper mapper;
-    private final ObjectMapper objectMapper;
 
-    public AgentRepositoryImpl(AgentMapper mapper, ObjectMapper objectMapper) {
+    public AgentRepositoryImpl(AgentMapper mapper) {
         this.mapper = mapper;
-        this.objectMapper = objectMapper;
+    }
+
+    private static List<String> normalizeToolIds(List<String> toolIds) {
+        if (toolIds == null || toolIds.isEmpty()) {
+            return List.of();
+        }
+        return toolIds.stream()
+                .filter(s -> s != null && !s.isBlank())
+                .distinct()
+                .toList();
+    }
+
+    private static List<String> parseCsv(String csv) {
+        if (csv == null || csv.isBlank()) {
+            return List.of();
+        }
+        return Arrays.stream(csv.split(","))
+                .map(String::trim)
+                .filter(s -> !s.isEmpty())
+                .toList();
     }
 
     @Override
+    @Transactional
     public String save(AgentAggregate aggregate) {
         AgentDO row = new AgentDO();
         row.setId(aggregate.getId());
         row.setName(aggregate.getName());
         row.setSystemPrompt(aggregate.getSystemPrompt());
         row.setModelId(aggregate.getModelId());
-        row.setToolIdsCsv(String.join(",", aggregate.getToolIds() == null ? List.of() : aggregate.getToolIds()));
-        row.setMemoryPolicyJson(toJson(aggregate.getMemoryPolicy()));
-        row.setKnowledgeBasePolicyJson(toJson(aggregate.getKnowledgeBasePolicy()));
+        row.setMemoryPolicyJson(JsonMaps.toJson(aggregate.getMemoryPolicy()));
+        row.setKnowledgeBasePolicyJson(JsonMaps.toJson(aggregate.getKnowledgeBasePolicy()));
         mapper.insert(row);
+        List<String> toolIds = normalizeToolIds(aggregate.getToolIds());
+        if (!toolIds.isEmpty()) {
+            mapper.insertAgentTools(aggregate.getId(), toolIds);
+        }
         return aggregate.getId();
     }
 
@@ -54,6 +77,17 @@ public class AgentRepositoryImpl implements AgentRepository {
     }
 
     @Override
+    public List<String> listAgentIdsReferencingKbCollection(String collectionId) {
+        List<String> ids = mapper.listAgentIdsReferencingKbCollection(collectionId);
+        return ids == null ? List.of() : ids;
+    }
+
+    @Override
+    public void updateKnowledgeBasePolicy(String agentId, Map<String, Object> knowledgeBasePolicy) {
+        mapper.updateKnowledgeBasePolicy(agentId, JsonMaps.toJson(knowledgeBasePolicy));
+    }
+
+    @Override
     public Optional<AgentAggregate> findById(String id) {
         AgentDO row = mapper.findById(id);
         if (row == null) {
@@ -65,38 +99,10 @@ public class AgentRepositoryImpl implements AgentRepository {
         agg.setSystemPrompt(row.getSystemPrompt());
         agg.setModelId(row.getModelId());
         agg.setToolIds(parseCsv(row.getToolIdsCsv()));
-        agg.setMemoryPolicy(fromJson(row.getMemoryPolicyJson()));
-        agg.setKnowledgeBasePolicy(fromJson(row.getKnowledgeBasePolicyJson()));
+        agg.setMemoryPolicy(JsonMaps.parseObject(row.getMemoryPolicyJson()));
+        agg.setKnowledgeBasePolicy(JsonMaps.parseObject(row.getKnowledgeBasePolicyJson()));
         agg.setCreatedAt(row.getCreatedAt());
         return Optional.of(agg);
-    }
-
-    private String toJson(Map<String, Object> map) {
-        try {
-            return objectMapper.writeValueAsString(map == null ? Map.of() : map);
-        } catch (Exception e) {
-            throw new RuntimeException("serialize agent policy failed", e);
-        }
-    }
-
-    private Map<String, Object> fromJson(String json) {
-        if (json == null || json.isBlank()) {
-            return Map.of();
-        }
-        try {
-            return objectMapper.readValue(json, new TypeReference<Map<String, Object>>() {
-            });
-        } catch (Exception e) {
-            throw new RuntimeException("deserialize agent policy failed", e);
-        }
-    }
-
-    private List<String> parseCsv(String csv) {
-        if (csv == null || csv.isBlank()) {
-            return List.of();
-        }
-        String[] parts = csv.split(",");
-        return List.of(parts);
     }
 }
 

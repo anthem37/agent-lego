@@ -59,9 +59,6 @@ export default function AgentsPage() {
                 : undefined;
 
             const memoryPolicy = values.memoryPolicyJson ? parseJsonObject(values.memoryPolicyJson) : undefined;
-            const knowledgeBasePolicy = values.knowledgeBasePolicyJson
-                ? parseJsonObject(values.knowledgeBasePolicyJson)
-                : undefined;
 
             const id = await request<string>("/agents", {
                 method: "POST",
@@ -71,7 +68,6 @@ export default function AgentsPage() {
                     modelId: values.modelId,
                     toolIds,
                     memoryPolicy,
-                    knowledgeBasePolicy,
                 },
             });
             setCreatedId(id);
@@ -128,7 +124,10 @@ export default function AgentsPage() {
                             <JsonTextArea rows={8} sample={{ownerScope: "demo", topK: 5}}/>
                         </Form.Item>
                         <Form.Item name="knowledgeBasePolicyJson" label="knowledgeBasePolicy（JSON，可选）">
-                            <JsonTextArea rows={8} sample={{kbKey: "default", topK: 5}}/>
+                            <JsonTextArea
+                                rows={8}
+                                sample={{collectionIds: ["集合ID"], topK: 5, scoreThreshold: 0.25}}
+                            />
                         </Form.Item>
                         <Form.Item>
                             <Space>

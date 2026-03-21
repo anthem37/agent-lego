@@ -1,15 +1,17 @@
 package com.agentlego.backend.memory;
 
 import com.agentlego.backend.api.ApiException;
-import com.agentlego.backend.memory.application.MemoryApplicationService;
 import com.agentlego.backend.memory.application.dto.CreateMemoryItemRequest;
 import com.agentlego.backend.memory.application.dto.MemoryItemDto;
 import com.agentlego.backend.memory.application.dto.MemoryQueryRequest;
 import com.agentlego.backend.memory.application.dto.MemoryQueryResponse;
+import com.agentlego.backend.memory.application.mapper.MemoryDtoMapper;
+import com.agentlego.backend.memory.application.service.MemoryApplicationService;
 import com.agentlego.backend.memory.domain.MemoryItemAggregate;
 import com.agentlego.backend.memory.domain.MemoryRepository;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mapstruct.factory.Mappers;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -35,12 +37,13 @@ import static org.mockito.Mockito.when;
 @ExtendWith(MockitoExtension.class)
 class MemoryApplicationServiceTest {
 
+    private static final MemoryDtoMapper MEMORY_DTO_MAPPER = Mappers.getMapper(MemoryDtoMapper.class);
     @Mock
     private MemoryRepository repository;
 
     @Test
     void createItem_blankContent_shouldThrowValidationError() {
-        MemoryApplicationService service = new MemoryApplicationService(repository);
+        MemoryApplicationService service = new MemoryApplicationService(repository, MEMORY_DTO_MAPPER);
 
         CreateMemoryItemRequest req = new CreateMemoryItemRequest();
         req.setOwnerScope("user1");
@@ -53,7 +56,7 @@ class MemoryApplicationServiceTest {
 
     @Test
     void createItem_nullMetadata_shouldStoreEmptyMap() {
-        MemoryApplicationService service = new MemoryApplicationService(repository);
+        MemoryApplicationService service = new MemoryApplicationService(repository, MEMORY_DTO_MAPPER);
 
         CreateMemoryItemRequest req = new CreateMemoryItemRequest();
         req.setOwnerScope("user1");
@@ -74,7 +77,7 @@ class MemoryApplicationServiceTest {
 
     @Test
     void query_shouldPassThroughTopKAndMapToDto() {
-        MemoryApplicationService service = new MemoryApplicationService(repository);
+        MemoryApplicationService service = new MemoryApplicationService(repository, MEMORY_DTO_MAPPER);
 
         MemoryQueryRequest req = new MemoryQueryRequest();
         req.setOwnerScope("user1");

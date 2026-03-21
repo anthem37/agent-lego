@@ -19,5 +19,14 @@ public interface AgentMapper {
     int countByToolId(@Param("toolId") String toolId);
 
     List<String> listAgentIdsByToolId(@Param("toolId") String toolId);
+
+    List<String> listAgentIdsReferencingKbCollection(@Param("collectionId") String collectionId);
+
+    int updateKnowledgeBasePolicy(
+            @Param("id") String id,
+            @Param("knowledgeBasePolicyJson") String knowledgeBasePolicyJson
+    );
+
+    int insertAgentTools(@Param("agentId") String agentId, @Param("toolIds") List<String> toolIds);
 }
 

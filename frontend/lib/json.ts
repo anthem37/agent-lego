@@ -10,16 +10,12 @@ export function parseJsonObject(text: string): Record<string, unknown> {
     return parsed as Record<string, unknown>;
 }
 
-export function parseJsonValue(text: string): unknown {
+export function parseJsonArray(text: string): unknown[] {
     const trimmed = text.trim();
     if (!trimmed) {
-        return null;
+        throw new Error("需要是 JSON 数组（array），例如 [{\"a\":1}]");
     }
-    return JSON.parse(trimmed) as unknown;
-}
-
-export function parseJsonArray(text: string): unknown[] {
-    const value = parseJsonValue(text);
+    const value = JSON.parse(trimmed) as unknown;
     if (!Array.isArray(value)) {
         throw new Error("需要是 JSON 数组（array），例如 [{\"a\":1}]");
     }

@@ -11,8 +11,8 @@ export const NAV_ITEMS: NavItem[] = [
     {key: "agents", label: "智能体", href: "/agents"},
     {key: "workflows", label: "工作流", href: "/workflows"},
     {key: "runs", label: "运行查询", href: "/runs"},
-    {key: "memory", label: "记忆", href: "/memory"},
     {key: "kb", label: "知识库", href: "/kb"},
+    {key: "memory", label: "记忆", href: "/memory"},
     {key: "evaluations", label: "评测", href: "/evaluations"},
     {key: "a2a", label: "A2A", href: "/a2a"},
 ];

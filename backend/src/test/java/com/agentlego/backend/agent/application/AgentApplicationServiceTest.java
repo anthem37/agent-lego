@@ -3,18 +3,20 @@ package com.agentlego.backend.agent.application;
 import com.agentlego.backend.agent.application.dto.CreateAgentRequest;
 import com.agentlego.backend.agent.application.dto.RunAgentRequest;
 import com.agentlego.backend.agent.application.dto.RunAgentResponse;
+import com.agentlego.backend.agent.application.mapper.AgentDtoMapper;
+import com.agentlego.backend.agent.application.service.AgentApplicationService;
 import com.agentlego.backend.agent.domain.AgentAggregate;
 import com.agentlego.backend.agent.domain.AgentRepository;
-import com.agentlego.backend.kb.application.KnowledgeBaseApplicationService;
-import com.agentlego.backend.memory.application.MemoryApplicationService;
+import com.agentlego.backend.kb.application.KbRagKnowledgeFactory;
 import com.agentlego.backend.memory.application.dto.MemoryItemDto;
 import com.agentlego.backend.memory.application.dto.MemoryQueryRequest;
 import com.agentlego.backend.memory.application.dto.MemoryQueryResponse;
+import com.agentlego.backend.memory.application.service.MemoryApplicationService;
 import com.agentlego.backend.model.domain.ModelAggregate;
 import com.agentlego.backend.model.domain.ModelRepository;
 import com.agentlego.backend.runtime.AgentRuntime;
 import com.agentlego.backend.runtime.definition.AgentDefinition;
-import com.agentlego.backend.tool.application.ToolExecutionService;
+import com.agentlego.backend.tool.application.service.ToolExecutionService;
 import com.agentlego.backend.tool.domain.ToolAggregate;
 import com.agentlego.backend.tool.domain.ToolRepository;
 import com.agentlego.backend.tool.domain.ToolType;
@@ -22,6 +24,7 @@ import io.agentscope.core.message.Msg;
 import io.agentscope.core.tool.Toolkit;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mapstruct.factory.Mappers;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -36,16 +39,10 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 
-/**
- * AgentApplicationService 单元测试。
- * <p>
- * 覆盖点：
- * - createAgent 的默认策略/默认 toolIds 行为
- * - runAgent 的 memory/KB 注入逻辑与开关条件
- */
 @ExtendWith(MockitoExtension.class)
 class AgentApplicationServiceTest {
 
+    private static final AgentDtoMapper AGENT_DTO_MAPPER = Mappers.getMapper(AgentDtoMapper.class);
     @Mock
     private AgentRepository agentRepository;
     @Mock
@@ -59,7 +56,7 @@ class AgentApplicationServiceTest {
     @Mock
     private MemoryApplicationService memoryApplicationService;
     @Mock
-    private KnowledgeBaseApplicationService knowledgeBaseApplicationService;
+    private KbRagKnowledgeFactory kbRagKnowledgeFactory;
 
     @Test
     void createAgent_shouldDefaultPoliciesAndToolIds() {
@@ -70,7 +67,8 @@ class AgentApplicationServiceTest {
                 toolExecutionService,
                 agentRuntime,
                 memoryApplicationService,
-                knowledgeBaseApplicationService
+                kbRagKnowledgeFactory,
+                AGENT_DTO_MAPPER
         );
 
         CreateAgentRequest req = new CreateAgentRequest();
@@ -79,7 +77,6 @@ class AgentApplicationServiceTest {
         req.setModelId("model1");
         req.setToolIds(null);
         req.setMemoryPolicy(null);
-        req.setKnowledgeBasePolicy(null);
 
         ModelAggregate model = new ModelAggregate();
         model.setId("model1");
@@ -102,7 +99,7 @@ class AgentApplicationServiceTest {
     }
 
     @Test
-    void runAgent_shouldAppendMemoryToSystemPromptAndPassKnowledgeForRag() {
+    void runAgent_shouldAppendMemoryToSystemPrompt() {
         AgentApplicationService service = new AgentApplicationService(
                 agentRepository,
                 modelRepository,
@@ -110,8 +107,10 @@ class AgentApplicationServiceTest {
                 toolExecutionService,
                 agentRuntime,
                 memoryApplicationService,
-                knowledgeBaseApplicationService
+                kbRagKnowledgeFactory,
+                AGENT_DTO_MAPPER
         );
+        when(kbRagKnowledgeFactory.resolve(any(AgentAggregate.class))).thenReturn(Optional.empty());
 
         AgentAggregate agentAgg = new AgentAggregate();
         agentAgg.setId("agent1");
@@ -119,7 +118,6 @@ class AgentApplicationServiceTest {
         agentAgg.setSystemPrompt("SYS");
         agentAgg.setToolIds(List.of("tool1"));
         agentAgg.setMemoryPolicy(Map.of("ownerScope", "user1", "topK", 2));
-        agentAgg.setKnowledgeBasePolicy(Map.of("kbKey", "kb1", "topK", 3));
         agentAgg.setCreatedAt(Instant.now());
 
         when(agentRepository.findById("agent1")).thenReturn(Optional.of(agentAgg));
@@ -163,10 +161,8 @@ class AgentApplicationServiceTest {
         verify(agentRuntime).call(defCaptor.capture(), eq("question"), any(Toolkit.class));
         AgentDefinition def = defCaptor.getValue();
 
-        // Memory 仍拼接进 systemPrompt；KB 改为通过 AgentScope RAG 注入
         assertEquals("SYS\n\n[Memory]\n- memA\n", def.systemPrompt());
-        assertNotNull(def.knowledge(), "knowledge 应在配置 kbKey 时注入");
-        assertEquals(3, def.knowledgeTopK());
+        assertNull(def.knowledge());
         verify(memoryApplicationService, times(1)).query(any(MemoryQueryRequest.class));
     }
 
@@ -179,16 +175,17 @@ class AgentApplicationServiceTest {
                 toolExecutionService,
                 agentRuntime,
                 memoryApplicationService,
-                knowledgeBaseApplicationService
+                kbRagKnowledgeFactory,
+                AGENT_DTO_MAPPER
         );
+        when(kbRagKnowledgeFactory.resolve(any(AgentAggregate.class))).thenReturn(Optional.empty());
 
         AgentAggregate agentAgg = new AgentAggregate();
         agentAgg.setId("agent1");
         agentAgg.setName("Agent1");
         agentAgg.setSystemPrompt("SYS");
         agentAgg.setToolIds(List.of());
-        agentAgg.setMemoryPolicy(Map.of("topK", 2)); // missing ownerScope
-        agentAgg.setKnowledgeBasePolicy(null);
+        agentAgg.setMemoryPolicy(Map.of("topK", 2));
 
         when(agentRepository.findById("agent1")).thenReturn(Optional.of(agentAgg));
 
@@ -212,11 +209,9 @@ class AgentApplicationServiceTest {
         assertEquals("final", resp.getOutput());
 
         verify(memoryApplicationService, never()).query(any());
-        verify(knowledgeBaseApplicationService, never()).query(any());
 
         ArgumentCaptor<AgentDefinition> defCaptor = ArgumentCaptor.forClass(AgentDefinition.class);
         verify(agentRuntime).call(defCaptor.capture(), eq("question"), any(Toolkit.class));
         assertEquals("SYS", defCaptor.getValue().systemPrompt());
     }
 }
-

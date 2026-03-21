@@ -7,55 +7,27 @@
     <resultMap id="KbChunkDOMap" type="com.agentlego.backend.kb.infrastructure.persistence.KbChunkDO">
         <id property="id" column="id"/>
         <result property="documentId" column="document_id"/>
-        <result property="chunkIndex" column="chunk_index"/>
         <result property="content" column="content"/>
-        <result property="metadataJson" column="metadata_json"/>
-        <result property="embeddingJson" column="embedding_json"/>
-        <result property="createdAt" column="created_at"/>
-        <result property="documentName" column="document_name"/>
+        <result property="similarity" column="similarity"/>
     </resultMap>
 
-    <insert id="insertChunk" parameterType="com.agentlego.backend.kb.infrastructure.persistence.KbChunkDO">
-        insert into kb_chunks (id, document_id, chunk_index, content, metadata)
-        values (#{id}, #{documentId}, #{chunkIndex}, #{content}, cast(#{metadataJson} as jsonb))
+    <insert id="insert">
+        insert into kb_chunks (id, document_id, collection_id, chunk_index, content, embedding_vec, created_at)
+        values (#{id}, #{documentId}, #{collectionId}, #{chunkIndex}, #{content},
+                CAST(#{embeddingVecLiteral} AS vector), now())
     </insert>
 
-    <select id="searchChunks" resultMap="KbChunkDOMap">
-        select c.id,
-               c.document_id,
-               c.chunk_index,
-               c.content,
-               cast(c.metadata as text) as metadata_json,
-               c.created_at,
-               d.name                   as document_name
-        from kb_chunks c
-                 join kb_documents d on c.document_id = d.id
-        where d.base_id = #{baseId}
-          and c.content ilike '%' || #{queryText} || '%'
-        order by d.created_at desc, c.chunk_index asc
-            limit #{topK}
+    <!-- pgvector：'<=>' + vector_cosine_ops = 余弦距离；ORDER BY 在库内完成近邻排序（非 Java 循环算相似度）。 -->
+    <select id="searchByCosineSimilarity" resultMap="KbChunkDOMap">
+        select id,
+        document_id,
+        content,
+        (1 - (embedding_vec <![CDATA[ <=> ]]> CAST(#{queryVecLiteral} AS vector)))::float8 as similarity
+        from kb_chunks
+        where collection_id in
+        <foreach collection="collectionIds" item="cid" open="(" separator="," close=")">#{cid}</foreach>
+        and embedding_vec is not null
+        order by embedding_vec <![CDATA[ <=> ]]> CAST(#{queryVecLiteral} AS vector) asc
+        limit #{limit}
     </select>
-
-    <select id="listChunksByBaseIdWithEmbedding" resultMap="KbChunkDOMap">
-        select c.id,
-               c.document_id,
-               c.chunk_index,
-               c.content,
-               cast(c.metadata as text)  as metadata_json,
-               cast(c.embedding as text) as embedding_json,
-               c.created_at,
-               d.name                    as document_name
-        from kb_chunks c
-                 join kb_documents d on c.document_id = d.id
-        where d.base_id = #{baseId}
-        order by d.created_at desc, c.chunk_index asc
-    </select>
-
-    <update id="updateChunkEmbedding">
-        update kb_chunks
-        set embedding = cast(#{embeddingJson} as jsonb),
-            metadata  = cast(#{metadataJson} as jsonb)
-        where id = #{chunkId}
-    </update>
 </mapper>
-

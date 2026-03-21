@@ -8,17 +8,17 @@ import java.util.List;
 @Mapper
 public interface KbDocumentMapper {
 
-    int insert(KbDocumentDO doc);
+    int insertPending(KbDocumentDO row);
 
-    int deleteById(@Param("id") String id);
-
-    long countByBaseId(@Param("baseId") String baseId);
-
-    List<KbDocumentDO> listByBaseIdPaged(
-            @Param("baseId") String baseId,
-            @Param("offset") long offset,
-            @Param("limit") int limit
+    int updateStatus(
+            @Param("id") String id,
+            @Param("status") String status,
+            @Param("errorMessage") String errorMessage
     );
 
     KbDocumentDO findById(@Param("id") String id);
+
+    List<KbDocumentDO> listByCollectionId(@Param("collectionId") String collectionId);
+
+    int deleteById(@Param("id") String id);
 }

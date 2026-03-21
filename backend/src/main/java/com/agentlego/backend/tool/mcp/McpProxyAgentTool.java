@@ -1,6 +1,6 @@
 package com.agentlego.backend.tool.mcp;
 
-import com.agentlego.backend.mcp.McpClientRegistry;
+import com.agentlego.backend.mcp.client.McpClientRegistry;
 import com.agentlego.backend.tool.domain.ToolAggregate;
 import io.agentscope.core.message.ToolResultBlock;
 import io.agentscope.core.tool.AgentTool;

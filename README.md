@@ -18,3 +18,14 @@
 - **默认 MCP 工具（Flyway V4）**：迁移会插入 3 条示例工具（`mcp_local_echo` / `mcp_local_now` / `mcp_local_format_line`），
   `endpoint` 默认为 `http://127.0.0.1:8080/mcp`，通过 MCP 调用本服务已暴露的内置工具。端口或主机不同时请在工具管理中修改；已存在同名工具时不会覆盖（`
   ON CONFLICT DO NOTHING`）。
+
+## 数据库与 Flyway
+
+- 连接串等见 `backend/src/main/resources/application.yml`（`spring.datasource`）。
+- 迁移脚本在 `backend/src/main/resources/db/migration/`；应用启动默认执行 Flyway（可用 `FLYWAY_ENABLED=false` 关闭）。
+- **知识库 v3**：**`V18`** 起重建 `kb_*` 与 `knowledge_base_policy`；**`V19`** 启用 **pgvector**（
+  `CREATE EXTENSION vector` + `kb_chunks.embedding_vec` + HNSW）；**`V20`** 从旧 **`embedding` jsonb** 回填 *
+  *`embedding_vec`**（见 `docs/KB_REDESIGN.md`）。PostgreSQL 需支持并允许安装 `vector` 扩展；本地可选用 *
+  *`docker-compose.postgres-pgvector.yml`**。
+- 历史清理：`V15` 占位；**`V16`** 曾 `DROP` 旧 `kb_*`；**`V17`** 曾删除 `knowledge_base_policy`（已由 `V18` 恢复）。若曾修改过历史脚本
+  checksum，需在 `backend` 目录执行 `mvn flyway:repair ...` 后再迁移。
