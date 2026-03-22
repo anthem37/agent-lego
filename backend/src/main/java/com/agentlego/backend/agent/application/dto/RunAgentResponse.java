@@ -11,5 +11,8 @@ public class RunAgentResponse {
      * 智能体输出（final answer）。
      */
     private String output;
+    /**
+     * 若绑定了记忆策略，返回检索预览等调试信息（可选）。
+     */
+    private AgentRunMemoryDebug memory;
 }
-

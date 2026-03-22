@@ -1,6 +1,6 @@
 "use client";
 
-import {PlusOutlined, ReloadOutlined} from "@ant-design/icons";
+import {PlusOutlined, ReloadOutlined, ToolOutlined} from "@ant-design/icons";
 import {Button, Empty, Input, message, Select, Space, Table, Tag, Tooltip, Typography} from "antd";
 import type {ColumnsType} from "antd/es/table";
 import Link from "next/link";
@@ -12,6 +12,7 @@ import {DeleteToolLink} from "@/components/tools/DeleteToolPopconfirm";
 import {McpBatchImportModal} from "@/components/tools/McpBatchImportModal";
 import {ToolFormDrawer} from "@/components/tools/ToolFormDrawer";
 import {PageHeaderBlock} from "@/components/PageHeaderBlock";
+import {PageShell} from "@/components/PageShell";
 import {SectionCard} from "@/components/SectionCard";
 import {
     deleteTool,
@@ -308,8 +309,9 @@ export default function ToolsPage() {
 
     return (
         <AppLayout>
-            <Space orientation="vertical" size={16} style={{width: "100%"}}>
+            <PageShell>
                 <PageHeaderBlock
+                    icon={<ToolOutlined/>}
                     title="工具管理"
                     subtitle={
                         <Tooltip
@@ -435,7 +437,7 @@ export default function ToolsPage() {
                     onClose={() => setMcpBulkOpen(false)}
                     onSuccess={reload}
                 />
-            </Space>
+            </PageShell>
         </AppLayout>
     );
 }

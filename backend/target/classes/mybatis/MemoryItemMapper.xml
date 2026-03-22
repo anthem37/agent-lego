@@ -2,35 +2,60 @@
 <!DOCTYPE mapper
         PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
         "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
-<mapper namespace="com.agentlego.backend.memory.infrastructure.persistence.MemoryItemMapper">
+<mapper namespace="com.agentlego.backend.memorypolicy.infrastructure.persistence.MemoryItemMapper">
 
-    <resultMap id="MemoryItemDOMap" type="com.agentlego.backend.memory.infrastructure.persistence.MemoryItemDO">
+    <resultMap id="MemoryItemDOMap" type="com.agentlego.backend.memorypolicy.infrastructure.persistence.MemoryItemDO">
         <id property="id" column="id"/>
-        <result property="ownerScope" column="owner_scope"/>
+        <result property="policyId" column="policy_id"/>
         <result property="content" column="content"/>
         <result property="metadataJson" column="metadata_json"/>
-        <result property="embeddingJson" column="embedding_json"/>
         <result property="createdAt" column="created_at"/>
+        <result property="updatedAt" column="updated_at"/>
     </resultMap>
 
-    <insert id="insert" parameterType="com.agentlego.backend.memory.infrastructure.persistence.MemoryItemDO">
-        insert into lego_memory_items (id, owner_scope, content, metadata, embedding)
-        values (#{id}, #{ownerScope}, #{content}, cast(#{metadataJson} as jsonb), #{embeddingJson}::jsonb)
+    <insert id="insert" parameterType="com.agentlego.backend.memorypolicy.infrastructure.persistence.MemoryItemDO">
+        insert into lego_memory_items (id, policy_id, content, metadata, created_at, updated_at)
+        values (#{id},
+                #{policyId},
+                #{content},
+                cast(#{metadataJson} as jsonb),
+                coalesce(#{createdAt}, now()),
+                #{updatedAt})
     </insert>
 
-    <select id="search" resultMap="MemoryItemDOMap">
+    <select id="searchByKeyword" resultMap="MemoryItemDOMap">
         select id,
-               owner_scope,
-               content,
-               cast(metadata as text)  as metadata_json,
-               cast(embedding as text) as embedding_json,
-               created_at
+        policy_id,
+        content,
+        cast(metadata as text) as metadata_json,
+        created_at,
+        updated_at
         from lego_memory_items
-        where owner_scope = #{ownerScope}
-          and content ilike '%' || #{queryText} || '%'
-        order by created_at desc
-            limit #{topK}
+        where policy_id = #{policyId}
+        <if test="q != null and q != ''">
+            and content ilike '%' || #{q} || '%'
+        </if>
+        order by coalesce(updated_at, created_at) desc, created_at desc
+        limit #{limit}
     </select>
 
-</mapper>
+    <select id="findIdByPolicyIdAndContent" resultType="java.lang.String">
+        select id
+        from lego_memory_items
+        where policy_id = #{policyId}
+          and content = #{content} limit 1
+    </select>
 
+    <update id="touchUpdatedAt">
+        update lego_memory_items
+        set updated_at = now()
+        where id = #{id}
+    </update>
+
+    <delete id="deleteByPolicyIdAndItemId">
+        delete
+        from lego_memory_items
+        where id = #{itemId}
+          and policy_id = #{policyId}
+    </delete>
+</mapper>

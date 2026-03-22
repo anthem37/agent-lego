@@ -11,8 +11,10 @@ public class AgentDO {
     private String systemPrompt;
     private String modelId;
     private String toolIdsCsv;
-    private String memoryPolicyJson;
+    private String memoryPolicyId;
     private String knowledgeBasePolicyJson;
+    private String runtimeKind;
+    private Integer maxReactIters;
     private Instant createdAt;
 }
 

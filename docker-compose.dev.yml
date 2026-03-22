@@ -1,0 +1,83 @@
+# 本地开发：PostgreSQL + Milvus（standalone）+ Qdrant
+# 拉取并启动：docker compose -f docker-compose.dev.yml pull && docker compose -f docker-compose.dev.yml up -d
+#
+# 端口：
+#   Postgres  5432
+#   Milvus    19530（gRPC）、9091（健康检查）
+#   MinIO     9000（S3 API）、9001（控制台，Milvus 依赖）
+#   Qdrant    6333（HTTP REST）
+#
+# 应用默认连：jdbc:postgresql://localhost:5432/agentlego 用户/密码 agentlego/agentlego
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: agent-lego-postgres
+    environment:
+      POSTGRES_USER: agentlego
+      POSTGRES_PASSWORD: agentlego
+      POSTGRES_DB: agentlego
+    ports:
+      - "5432:5432"
+    volumes:
+      - agentlego_pgdata:/var/lib/postgresql/data
+
+  etcd:
+    image: quay.io/coreos/etcd:v3.5.5
+    container_name: agent-lego-milvus-etcd
+    environment:
+      ETCD_AUTO_COMPACTION_MODE: revision
+      ETCD_AUTO_COMPACTION_RETENTION: "1000"
+      ETCD_QUOTA_BACKEND_BYTES: "4294967296"
+      ETCD_SNAPSHOT_COUNT: "50000"
+    volumes:
+      - milvus_etcd_data:/etcd
+    command: >
+      etcd -advertise-client-urls=http://etcd:2379 -listen-client-urls=http://0.0.0.0:2379 --data-dir /etcd
+
+  minio:
+    image: minio/minio:RELEASE.2023-03-20T20-16-18Z
+    container_name: agent-lego-milvus-minio
+    environment:
+      MINIO_ACCESS_KEY: minioadmin
+      MINIO_SECRET_KEY: minioadmin
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - milvus_minio_data:/minio_data
+    command: minio server /minio_data --console-address ":9001"
+
+  milvus:
+    image: milvusdb/milvus:v2.4.17
+    container_name: agent-lego-milvus
+    command: [ "milvus", "run", "standalone" ]
+    security_opt:
+      - seccomp:unconfined
+    environment:
+      ETCD_ENDPOINTS: etcd:2379
+      MINIO_ADDRESS: minio:9000
+    volumes:
+      - milvus_data:/var/lib/milvus
+    ports:
+      - "19530:19530"
+      - "9091:9091"
+    depends_on:
+      - etcd
+      - minio
+
+  qdrant:
+    image: qdrant/qdrant:v1.12.5
+    container_name: agent-lego-qdrant
+    ports:
+      - "6333:6333"
+      - "6334:6334"
+    volumes:
+      - qdrant_data:/qdrant/storage
+
+volumes:
+  agentlego_pgdata:
+  milvus_etcd_data:
+  milvus_minio_data:
+  milvus_data:
+  qdrant_data:

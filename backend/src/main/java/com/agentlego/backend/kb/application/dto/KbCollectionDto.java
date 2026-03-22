@@ -12,6 +12,12 @@ public class KbCollectionDto {
     private String description;
     private String embeddingModelId;
     private int embeddingDims;
+    private String vectorStoreKind;
+    private Map<String, Object> vectorStoreConfig;
+    /**
+     * 可选：创建时引用的向量库配置 ID
+     */
+    private String vectorStoreProfileId;
     /**
      * 分片策略：FIXED_WINDOW | PARAGRAPH | HEADING_SECTION
      */

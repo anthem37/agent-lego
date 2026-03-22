@@ -1,13 +1,15 @@
 "use client";
 
-import {Button, Form, Input, message, Space, Typography} from "antd";
+import {TeamOutlined} from "@ant-design/icons";
+import {Button, Form, Input, message, Typography} from "antd";
 import React from "react";
 
 import {AppLayout} from "@/components/AppLayout";
 import {ErrorAlert} from "@/components/ErrorAlert";
 import {PageHeaderBlock} from "@/components/PageHeaderBlock";
+import {PageShell} from "@/components/PageShell";
 import {SectionCard} from "@/components/SectionCard";
-import {request} from "@/lib/api/request";
+import {delegateA2a} from "@/lib/a2a/api";
 
 type A2ADelegateForm = {
     agentId: string;
@@ -26,7 +28,7 @@ export default function A2APage() {
         setOutput(null);
         setCalling(true);
         try {
-            const out = await request<string>("/a2a/delegate", {method: "POST", body: values});
+            const out = await delegateA2a(values);
             setOutput(out);
             message.success("A2A 委派执行完成");
         } catch (e) {
@@ -38,8 +40,9 @@ export default function A2APage() {
 
     return (
         <AppLayout>
-            <Space orientation="vertical" size={16} style={{width: "100%"}}>
+            <PageShell>
                 <PageHeaderBlock
+                    icon={<TeamOutlined/>}
                     title="A2A（本地委派调试）"
                     subtitle="把请求委派给本地 agent 执行，便于快速联调。"
                 />
@@ -70,7 +73,7 @@ export default function A2APage() {
                         <Typography.Text type="secondary">尚未执行</Typography.Text>
                     )}
                 </SectionCard>
-            </Space>
+            </PageShell>
         </AppLayout>
     );
 }

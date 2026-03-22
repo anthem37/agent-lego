@@ -34,6 +34,12 @@ public class AgentController {
         return ApiResponse.ok(service.getAgent(id));
     }
 
+    @PutMapping("/{id}")
+    public ApiResponse<Void> update(@PathVariable("id") String id, @Valid @RequestBody CreateAgentRequest req) {
+        service.updateAgent(id, req);
+        return ApiResponse.ok();
+    }
+
     @PostMapping("/{id}/run")
     public ApiResponse<RunAgentResponse> run(
             @PathVariable("id") String id,

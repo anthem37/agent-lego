@@ -29,7 +29,8 @@ public class KbDocumentRepositoryImpl implements KbDocumentRepository {
             String body,
             String bodyRich,
             String linkedToolIdsJson,
-            String toolOutputBindingsJson
+            String toolOutputBindingsJson,
+            String similarQueriesJson
     ) {
         KbDocumentDO row = new KbDocumentDO();
         row.setId(id);
@@ -44,6 +45,9 @@ public class KbDocumentRepositoryImpl implements KbDocumentRepository {
                 toolOutputBindingsJson == null || toolOutputBindingsJson.isBlank()
                         ? KbDocumentToolBindings.defaultBindingsJson()
                         : toolOutputBindingsJson
+        );
+        row.setSimilarQueriesJson(
+                similarQueriesJson == null || similarQueriesJson.isBlank() ? "[]" : similarQueriesJson
         );
         row.setCreatedAt(java.time.Instant.now());
         row.setUpdatedAt(row.getCreatedAt());
@@ -71,19 +75,22 @@ public class KbDocumentRepositoryImpl implements KbDocumentRepository {
             String body,
             String bodyRich,
             String linkedToolIdsJson,
-            String toolOutputBindingsJson
+            String toolOutputBindingsJson,
+            String similarQueriesJson
     ) {
         String linked = linkedToolIdsJson == null || linkedToolIdsJson.isBlank() ? "[]" : linkedToolIdsJson;
         String bindings = toolOutputBindingsJson == null || toolOutputBindingsJson.isBlank()
                 ? KbDocumentToolBindings.defaultBindingsJson()
                 : toolOutputBindingsJson;
+        String sq = similarQueriesJson == null || similarQueriesJson.isBlank() ? "[]" : similarQueriesJson;
         mapper.updateReingest(
                 id,
                 title,
                 body,
                 bodyRich == null || bodyRich.isBlank() ? null : bodyRich,
                 linked,
-                bindings
+                bindings,
+                sq
         );
     }
 
@@ -146,6 +153,11 @@ public class KbDocumentRepositoryImpl implements KbDocumentRepository {
                 row.getToolOutputBindingsJson() == null || row.getToolOutputBindingsJson().isBlank()
                         ? KbDocumentToolBindings.defaultBindingsJson()
                         : row.getToolOutputBindingsJson()
+        );
+        r.setSimilarQueriesJson(
+                row.getSimilarQueriesJson() == null || row.getSimilarQueriesJson().isBlank()
+                        ? "[]"
+                        : row.getSimilarQueriesJson()
         );
         r.setCreatedAt(row.getCreatedAt());
         r.setUpdatedAt(row.getUpdatedAt());

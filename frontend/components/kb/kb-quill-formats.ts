@@ -1,10 +1,7 @@
 import type {default as DeltaType} from "quill-delta";
 import Quill from "quill";
 
-import {
-    formatKbToolFieldChipDisplay,
-    formatKbToolFieldPathForTitle,
-} from "@/lib/kb/kb-rich-tag-labels";
+import {formatKbToolFieldChipDisplay, formatKbToolFieldPathForTitle,} from "@/lib/kb/kb-rich-tag-labels";
 
 const Embed = Quill.import("blots/embed") as typeof import("quill/blots/embed").default;
 const Delta = Quill.import("delta") as typeof DeltaType;
@@ -13,15 +10,15 @@ const Delta = Quill.import("delta") as typeof DeltaType;
 export const KB_KNOWLEDGE_TAG_BLOT = "kbKnowledgeTag";
 
 export type KbTagValue =
-    | {kind: "tool"; code: string; /** 编辑器展示用，不入库业务键 */ displayText?: string}
+    | { kind: "tool"; code: string; /** 编辑器展示用，不入库业务键 */ displayText?: string }
     | {
-          kind: "tool_field";
-          code: string;
-          field: string;
-          displayText?: string;
-          /** 出参表字段说明，写入 data-kb-field-desc 便于详情回显 */
-          fieldDescription?: string;
-      };
+    kind: "tool_field";
+    code: string;
+    field: string;
+    displayText?: string;
+    /** 出参表字段说明，写入 data-kb-field-desc 便于详情回显 */
+    fieldDescription?: string;
+};
 
 let registered = false;
 

@@ -48,9 +48,9 @@ agentlego:
     ingest:
       max-document-chars: 524288
       max-chunks: 2000
-    # 检索：是否默认启用 PostgreSQL 全文通道并与向量混合（RRF）；智能体 knowledge_base_policy.fullTextEnabled 可覆盖
+    # 检索：全文混合已废弃；向量检索走外置 Milvus / Qdrant（DelegatingKbVectorStore + KbVectorRetrieveEngine）
     retrieve:
-      fulltext-enabled: true
+      fulltext-enabled: false
 
 mybatis:
   mapper-locations: classpath*:mybatis/*.xml

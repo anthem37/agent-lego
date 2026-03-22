@@ -1,71 +1,62 @@
 "use client";
 
-import {Button, Card, Descriptions, Form, Input, Select, Space, Typography} from "antd";
+import {RobotOutlined} from "@ant-design/icons";
+import {
+    Alert,
+    Button,
+    Col,
+    Descriptions,
+    Divider,
+    Form,
+    Input,
+    InputNumber,
+    message,
+    Row,
+    Select,
+    Space,
+    Switch,
+    Tag,
+    Typography,
+} from "antd";
+import Link from "next/link";
 import React from "react";
 
 import {AppLayout} from "@/components/AppLayout";
 import {ErrorAlert} from "@/components/ErrorAlert";
-import {JsonTextArea} from "@/components/JsonTextArea";
-import {type ModelOptionRow, toModelSelectOptions} from "@/lib/model-select-options";
-import {request} from "@/lib/api/request";
-import {parseJsonObject, stringifyPretty} from "@/lib/json";
-
-type AgentDto = {
-    id: string;
-    name: string;
-    systemPrompt: string;
-    modelId: string;
-    modelDisplayName?: string;
-    modelProvider?: string;
-    modelModelKey?: string;
-    modelConfigSummary?: string;
-    toolIds?: string[];
-    memoryPolicy?: Record<string, unknown>;
-    knowledgeBasePolicy?: Record<string, unknown>;
-    createdAt?: string;
-};
-
-type RunAgentForm = {
-    modelId?: string;
-    input: string;
-    optionsJson?: string;
-};
-
-type RunAgentResponse = {
-    output: string;
-};
+import {PageHeaderBlock} from "@/components/PageHeaderBlock";
+import {PageShell} from "@/components/PageShell";
+import {SectionCard} from "@/components/SectionCard";
+import {getAgent, runAgent, updateAgent} from "@/lib/agents/api";
+import {buildRunOptions, buildUpsertAgentRequestBody, parseKbPolicyFromAgent} from "@/lib/agents/build-policy";
+import {filterMemoryPolicySelectOption, filterModelSelectOption,} from "@/lib/agents/form-options";
+import {runtimeKindLabel} from "@/lib/agents/runtime-labels";
+import {AGENT_RUNTIME, AGENT_RUNTIME_OPTIONS} from "@/lib/agents/runtime-kinds";
+import type {AgentDto, RunAgentForm, RunAgentResponse, UpsertAgentFormValues} from "@/lib/agents/types";
+import {toModelSelectOptions} from "@/lib/model-select-options";
+import {useAgentFormRefs} from "@/hooks/useAgentFormRefs";
+import {stringifyPretty} from "@/lib/json";
 
 export default function AgentDetailPage(props: { params: Promise<{ id: string }> }) {
     const [agent, setAgent] = React.useState<AgentDto | null>(null);
-    const [modelRows, setModelRows] = React.useState<ModelOptionRow[]>([]);
     const [loading, setLoading] = React.useState(false);
+    const [savingEdit, setSavingEdit] = React.useState(false);
     const [running, setRunning] = React.useState(false);
     const [runOut, setRunOut] = React.useState<RunAgentResponse | null>(null);
     const [error, setError] = React.useState<unknown>(null);
     const [form] = Form.useForm<RunAgentForm>();
+    const [editForm] = Form.useForm<UpsertAgentFormValues>();
 
-    const chatModelRows = React.useMemo(
-        () => modelRows.filter((m) => m.chatProvider !== false),
-        [modelRows],
-    );
+    const {
+        loadingRefs,
+        chatModelRows,
+        embeddingModelRows,
+        toolOptions,
+        collectionOptions,
+        memoryPolicyOptions,
+    } = useAgentFormRefs();
 
-    React.useEffect(() => {
-        let cancelled = false;
-        void request<ModelOptionRow[]>("/models")
-            .then((d) => {
-                if (!cancelled) {
-                    setModelRows(Array.isArray(d) ? d : []);
-                }
-            })
-            .catch(() => {
-                if (!cancelled) {
-                    setModelRows([]);
-                }
-            });
-        return () => {
-            cancelled = true;
-        };
-    }, []);
+    const editRuntime = Form.useWatch("runtimeKind", editForm);
+    const editIsReact = editRuntime === AGENT_RUNTIME.REACT;
 
     React.useEffect(() => {
         let cancelled = false;
@@ -73,7 +64,7 @@ export default function AgentDetailPage(props: { params: Promise<{ id: string }>
         setError(null);
         void props.params.then(async ({id}) => {
             try {
-                const data = await request<AgentDto>(`/agents/${id}`);
+                const data = await getAgent(id);
                 if (!cancelled) {
                     setAgent(data);
                     form.setFieldsValue({modelId: data.modelId});
@@ -93,6 +84,44 @@ export default function AgentDetailPage(props: { params: Promise<{ id: string }>
         };
     }, [form, props.params]);
 
+    React.useEffect(() => {
+        if (!agent) {
+            return;
+        }
+        const kb = parseKbPolicyFromAgent(agent.knowledgeBasePolicy);
+        editForm.setFieldsValue({
+            runtimeKind: (agent.runtimeKind as UpsertAgentFormValues["runtimeKind"]) ?? AGENT_RUNTIME.REACT,
+            maxReactIters: agent.maxReactIters ?? 10,
+            name: agent.name,
+            systemPrompt: agent.systemPrompt,
+            modelId: agent.modelId,
+            toolIds: agent.toolIds ?? [],
+            memoryPolicyId: agent.memoryPolicyId,
+            ...kb,
+        });
+    }, [agent, editForm]);
+
+    async function onSaveEdit(values: UpsertAgentFormValues) {
+        if (!agent) {
+            return;
+        }
+        setSavingEdit(true);
+        setError(null);
+        try {
+            const kind = values.runtimeKind ?? AGENT_RUNTIME.REACT;
+            const isReact = kind === AGENT_RUNTIME.REACT;
+            await updateAgent(agent.id, buildUpsertAgentRequestBody(values, isReact));
+            message.success("已保存");
+            const fresh = await getAgent(agent.id);
+            setAgent(fresh);
+            form.setFieldsValue({modelId: fresh.modelId});
+        } catch (e) {
+            setError(e);
+        } finally {
+            setSavingEdit(false);
+        }
+    }
+
     async function onRun(values: RunAgentForm) {
         if (!agent) {
             return;
@@ -101,7 +130,11 @@ export default function AgentDetailPage(props: { params: Promise<{ id: string }>
         setRunning(true);
         setRunOut(null);
         try {
-            const options = values.optionsJson ? parseJsonObject(values.optionsJson) : undefined;
+            const options = buildRunOptions({
+                temperature: values.temperature,
+                maxTokens: values.maxTokens,
+                topP: values.topP,
+            });
             const body: Record<string, unknown> = {
                 input: values.input,
             };
@@ -112,10 +145,7 @@ export default function AgentDetailPage(props: { params: Promise<{ id: string }>
             if (options !== undefined) {
                 body.options = options;
             }
-            const data = await request<RunAgentResponse>(`/agents/${agent.id}/run`, {
-                method: "POST",
-                body,
-            });
+            const data = await runAgent(agent.id, body);
             setRunOut(data);
         } catch (e) {
             setError(e);
@@ -126,29 +156,36 @@ export default function AgentDetailPage(props: { params: Promise<{ id: string }>
 
     return (
         <AppLayout>
-            <Space orientation="vertical" size={16} style={{width: "100%"}}>
-                <div>
-                    <Typography.Title level={3} style={{margin: 0}}>
-                        智能体详情
-                    </Typography.Title>
-                    <Typography.Text type="secondary">
-                        {agent ? (
+            <PageShell>
+                <PageHeaderBlock
+                    icon={<RobotOutlined/>}
+                    backHref="/agents"
+                    title="智能体详情"
+                    subtitle={
+                        agent ? (
                             <>
                                 ID：<Typography.Text code>{agent.id}</Typography.Text>
                             </>
                         ) : (
                             "加载中…"
-                        )}
-                    </Typography.Text>
-                </div>
+                        )
+                    }
+                />
 
                 <ErrorAlert error={error}/>
 
-                <Card title="配置快照" loading={loading}>
+                <SectionCard title="配置快照" loading={loading}>
                     {agent ? (
-                        <Descriptions column={1} size="small">
-                            <Descriptions.Item label="name">{agent.name}</Descriptions.Item>
-                            <Descriptions.Item label="默认模型配置">
+                        <Descriptions column={1} size="small" labelStyle={{width: 140}}>
+                            <Descriptions.Item label="名称">{agent.name}</Descriptions.Item>
+                            <Descriptions.Item
+                                label="运行时形态">{runtimeKindLabel(agent.runtimeKind)}</Descriptions.Item>
+                            {agent.runtimeKind === AGENT_RUNTIME.REACT ? (
+                                <Descriptions.Item label="ReAct maxIters">
+                                    {typeof agent.maxReactIters === "number" ? agent.maxReactIters : "—"}
+                                </Descriptions.Item>
+                            ) : null}
+                            <Descriptions.Item label="默认模型">
                                 <Space orientation="vertical" size={4}>
                                     <Typography.Text strong>{agent.modelDisplayName ?? "—"}</Typography.Text>
                                     <Typography.Text type="secondary" style={{fontSize: 12}}>
@@ -161,70 +198,286 @@ export default function AgentDetailPage(props: { params: Promise<{ id: string }>
                                             参数摘要：{agent.modelConfigSummary}
                                         </Typography.Text>
                                     ) : null}
-                                    <Typography.Text code copyable>
-                                        {agent.modelId}
-                                    </Typography.Text>
+                                    <Link href={`/models/${agent.modelId}`}>
+                                        <Typography.Text code copyable>
+                                            {agent.modelId}
+                                        </Typography.Text>
+                                    </Link>
                                 </Space>
                             </Descriptions.Item>
-                            <Descriptions.Item label="createdAt">{agent.createdAt ?? "-"}</Descriptions.Item>
-                            <Descriptions.Item label="toolIds">
-                                <pre style={{
-                                    margin: 0,
-                                    whiteSpace: "pre-wrap"
-                                }}>{stringifyPretty(agent.toolIds ?? [])}</pre>
+                            <Descriptions.Item label="创建时间">{agent.createdAt ?? "-"}</Descriptions.Item>
+                            <Descriptions.Item label="已绑定的工具">
+                                {agent.toolIds && agent.toolIds.length > 0 ? (
+                                    <Space wrap>
+                                        {agent.toolIds.map((tid) => (
+                                            <Link key={tid} href={`/tools/${tid}`} title={tid}>
+                                                <Tag style={{cursor: "pointer"}}>
+                                                    {tid.length > 16 ? `${tid.slice(0, 14)}…` : tid}
+                                                </Tag>
+                                            </Link>
+                                        ))}
+                                    </Space>
+                                ) : (
+                                    <Typography.Text type="secondary">未绑定</Typography.Text>
+                                )}
                             </Descriptions.Item>
-                            <Descriptions.Item label="memoryPolicy">
-                                <pre style={{
-                                    margin: 0,
-                                    whiteSpace: "pre-wrap"
-                                }}>{stringifyPretty(agent.memoryPolicy ?? {})}</pre>
+                            <Descriptions.Item label="记忆策略">
+                                {agent.memoryPolicyId ? (
+                                    <Space orientation="vertical" size={4}>
+                                        <Typography.Text code copyable>{agent.memoryPolicyId}</Typography.Text>
+                                        {agent.memoryPolicyName ? (
+                                            <Typography.Text>{agent.memoryPolicyName}</Typography.Text>
+                                        ) : null}
+                                        {agent.memoryPolicyOwnerScope ? (
+                                            <Typography.Text type="secondary" style={{fontSize: 12}}>
+                                                owner_scope：{agent.memoryPolicyOwnerScope}
+                                            </Typography.Text>
+                                        ) : null}
+                                        <Link href={`/memory-policies/${agent.memoryPolicyId}`}>查看策略与条目</Link>
+                                    </Space>
+                                ) : (
+                                    <Typography.Text type="secondary">未绑定</Typography.Text>
+                                )}
                             </Descriptions.Item>
-                            <Descriptions.Item label="knowledgeBasePolicy">
+                            <Descriptions.Item label="知识库策略">
                                 <pre style={{
                                     margin: 0,
-                                    whiteSpace: "pre-wrap"
+                                    whiteSpace: "pre-wrap",
                                 }}>{stringifyPretty(agent.knowledgeBasePolicy ?? {})}</pre>
                             </Descriptions.Item>
-                            <Descriptions.Item label="systemPrompt">
+                            <Descriptions.Item label="系统提示词">
                                 <pre style={{margin: 0, whiteSpace: "pre-wrap"}}>{agent.systemPrompt}</pre>
                             </Descriptions.Item>
                         </Descriptions>
                     ) : (
                         <Typography.Text type="secondary">未加载到数据</Typography.Text>
                     )}
-                </Card>
+                </SectionCard>
 
-                <Card title="运行（同步返回 output）">
+                {agent ? (
+                    <SectionCard title="编辑配置">
+                        <Typography.Paragraph type="secondary" style={{marginTop: 0}}>
+                            全量更新智能体（与创建页字段一致）。可在此<strong>改绑记忆策略</strong>、调整工具与知识库策略。
+                        </Typography.Paragraph>
+                        <Form<UpsertAgentFormValues>
+                            form={editForm}
+                            layout="vertical"
+                            onFinish={onSaveEdit}
+                            initialValues={{
+                                runtimeKind: AGENT_RUNTIME.REACT,
+                                maxReactIters: 10,
+                                kbEnabled: false,
+                                kbTopK: 5,
+                                kbScoreThreshold: 0.25,
+                                toolIds: [],
+                            }}
+                        >
+                            <Form.Item
+                                name="runtimeKind"
+                                label="运行时形态"
+                                rules={[{required: true, message: "请选择"}]}
+                            >
+                                <Select
+                                    options={AGENT_RUNTIME_OPTIONS.map((o) => ({
+                                        value: o.value,
+                                        label: `${o.title}（${o.badge}）`,
+                                    }))}
+                                />
+                            </Form.Item>
+                            {editIsReact ? (
+                                <Form.Item
+                                    name="maxReactIters"
+                                    label="ReAct 最大迭代步数"
+                                    rules={[{type: "number", min: 1, max: 64, message: "范围 1–64"}]}
+                                >
+                                    <InputNumber min={1} max={64} style={{width: 200}}/>
+                                </Form.Item>
+                            ) : (
+                                <Alert
+                                    type="warning"
+                                    showIcon
+                                    style={{marginBottom: 16}}
+                                    title="对话模式"
+                                    description="将不保存工具绑定；运行时 maxIters 固定为 1。"
+                                />
+                            )}
+                            <Form.Item name="name" label="名称" rules={[{required: true, message: "必填"}]}>
+                                <Input/>
+                            </Form.Item>
+                            <Form.Item name="systemPrompt" label="系统提示词"
+                                       rules={[{required: true, message: "必填"}]}>
+                                <Input.TextArea rows={6}/>
+                            </Form.Item>
+                            <Form.Item name="modelId" label="默认聊天模型" rules={[{required: true, message: "必选"}]}>
+                                <Select
+                                    showSearch
+                                    loading={loadingRefs}
+                                    options={toModelSelectOptions(chatModelRows)}
+                                    popupMatchSelectWidth={520}
+                                    filterOption={(input, option) =>
+                                        filterModelSelectOption(input, option as { searchText?: string })
+                                    }
+                                />
+                            </Form.Item>
+                            {editIsReact ? (
+                                <>
+                                    <Divider plain/>
+                                    <Form.Item name="toolIds" label="可调用的工具">
+                                        <Select
+                                            mode="multiple"
+                                            allowClear
+                                            loading={loadingRefs}
+                                            options={toolOptions}
+                                            optionFilterProp="label"
+                                            popupMatchSelectWidth={520}
+                                            maxTagCount="responsive"
+                                        />
+                                    </Form.Item>
+                                </>
+                            ) : null}
+                            <Divider plain/>
+                            <Form.Item name="memoryPolicyId" label="记忆策略">
+                                <Select
+                                    allowClear
+                                    showSearch
+                                    loading={loadingRefs}
+                                    placeholder="不启用则留空"
+                                    options={memoryPolicyOptions}
+                                    popupMatchSelectWidth={520}
+                                    filterOption={(input, option) =>
+                                        filterMemoryPolicySelectOption(input, option as { searchText?: string })
+                                    }
+                                />
+                            </Form.Item>
+                            <Divider plain/>
+                            <Form.Item name="kbEnabled" label="启用知识库检索" valuePropName="checked">
+                                <Switch/>
+                            </Form.Item>
+                            <Form.Item
+                                noStyle
+                                shouldUpdate={(prev, cur) => prev.kbEnabled !== cur.kbEnabled}
+                            >
+                                {({getFieldValue}) =>
+                                    getFieldValue("kbEnabled") ? (
+                                        <>
+                                            <Form.Item
+                                                name="kbCollectionIds"
+                                                label="知识集合"
+                                                rules={[{required: true, message: "请至少选择一个集合"}]}
+                                            >
+                                                <Select
+                                                    mode="multiple"
+                                                    allowClear
+                                                    loading={loadingRefs}
+                                                    options={collectionOptions}
+                                                    optionFilterProp="label"
+                                                />
+                                            </Form.Item>
+                                            <Form.Item name="kbTopK" label="知识片段召回条数">
+                                                <InputNumber min={1} max={50} style={{width: "100%"}}/>
+                                            </Form.Item>
+                                            <Form.Item name="kbScoreThreshold" label="知识相似度阈值">
+                                                <InputNumber
+                                                    min={0}
+                                                    max={1}
+                                                    step={0.05}
+                                                    style={{width: "100%"}}
+                                                />
+                                            </Form.Item>
+                                            <Form.Item name="kbEmbeddingModelId" label="嵌入模型覆盖（可选）">
+                                                <Select
+                                                    allowClear
+                                                    showSearch
+                                                    placeholder="选用 Embedding 模型配置"
+                                                    options={toModelSelectOptions(embeddingModelRows)}
+                                                    popupMatchSelectWidth={520}
+                                                    filterOption={(input, option) =>
+                                                        filterModelSelectOption(input, option as {
+                                                            searchText?: string
+                                                        })
+                                                    }
+                                                />
+                                            </Form.Item>
+                                        </>
+                                    ) : null
+                                }
+                            </Form.Item>
+                            <Form.Item style={{marginTop: 16}}>
+                                <Button type="primary" htmlType="submit" loading={savingEdit}>
+                                    保存
+                                </Button>
+                            </Form.Item>
+                        </Form>
+                    </SectionCard>
+                ) : null}
+
+                <SectionCard title="试运行（同步返回）">
+                    <Typography.Paragraph type="secondary" style={{marginTop: 0}}>
+                        下方可填写用户输入；可选覆盖本次使用的模型与常见推理参数（与模型配置合并，此处优先）。
+                        更多参数请在「模型」中调整默认配置。
+                        {agent?.runtimeKind === AGENT_RUNTIME.CHAT ? (
+                            <>
+                                {" "}
+                                当前为<strong>对话</strong>形态：运行时<strong>不挂载工具</strong>且 maxIters=1。
+                            </>
+                        ) : null}
+                    </Typography.Paragraph>
                     <Form<RunAgentForm> form={form} layout="vertical" onFinish={onRun}>
-                        <Form.Item name="modelId" label="运行时使用模型配置（可选覆盖）">
+                        <Form.Item
+                            name="modelId"
+                            label="本次使用的模型"
+                            extra="可选：不选则使用上方配置的默认模型。"
+                        >
                             <Select
                                 allowClear
                                 showSearch
                                 placeholder={
                                     agent?.modelDisplayName
                                         ? `默认：${agent.modelDisplayName}`
-                                        : "默认使用上方绑定配置；可在此临时切换"
+                                        : "默认使用智能体绑定配置"
                                 }
                                 options={toModelSelectOptions(chatModelRows)}
                                 popupMatchSelectWidth={520}
-                                filterOption={(input, option) => {
-                                    const st = (option as { searchText?: string }).searchText ?? "";
-                                    const q = input.trim().toLowerCase();
-                                    return !q || st.includes(q);
-                                }}
+                                filterOption={(input, option) =>
+                                    filterModelSelectOption(input, option as { searchText?: string })
+                                }
                             />
                         </Form.Item>
-                        <Form.Item name="optionsJson" label="options（JSON，可选覆盖）">
-                            <JsonTextArea
-                                rows={8}
-                                sample={{
-                                    temperature: 0.2,
-                                    maxTokens: 256,
-                                }}
-                            />
-                        </Form.Item>
-                        <Form.Item name="input" label="input" rules={[{required: true, message: "请输入 input"}]}>
-                            <Input.TextArea rows={4} placeholder="用户输入"/>
+                        <Typography.Text strong style={{display: "block", marginBottom: 8}}>
+                            推理参数（可选，覆盖模型默认值）
+                        </Typography.Text>
+                        <Row gutter={16}>
+                            <Col xs={24} sm={8}>
+                                <Form.Item name="temperature" label="温度 temperature">
+                                    <InputNumber
+                                        min={0}
+                                        max={2}
+                                        step={0.1}
+                                        style={{width: "100%"}}
+                                        placeholder="默认用模型配置"
+                                    />
+                                </Form.Item>
+                            </Col>
+                            <Col xs={24} sm={8}>
+                                <Form.Item name="maxTokens" label="最大生成长度 maxTokens">
+                                    <InputNumber min={1} max={128000} style={{width: "100%"}}
+                                                 placeholder="默认用模型配置"/>
+                                </Form.Item>
+                            </Col>
+                            <Col xs={24} sm={8}>
+                                <Form.Item name="topP" label="核采样 topP">
+                                    <InputNumber
+                                        min={0}
+                                        max={1}
+                                        step={0.05}
+                                        style={{width: "100%"}}
+                                        placeholder="默认用模型配置"
+                                    />
+                                </Form.Item>
+                            </Col>
+                        </Row>
+                        <Form.Item name="input" label="用户输入" rules={[{required: true, message: "请输入内容"}]}>
+                            <Input.TextArea rows={5} placeholder="模拟用户消息"/>
                         </Form.Item>
                         <Form.Item>
                             <Button type="primary" htmlType="submit" loading={running} disabled={!agent}>
@@ -233,13 +486,82 @@ export default function AgentDetailPage(props: { params: Promise<{ id: string }>
                         </Form.Item>
                     </Form>
                     {runOut ? (
-                        <pre style={{margin: 0, whiteSpace: "pre-wrap"}}>{runOut.output}</pre>
+                        <>
+                            <Typography.Text strong style={{display: "block", marginBottom: 8}}>
+                                模型输出
+                            </Typography.Text>
+                            <pre
+                                style={{
+                                    margin: 0,
+                                    whiteSpace: "pre-wrap",
+                                    padding: 12,
+                                    background: "var(--app-primary-soft, rgba(22,119,255,0.06))",
+                                    borderRadius: "var(--app-radius-sm, 8px)",
+                                    border: "1px solid var(--app-border)",
+                                }}
+                            >
+                                {runOut.output}
+                            </pre>
+                            {runOut.memory ? (
+                                <>
+                                    <Typography.Text strong style={{display: "block", marginTop: 16, marginBottom: 8}}>
+                                        记忆侧预览（调试）
+                                    </Typography.Text>
+                                    <Descriptions column={1} size="small" bordered>
+                                        <Descriptions.Item label="策略">
+                                            {runOut.memory.memoryPolicyName ?? "—"}{" "}
+                                            {runOut.memory.memoryPolicyId ? (
+                                                <Typography.Text code copyable>
+                                                    {runOut.memory.memoryPolicyId}
+                                                </Typography.Text>
+                                            ) : null}
+                                        </Descriptions.Item>
+                                        <Descriptions.Item label="owner_scope">
+                                            {runOut.memory.ownerScope ?? "—"}
+                                        </Descriptions.Item>
+                                        <Descriptions.Item label="retrieval / write">
+                                            {runOut.memory.retrievalMode ?? "—"} / {runOut.memory.writeMode ?? "—"}
+                                        </Descriptions.Item>
+                                        <Descriptions.Item label="预览命中条数">
+                                            {runOut.memory.previewHitCount ?? 0}
+                                        </Descriptions.Item>
+                                    </Descriptions>
+                                    <pre
+                                        style={{
+                                            marginTop: 8,
+                                            whiteSpace: "pre-wrap",
+                                            padding: 12,
+                                            background: "rgba(0,0,0,0.02)",
+                                            borderRadius: "var(--app-radius-sm, 8px)",
+                                            border: "1px solid var(--app-border)",
+                                            maxHeight: 280,
+                                            overflow: "auto",
+                                        }}
+                                    >
+                                        {runOut.memory.previewText || "（无命中）"}
+                                    </pre>
+                                </>
+                            ) : null}
+                        </>
                     ) : (
                         <Typography.Text type="secondary">尚未运行</Typography.Text>
                     )}
-                </Card>
-            </Space>
+                </SectionCard>
+
+                {agent ? (
+                    <SectionCard title="快捷跳转">
+                        <Space wrap>
+                            <Link href={`/models/${agent.modelId}`}>查看绑定模型</Link>
+                            <Typography.Text type="secondary">|</Typography.Text>
+                            <Link href="/tools">工具管理</Link>
+                            <Typography.Text type="secondary">|</Typography.Text>
+                            <Link href="/memory-policies">记忆策略</Link>
+                            <Typography.Text type="secondary">|</Typography.Text>
+                            <Link href="/kb">知识库</Link>
+                        </Space>
+                    </SectionCard>
+                ) : null}
+            </PageShell>
         </AppLayout>
     );
 }
-

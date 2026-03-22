@@ -61,6 +61,18 @@ public class ToolExecutionService {
         this.httpCallTimeout = Duration.ofSeconds(sec);
     }
 
+    private static AgentTool wrapForKbRecording(
+            AgentTool tool,
+            ToolAggregate aggregate,
+            KbRagSessionToolOutputs sessionToolOutputs,
+            com.fasterxml.jackson.databind.ObjectMapper om
+    ) {
+        if (sessionToolOutputs == null || aggregate.getId() == null || aggregate.getId().isBlank()) {
+            return tool;
+        }
+        return new KbRecordingAgentTool(tool, aggregate.getId(), sessionToolOutputs, om);
+    }
+
     /**
      * 构建一个只包含指定工具集合的 Toolkit，供智能体运行时挂载使用。
      */
@@ -115,18 +127,6 @@ public class ToolExecutionService {
         }
 
         return toolkit;
-    }
-
-    private static AgentTool wrapForKbRecording(
-            AgentTool tool,
-            ToolAggregate aggregate,
-            KbRagSessionToolOutputs sessionToolOutputs,
-            com.fasterxml.jackson.databind.ObjectMapper om
-    ) {
-        if (sessionToolOutputs == null || aggregate.getId() == null || aggregate.getId().isBlank()) {
-            return tool;
-        }
-        return new KbRecordingAgentTool(tool, aggregate.getId(), sessionToolOutputs, om);
     }
 
     /**

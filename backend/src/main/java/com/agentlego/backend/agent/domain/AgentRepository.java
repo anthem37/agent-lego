@@ -7,6 +7,11 @@ import java.util.Optional;
 public interface AgentRepository {
     String save(AgentAggregate aggregate);
 
+    /**
+     * 全量更新智能体主表并替换工具关联（先删后插）。
+     */
+    void update(AgentAggregate aggregate);
+
     Optional<AgentAggregate> findById(String id);
 
     /**
@@ -30,8 +35,28 @@ public interface AgentRepository {
     List<String> listAgentIdsReferencingKbCollection(String collectionId);
 
     /**
+     * 控制台知识库：列出智能体 id、名称与 knowledge_base_policy JSON（用于解析 collectionIds）。
+     */
+    List<AgentKbPolicyPickerRow> listKbPolicyPickerRows();
+
+    /**
      * 仅更新 {@code knowledge_base_policy} 列（用于知识库集合删除后的策略收敛）。
      */
     void updateKnowledgeBasePolicy(String agentId, Map<String, Object> knowledgeBasePolicy);
+
+    /**
+     * 绑定到指定记忆策略的智能体数量。
+     */
+    int countByMemoryPolicyId(String policyId);
+
+    /**
+     * 批量统计各策略被智能体引用次数（未出现的策略视为 0）。
+     */
+    Map<String, Integer> countAgentsByMemoryPolicyIds(List<String> policyIds);
+
+    /**
+     * 列出引用指定记忆策略的智能体（id、名称）。
+     */
+    List<AgentMemoryPolicyRefRow> listAgentsByMemoryPolicyId(String policyId);
 }
 

@@ -30,6 +30,11 @@ public class KbController {
         return ApiResponse.ok(KbChunkStrategyMetaDto.standardList());
     }
 
+    @GetMapping("/meta/agent-policy-summaries")
+    public ApiResponse<List<KbAgentPolicySummaryDto>> listAgentKbPolicySummaries() {
+        return ApiResponse.ok(kbApplicationService.listAgentKbPolicySummaries());
+    }
+
     @GetMapping("/collections")
     public ApiResponse<List<KbCollectionDto>> listCollections() {
         return ApiResponse.ok(kbApplicationService.listCollections());
@@ -60,6 +65,41 @@ public class KbController {
             @RequestBody(required = false) RenderKbDocumentRequest req
     ) {
         return ApiResponse.ok(kbApplicationService.renderDocumentBody(collectionId, documentId, req));
+    }
+
+    @PostMapping("/collections/{collectionId}/documents/{documentId}/validate")
+    public ApiResponse<KbDocumentValidationResponse> validateDocument(
+            @PathVariable("collectionId") String collectionId,
+            @PathVariable("documentId") String documentId
+    ) {
+        return ApiResponse.ok(kbApplicationService.validateDocument(collectionId, documentId));
+    }
+
+    @PostMapping("/collections/{collectionId}/retrieve-preview")
+    public ApiResponse<KbRetrievePreviewResponse> previewRetrieve(
+            @PathVariable("collectionId") String collectionId,
+            @RequestBody KbRetrievePreviewRequest req
+    ) {
+        return ApiResponse.ok(kbApplicationService.previewRetrieve(collectionId, req));
+    }
+
+    /**
+     * 多集合联合召回调试（与智能体绑定多集合 RAG 一致）。
+     */
+    @PostMapping("/retrieve-preview")
+    public ApiResponse<KbRetrievePreviewResponse> previewRetrieveMulti(@RequestBody KbMultiRetrievePreviewRequest req) {
+        return ApiResponse.ok(kbApplicationService.previewRetrieveMulti(req));
+    }
+
+    /**
+     * 批量校验某集合下全部文档。
+     */
+    @PostMapping("/collections/{collectionId}/documents/validate-all")
+    public ApiResponse<KbCollectionDocumentsValidationResponse> validateAllDocumentsInCollection(
+            @PathVariable("collectionId") String collectionId,
+            @RequestBody(required = false) KbValidateCollectionDocumentsRequest req
+    ) {
+        return ApiResponse.ok(kbApplicationService.validateCollectionDocuments(collectionId, req));
     }
 
     @PostMapping("/collections/{id}/documents")

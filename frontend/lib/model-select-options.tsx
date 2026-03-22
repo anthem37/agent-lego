@@ -22,6 +22,17 @@ export type ModelSelectOption = {
     label: React.ReactNode;
 };
 
+/**
+ * 根据模型 id 解析配置名称（用于表格/详情展示，避免只显示 UUID）。
+ * 若列表中找不到（未加载或已删除），则回退为原始 id。
+ */
+export function modelNameForId(rows: ModelOptionRow[], id: string | undefined | null): string {
+    if (!id) {
+        return "—";
+    }
+    return rows.find((r) => r.id === id)?.name ?? id;
+}
+
 export function toModelSelectOptions(rows: ModelOptionRow[]): ModelSelectOption[] {
     return rows.map((m) => ({
         value: m.id,

@@ -4,6 +4,7 @@ import {
     BookOutlined,
     BranchesOutlined,
     CloudServerOutlined,
+    ClusterOutlined,
     DatabaseOutlined,
     ExperimentOutlined,
     HomeOutlined,
@@ -12,110 +13,188 @@ import {
     TeamOutlined,
     ToolOutlined,
 } from "@ant-design/icons";
-import {Badge, Layout, Menu, Tag, Typography} from "antd";
+import {Badge, Breadcrumb, Layout, Menu, Tag, Typography} from "antd";
 import Link from "next/link";
 import {usePathname} from "next/navigation";
 import React from "react";
 
-import {NAV_ITEMS} from "@/lib/nav";
+import {getNavContext, NAV_GROUPS, navKeyFromPath} from "@/lib/nav";
 
 const {Header, Sider, Content} = Layout;
 
-function toSelectedKey(pathname: string): string {
-    if (pathname === "/") {
-        return "dashboard";
-    }
-    const first = pathname.split("/").filter(Boolean)[0] ?? "dashboard";
-    if (first === "models") return "models";
-    if (first === "tools") return "tools";
-    if (first === "agents") return "agents";
-    if (first === "workflows") return "workflows";
-    if (first === "runs") return "runs";
-    if (first === "memory") return "memory";
-    if (first === "kb") return "kb";
-    if (first === "evaluations") return "evaluations";
-    if (first === "a2a") return "a2a";
-    return "dashboard";
-}
+const menuIconMap: Record<string, React.ReactNode> = {
+    dashboard: <HomeOutlined/>,
+    models: <CloudServerOutlined/>,
+    tools: <ToolOutlined/>,
+    "vector-store": <ClusterOutlined/>,
+    agents: <RobotOutlined/>,
+    workflows: <BranchesOutlined/>,
+    runs: <PlayCircleOutlined/>,
+    "memory-policies": <DatabaseOutlined/>,
+    kb: <BookOutlined/>,
+    evaluations: <ExperimentOutlined/>,
+    a2a: <TeamOutlined/>,
+};
 
 export function AppLayout(props: { children: React.ReactNode }) {
     const pathname = usePathname();
-    const selectedKey = toSelectedKey(pathname);
-    /** 与各业务域语义对齐：模型=算力与配置、工作流=编排分支、运行=执行轨迹、知识库=文档语料、记忆=持久存储、A2A=多智能体协作 */
-    const menuIconMap: Record<string, React.ReactNode> = {
-        dashboard: <HomeOutlined/>,
-        models: <CloudServerOutlined/>,
-        tools: <ToolOutlined/>,
-        agents: <RobotOutlined/>,
-        workflows: <BranchesOutlined/>,
-        runs: <PlayCircleOutlined/>,
-        memory: <DatabaseOutlined/>,
-        kb: <BookOutlined/>,
-        evaluations: <ExperimentOutlined/>,
-        a2a: <TeamOutlined/>,
-    };
+    const selectedKey = navKeyFromPath(pathname);
+    const navCtx = getNavContext(pathname);
+
+    const menuItems = React.useMemo(
+        () =>
+            NAV_GROUPS.map((g) => ({
+                type: "group" as const,
+                key: `grp-${g.key}`,
+                label: g.title,
+                children: g.items.map((it) => ({
+                    key: it.key,
+                    icon: menuIconMap[it.key],
+                    label: <Link href={it.href}>{it.label}</Link>,
+                    title: it.relation,
+                })),
+            })),
+        [],
+    );
+
+    const breadcrumbItems = React.useMemo(() => {
+        const items: { title: React.ReactNode }[] = [
+            {
+                title: (
+                    <Link href="/" style={{color: "var(--foreground-muted)", fontSize: 13}}>
+                        首页
+                    </Link>
+                ),
+            },
+        ];
+        if (selectedKey === "dashboard") {
+            items.push({
+                title: <span style={{fontWeight: 600, fontSize: 14}}>仪表盘</span>,
+            });
+        } else {
+            if (navCtx.groupTitle) {
+                items.push({
+                    title: (
+                        <span style={{color: "var(--foreground-muted)", fontSize: 13}}>{navCtx.groupTitle}</span>
+                    ),
+                });
+            }
+            items.push({
+                title: <span style={{fontWeight: 600, fontSize: 14}}>{navCtx.pageTitle}</span>,
+            });
+        }
+        return items;
+    }, [navCtx.groupTitle, navCtx.pageTitle, selectedKey]);
 
     return (
-        <Layout style={{minHeight: "100vh", background: "#f5f7fb"}}>
+        <Layout style={{minHeight: "100vh", background: "transparent"}}>
             <Sider
+                className="app-sider"
                 breakpoint="lg"
                 collapsedWidth="0"
+                width={232}
                 theme="dark"
                 style={{
-                    boxShadow: "2px 0 8px rgba(15, 23, 42, 0.12)",
+                    position: "sticky",
+                    top: 0,
+                    height: "100vh",
+                    overflow: "auto",
+                    background: "var(--app-sider-surface, #001529)",
+                    boxShadow: "2px 0 8px rgba(0, 0, 0, 0.08)",
                 }}
             >
                 <div
                     style={{
-                        padding: 16,
-                        borderBottom: "1px solid rgba(255,255,255,0.08)",
-                        background: "linear-gradient(120deg, rgba(22,119,255,0.22), rgba(114,46,209,0.26))",
+                        padding: "20px 18px 18px",
+                        borderBottom: "1px solid rgba(255, 255, 255, 0.08)",
                     }}
                 >
-                    <Typography.Title level={4} style={{color: "white", margin: 0, letterSpacing: 0.4}}>
+                    <Typography.Title
+                        level={4}
+                        style={{
+                            color: "rgba(255, 255, 255, 0.95)",
+                            margin: 0,
+                            letterSpacing: 0,
+                            fontWeight: 600,
+                            fontSize: 18,
+                        }}
+                    >
                         Agent Lego
                     </Typography.Title>
-                    <Typography.Text style={{color: "rgba(255,255,255,0.78)"}}>
-                        管理控制台
+                    <Typography.Text
+                        style={{
+                            color: "rgba(255, 255, 255, 0.65)",
+                            fontSize: 13,
+                            display: "block",
+                            marginTop: 6,
+                            lineHeight: 1.5,
+                        }}
+                    >
+                        智能体编排控制台
                     </Typography.Text>
                 </div>
                 <Menu
+                    className="app-sider-menu"
                     theme="dark"
                     mode="inline"
                     selectedKeys={[selectedKey]}
-                    style={{borderInlineEnd: "none", paddingTop: 8}}
-                    items={NAV_ITEMS.map((it) => ({
-                        key: it.key,
-                        icon: menuIconMap[it.key],
-                        label: <Link href={it.href}>{it.label}</Link>,
-                    }))}
+                    style={{borderInlineEnd: "none", padding: "8px 0 20px"}}
+                    items={menuItems}
                 />
             </Sider>
-            <Layout>
+            <Layout style={{background: "transparent", minHeight: "100vh", display: "flex", flexDirection: "column"}}>
                 <Header
                     style={{
-                        background: "rgba(255,255,255,0.9)",
-                        borderBottom: "1px solid #eef2f7",
+                        position: "sticky",
+                        top: 0,
+                        zIndex: 10,
+                        height: "auto",
+                        lineHeight: 1.5,
+                        paddingBlock: 14,
+                        background: "#ffffff",
+                        borderBottom: "1px solid #f0f0f0",
                         backdropFilter: "blur(8px)",
-                        paddingInline: 20,
+                        WebkitBackdropFilter: "blur(8px)",
+                        paddingInline: 24,
                         display: "flex",
                         alignItems: "center",
                         justifyContent: "space-between",
+                        gap: 16,
                     }}
                 >
-                    <Badge status="processing" text="控制台在线"/>
-                    <div style={{display: "flex", alignItems: "center", gap: 8}}>
-                        <Tag color="blue" style={{marginInlineEnd: 0}}>
-                            /api 代理
+                    <div style={{minWidth: 0, flex: 1}}>
+                        <Breadcrumb items={breadcrumbItems} style={{marginBottom: 0}}/>
+                        {navCtx.relation ? (
+                            <Typography.Text
+                                type="secondary"
+                                style={{fontSize: 12, display: "block", marginTop: 4, lineHeight: 1.45}}
+                            >
+                                {navCtx.relation}
+                            </Typography.Text>
+                        ) : null}
+                    </div>
+                    <div style={{display: "flex", alignItems: "center", gap: 12, flexShrink: 0}}>
+                        <Badge
+                            status="success"
+                            text={<span style={{fontSize: 13, color: "var(--foreground-muted)"}}>服务正常</span>}
+                        />
+                        <Tag color="blue" variant="filled" style={{marginInlineEnd: 0}}>
+                            后端 API
                         </Tag>
-                        <Typography.Text style={{color: "rgba(0,0,0,0.65)"}}>localhost:8080</Typography.Text>
+                        <Typography.Text type="secondary" style={{fontSize: 13}}>
+                            localhost:8080
+                        </Typography.Text>
                     </div>
                 </Header>
-                <Content style={{padding: 24}}>
-                    <div style={{maxWidth: 1280, marginInline: "auto"}}>{props.children}</div>
+                <Content
+                    style={{
+                        padding: "var(--app-content-pad)",
+                        flex: 1,
+                    }}
+                >
+                    <div className="app-main-inner">{props.children}</div>
                 </Content>
             </Layout>
         </Layout>
     );
 }
-

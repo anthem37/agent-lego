@@ -14,15 +14,17 @@
         <result property="errorMessage" column="error_message"/>
         <result property="linkedToolIdsJson" column="linked_tool_ids_json"/>
         <result property="toolOutputBindingsJson" column="tool_output_bindings_json"/>
+        <result property="similarQueriesJson" column="similar_queries_json"/>
         <result property="createdAt" column="created_at"/>
         <result property="updatedAt" column="updated_at"/>
     </resultMap>
 
     <insert id="insertPending" parameterType="com.agentlego.backend.kb.infrastructure.persistence.KbDocumentDO">
         insert into lego_kb_documents (id, collection_id, title, body, body_rich, status, error_message, metadata,
-                                       linked_tool_ids, tool_output_bindings, created_at, updated_at)
+                                       linked_tool_ids, tool_output_bindings, similar_queries, created_at, updated_at)
         values (#{id}, #{collectionId}, #{title}, #{body}, #{bodyRich,jdbcType=VARCHAR}, 'PENDING', null, '{}'::jsonb,
                 CAST(#{linkedToolIdsJson} AS jsonb), CAST(#{toolOutputBindingsJson} AS jsonb),
+                CAST(#{similarQueriesJson} AS jsonb),
                 #{createdAt}, #{updatedAt})
     </insert>
 
@@ -36,14 +38,15 @@
 
     <update id="updateReingest">
         update lego_kb_documents
-        set title                 = #{title},
-            body                  = #{body},
-            body_rich             = #{bodyRich,jdbcType=VARCHAR},
-            linked_tool_ids       = CAST(#{linkedToolIdsJson} AS jsonb),
-            tool_output_bindings  = CAST(#{toolOutputBindingsJson} AS jsonb),
-            status                = 'PENDING',
-            error_message         = null,
-            updated_at            = now()
+        set title                = #{title},
+            body                 = #{body},
+            body_rich            = #{bodyRich,jdbcType=VARCHAR},
+            linked_tool_ids      = CAST(#{linkedToolIdsJson} AS jsonb),
+            tool_output_bindings = CAST(#{toolOutputBindingsJson} AS jsonb),
+            similar_queries      = CAST(#{similarQueriesJson} AS jsonb),
+            status               = 'PENDING',
+            error_message        = null,
+            updated_at           = now()
         where id = #{id}
     </update>
 
@@ -55,7 +58,7 @@
                body_rich,
                status,
                error_message,
-               linked_tool_ids::text as linked_tool_ids_json, tool_output_bindings::text as tool_output_bindings_json, created_at,
+               linked_tool_ids::text as linked_tool_ids_json, tool_output_bindings::text as tool_output_bindings_json, similar_queries::text as similar_queries_json, created_at,
                updated_at
         from lego_kb_documents
         where id = #{id}
@@ -63,14 +66,17 @@
 
     <select id="findByIds" resultMap="KbDocumentDOMap">
         select id,
-               collection_id,
-               title,
-               body,
-               body_rich,
-               status,
-               error_message,
-               linked_tool_ids::text as linked_tool_ids_json, tool_output_bindings::text as tool_output_bindings_json, created_at,
-               updated_at
+        collection_id,
+        title,
+        body,
+        body_rich,
+        status,
+        error_message,
+        linked_tool_ids::text as linked_tool_ids_json,
+        tool_output_bindings::text as tool_output_bindings_json,
+        similar_queries::text as similar_queries_json,
+        created_at,
+        updated_at
         from lego_kb_documents
         where id in
         <foreach collection="ids" item="id" open="(" separator="," close=")">#{id}</foreach>
@@ -84,7 +90,7 @@
                body_rich,
                status,
                error_message,
-               linked_tool_ids::text as linked_tool_ids_json, tool_output_bindings::text as tool_output_bindings_json, created_at,
+               linked_tool_ids::text as linked_tool_ids_json, tool_output_bindings::text as tool_output_bindings_json, similar_queries::text as similar_queries_json, created_at,
                updated_at
         from lego_kb_documents
         where collection_id = #{collectionId}

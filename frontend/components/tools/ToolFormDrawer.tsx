@@ -170,6 +170,8 @@ export function ToolFormDrawer(props: Props) {
                 mcpParametersAdvancedPreserve: false,
             } as Partial<ToolFormValues>);
         }
+        // 故意不依赖 localBuiltins：异步到达时再跑会 resetFields，冲掉用户已填内容；见下方 effect 仅修正 name
+        // eslint-disable-next-line react-hooks/exhaustive-deps -- localBuiltins 见上
     }, [open, mode, editingTool, form]);
 
     /** LOCAL 内置列表异步到达时，修正无效的默认 name，避免整表被重复 reset */

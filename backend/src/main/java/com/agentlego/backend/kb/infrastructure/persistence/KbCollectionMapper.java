@@ -17,4 +17,8 @@ public interface KbCollectionMapper {
     List<KbCollectionDO> findByIds(@Param("ids") List<String> ids);
 
     int deleteById(@Param("id") String id);
+
+    int countByVectorStoreProfileId(@Param("profileId") String profileId);
+
+    List<KbCollectionDO> findByVectorStoreProfileId(@Param("profileId") String profileId);
 }

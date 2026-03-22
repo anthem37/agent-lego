@@ -6,6 +6,7 @@ import com.agentlego.backend.runtime.definition.ModelDefinition;
 import io.agentscope.core.ReActAgent;
 import io.agentscope.core.agent.Event;
 import io.agentscope.core.memory.InMemoryMemory;
+import io.agentscope.core.memory.LongTermMemoryMode;
 import io.agentscope.core.message.Msg;
 import io.agentscope.core.rag.Knowledge;
 import io.agentscope.core.rag.RAGMode;
@@ -71,6 +72,13 @@ public class AgentRuntime {
 
         if (agentDef.maxIters() != null) {
             builder.maxIters(agentDef.maxIters());
+        }
+
+        if (agentDef.longTermMemory() != null) {
+            LongTermMemoryMode mode = agentDef.longTermMemoryMode() != null
+                    ? agentDef.longTermMemoryMode()
+                    : LongTermMemoryMode.STATIC_CONTROL;
+            builder.longTermMemory(agentDef.longTermMemory()).longTermMemoryMode(mode);
         }
 
         Knowledge knowledge = agentDef.knowledge();

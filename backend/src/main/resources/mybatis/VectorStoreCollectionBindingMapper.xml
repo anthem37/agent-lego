@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.agentlego.backend.vectorstore.infrastructure.persistence.VectorStoreCollectionBindingMapper">
+
+    <resultMap id="Map"
+               type="com.agentlego.backend.vectorstore.infrastructure.persistence.VectorStoreCollectionBindingDO">
+        <id property="profileId" column="profile_id"/>
+        <result property="physicalCollectionName" column="physical_collection_name"/>
+        <result property="kbCollectionId" column="kb_collection_id"/>
+        <result property="createdAt" column="created_at"/>
+    </resultMap>
+
+    <insert id="insertKb">
+        insert into lego_vector_store_collection_bindings (profile_id, physical_collection_name, kb_collection_id)
+        values (#{profileId}, #{physicalCollectionName}, #{kbCollectionId})
+    </insert>
+
+    <select id="findByProfileAndPhysicalName" resultMap="Map">
+        select profile_id,
+               physical_collection_name,
+               kb_collection_id,
+               created_at
+        from lego_vector_store_collection_bindings
+        where profile_id = #{profileId}
+          and physical_collection_name = #{physicalCollectionName}
+    </select>
+</mapper>

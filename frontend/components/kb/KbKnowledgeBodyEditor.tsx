@@ -3,7 +3,11 @@
 import {Form} from "antd";
 import React from "react";
 
-import {KbRichTextField, type KbRichTextFieldHandle, type KbToolbarExtraHandlers} from "@/components/kb/KbRichTextField";
+import {
+    KbRichTextField,
+    type KbRichTextFieldHandle,
+    type KbToolbarExtraHandlers
+} from "@/components/kb/KbRichTextField";
 
 export type KbKnowledgeBodyEditorProps = {
     editorRef?: React.Ref<KbRichTextFieldHandle>;

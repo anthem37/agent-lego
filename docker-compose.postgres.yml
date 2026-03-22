@@ -1,0 +1,19 @@
+# 本地 PostgreSQL（标准镜像，无需 pgvector；知识库向量在 Milvus）
+# 启动：docker compose -f docker-compose.postgres.yml up -d
+# 与 backend/src/main/resources/application.yml 默认库名/用户一致时可直连开发。
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: agent-lego-postgres
+    environment:
+      POSTGRES_USER: agentlego
+      POSTGRES_PASSWORD: agentlego
+      POSTGRES_DB: agentlego
+    ports:
+      - "5432:5432"
+    volumes:
+      - agentlego_pgdata:/var/lib/postgresql/data
+
+volumes:
+  agentlego_pgdata:

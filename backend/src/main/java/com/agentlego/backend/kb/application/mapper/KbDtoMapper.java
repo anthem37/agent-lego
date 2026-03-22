@@ -21,7 +21,23 @@ public interface KbDtoMapper {
     ObjectMapper KB_JSON = new ObjectMapper();
 
     @Mapping(target = "chunkParams", ignore = true)
+    @Mapping(target = "vectorStoreConfig", ignore = true)
     KbCollectionDto toCollectionDto(KbCollectionAggregate aggregate);
+
+    @AfterMapping
+    default void fillVectorStoreConfig(KbCollectionAggregate src, @MappingTarget KbCollectionDto tgt) {
+        String raw = src.getVectorStoreConfigJson();
+        if (raw == null || raw.isBlank()) {
+            tgt.setVectorStoreConfig(Map.of());
+            return;
+        }
+        try {
+            tgt.setVectorStoreConfig(KB_JSON.readValue(raw, new TypeReference<>() {
+            }));
+        } catch (Exception e) {
+            tgt.setVectorStoreConfig(Map.of());
+        }
+    }
 
     @AfterMapping
     default void fillChunkParams(KbCollectionAggregate src, @MappingTarget KbCollectionDto tgt) {
@@ -40,6 +56,7 @@ public interface KbDtoMapper {
 
     @Mapping(target = "linkedToolIds", ignore = true)
     @Mapping(target = "toolOutputBindings", ignore = true)
+    @Mapping(target = "similarQueries", ignore = true)
     KbDocumentDto toDocumentDto(KbDocumentRow row);
 
     /**
@@ -49,12 +66,14 @@ public interface KbDtoMapper {
     @Mapping(target = "bodyRich", ignore = true)
     @Mapping(target = "linkedToolIds", ignore = true)
     @Mapping(target = "toolOutputBindings", ignore = true)
+    @Mapping(target = "similarQueries", ignore = true)
     KbDocumentDto toDocumentListItemDto(KbDocumentRow row);
 
     @AfterMapping
     default void fillDocumentToolFields(KbDocumentRow src, @MappingTarget KbDocumentDto tgt) {
         tgt.setLinkedToolIds(parseLinkedIdListJson(src.getLinkedToolIdsJson()));
         tgt.setToolOutputBindings(parseBindingsJson(src.getToolOutputBindingsJson()));
+        tgt.setSimilarQueries(parseSimilarQueriesJson(src.getSimilarQueriesJson()));
     }
 
     default List<String> parseLinkedIdListJson(String raw) {
@@ -65,6 +84,19 @@ public interface KbDtoMapper {
             List<String> ids = KB_JSON.readValue(raw, new TypeReference<List<String>>() {
             });
             return ids == null ? List.of() : ids;
+        } catch (Exception e) {
+            return List.of();
+        }
+    }
+
+    default List<String> parseSimilarQueriesJson(String raw) {
+        if (raw == null || raw.isBlank()) {
+            return List.of();
+        }
+        try {
+            List<String> lines = KB_JSON.readValue(raw, new TypeReference<List<String>>() {
+            });
+            return lines == null ? List.of() : lines;
         } catch (Exception e) {
             return List.of();
         }

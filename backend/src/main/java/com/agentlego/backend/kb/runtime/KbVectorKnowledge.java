@@ -3,8 +3,8 @@ package com.agentlego.backend.kb.runtime;
 import com.agentlego.backend.kb.domain.KbDocumentRepository;
 import com.agentlego.backend.kb.domain.KbDocumentRow;
 import com.agentlego.backend.kb.rag.KbRagRankedChunk;
-import com.agentlego.backend.kb.rag.KbRagRetrieveEngine;
 import com.agentlego.backend.kb.rag.KbRetrievedChunkRenderer;
+import com.agentlego.backend.kb.rag.KbVectorRetrieve;
 import io.agentscope.core.message.TextBlock;
 import io.agentscope.core.rag.Knowledge;
 import io.agentscope.core.rag.model.Document;
@@ -13,32 +13,27 @@ import io.agentscope.core.rag.model.RetrieveConfig;
 import reactor.core.publisher.Mono;
 import reactor.core.scheduler.Schedulers;
 
-import java.util.ArrayList;
-import java.util.LinkedHashMap;
-import java.util.LinkedHashSet;
-import java.util.List;
-import java.util.Map;
-import java.util.Objects;
+import java.util.*;
 import java.util.function.Supplier;
 
 /**
- * 平台知识库 → {@link Knowledge}：检索由 {@link KbRagRetrieveEngine} 完成，片段正文由 {@link KbRetrievedChunkRenderer}
+ * 平台知识库 → {@link Knowledge}：检索由外置向量库适配层完成，片段正文由 {@link KbRetrievedChunkRenderer}
  * 在注入模型前按文档绑定与会话工具出参做后处理。
  */
 public final class KbVectorKnowledge implements Knowledge {
 
-    private final KbRagRetrieveEngine retrieveEngine;
+    private final KbVectorRetrieve vectorRetrieve;
     private final KbDocumentRepository documentRepository;
     private final KbRetrievedChunkRenderer chunkRenderer;
     private final Supplier<Map<String, Object>> toolOutputsSupplier;
 
     public KbVectorKnowledge(
-            KbRagRetrieveEngine retrieveEngine,
+            KbVectorRetrieve vectorRetrieve,
             KbDocumentRepository documentRepository,
             KbRetrievedChunkRenderer chunkRenderer,
             Supplier<Map<String, Object>> toolOutputsSupplier
     ) {
-        this.retrieveEngine = Objects.requireNonNull(retrieveEngine, "retrieveEngine");
+        this.vectorRetrieve = Objects.requireNonNull(vectorRetrieve, "vectorRetrieve");
         this.documentRepository = Objects.requireNonNull(documentRepository, "documentRepository");
         this.chunkRenderer = Objects.requireNonNull(chunkRenderer, "chunkRenderer");
         this.toolOutputsSupplier = Objects.requireNonNull(toolOutputsSupplier, "toolOutputsSupplier");
@@ -56,7 +51,7 @@ public final class KbVectorKnowledge implements Knowledge {
     }
 
     private List<Document> doRetrieve(String query, RetrieveConfig config) {
-        List<KbRagRankedChunk> ranked = retrieveEngine.search(query, config);
+        List<KbRagRankedChunk> ranked = vectorRetrieve.search(query, config);
         if (ranked.isEmpty()) {
             return List.of();
         }

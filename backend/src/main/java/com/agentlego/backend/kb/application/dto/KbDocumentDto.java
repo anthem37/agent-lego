@@ -31,6 +31,10 @@ public class KbDocumentDto {
      * 出参 → 占位符绑定。
      */
     private Map<String, Object> toolOutputBindings;
+    /**
+     * 相似问（可选）；GET 单条详情时返回，用于编辑回显。
+     */
+    private List<String> similarQueries;
     private Instant createdAt;
     private Instant updatedAt;
 }

@@ -1,5 +1,6 @@
 "use client";
 
+import {CloudServerOutlined} from "@ant-design/icons";
 import {
     Alert,
     Button,
@@ -25,48 +26,14 @@ import {AppLayout} from "@/components/AppLayout";
 import {ErrorAlert} from "@/components/ErrorAlert";
 import {ModelConfigForm} from "@/components/ModelConfigForm";
 import {PageHeaderBlock} from "@/components/PageHeaderBlock";
+import {PageShell} from "@/components/PageShell";
 import {SectionCard} from "@/components/SectionCard";
 import {normalizeModelConfig} from "@/lib/model-config";
 import {providerDisplayName} from "@/lib/model-config-labels";
-import {request} from "@/lib/api/request";
+import {createModel, deleteModel, getModelDetail, listModelProviders, listModels, updateModel,} from "@/lib/models/api";
+import type {ModelFormValues, ModelSummary, ProviderMeta} from "@/lib/models/types";
 import {tablePaginationFriendly} from "@/lib/table-pagination";
 import {DRAWER_WIDTH_SIMPLE} from "@/lib/ui/sizes";
-
-type ModelSummary = {
-    id: string;
-    name: string;
-    description?: string;
-    provider: string;
-    modelKey: string;
-    baseUrl?: string;
-    configSummary?: string;
-    createdAt?: string;
-};
-
-type ModelDetail = ModelSummary & {
-    config?: Record<string, unknown>;
-    apiKeyConfigured?: boolean;
-};
-
-type ModelFormValues = {
-    name: string;
-    description?: string;
-    provider?: string;
-    modelKey: string;
-    apiKey?: string;
-    baseUrl?: string;
-    /** 默认推理参数（表单可视化编辑，提交前会规范化） */
-    config?: Record<string, unknown>;
-};
-
-type ProviderMeta = {
-    provider: string;
-    supportedConfigKeys: string[];
-    /** 与后端 GET /models/providers 的 chatProvider 对齐；离线 fallback 时手写 */
-    chatProvider?: boolean;
-    /** 与后端 modelKind 对齐：CHAT | EMBEDDING */
-    modelKind?: string;
-};
 
 /** 与后端 ModelProvider 生成参数白名单保持一致（供离线 fallback） */
 const FALLBACK_PROVIDERS: ProviderMeta[] = [
@@ -191,8 +158,8 @@ function ModelsPageContent() {
 
     async function loadProviders() {
         try {
-            const data = await request<ProviderMeta[]>("/models/providers");
-            if (Array.isArray(data) && data.length > 0) {
+            const data = await listModelProviders();
+            if (data.length > 0) {
                 setProviders(data);
             }
         } catch {
@@ -204,8 +171,8 @@ function ModelsPageContent() {
         setListLoading(true);
         setError(null);
         try {
-            const data = await request<ModelSummary[]>("/models");
-            setRows(Array.isArray(data) ? data : []);
+            const data = await listModels();
+            setRows(data);
         } catch (e) {
             setError(e);
         } finally {
@@ -233,7 +200,7 @@ function ModelsPageContent() {
         setDrawerLoading(true);
         setError(null);
         try {
-            const detail = await request<ModelDetail>(`/models/${id}`);
+            const detail = await getModelDetail(id);
             form.setFieldsValue({
                 name: detail.name ?? "",
                 description: detail.description ?? "",
@@ -270,7 +237,7 @@ function ModelsPageContent() {
     async function onDelete(id: string) {
         setError(null);
         try {
-            await request(`/models/${id}`, {method: "DELETE"});
+            await deleteModel(id);
             void loadList();
             message.success("已删除");
         } catch (e) {
@@ -285,17 +252,14 @@ function ModelsPageContent() {
             const supportedKeys = activeProvider?.supportedConfigKeys ?? [];
             const normalizedConfig = normalizeModelConfig(values.config, supportedKeys);
             if (drawerMode === "create") {
-                await request<string>("/models", {
-                    method: "POST",
-                    body: {
-                        name: values.name.trim(),
-                        description: values.description?.trim() ? values.description.trim() : undefined,
-                        provider: values.provider,
-                        modelKey: values.modelKey,
-                        apiKey: values.apiKey,
-                        baseUrl: values.baseUrl?.trim() ? values.baseUrl.trim() : undefined,
-                        ...(normalizedConfig ? {config: normalizedConfig} : {}),
-                    },
+                await createModel({
+                    name: values.name.trim(),
+                    description: values.description?.trim() ? values.description.trim() : undefined,
+                    provider: values.provider,
+                    modelKey: values.modelKey,
+                    apiKey: values.apiKey,
+                    baseUrl: values.baseUrl?.trim() ? values.baseUrl.trim() : undefined,
+                    ...(normalizedConfig ? {config: normalizedConfig} : {}),
                 });
                 message.success("创建成功");
             } else if (editingId) {
@@ -309,10 +273,7 @@ function ModelsPageContent() {
                 if (values.apiKey?.trim()) {
                     body.apiKey = values.apiKey.trim();
                 }
-                await request(`/models/${editingId}`, {
-                    method: "PUT",
-                    body,
-                });
+                await updateModel(editingId, body);
                 message.success("已保存");
             }
             setDrawerOpen(false);
@@ -440,8 +401,9 @@ function ModelsPageContent() {
 
     return (
         <AppLayout>
-            <Space orientation="vertical" size={16} style={{width: "100%"}}>
+            <PageShell>
                 <PageHeaderBlock
+                    icon={<CloudServerOutlined/>}
                     title="模型管理"
                     subtitle="同一提供方、同一模型标识可保存多套「配置实例」。聊天模型 config 支持常见生成参数（采样、流式、惩罚、toolChoice、executionConfig 等）；Embedding 类型用于文本向量化等能力。"
                     extra={
@@ -616,7 +578,7 @@ function ModelsPageContent() {
                                     type="info"
                                     showIcon
                                     style={{marginBottom: 12}}
-                                    message="当前为文本嵌入（Embedding）配置"
+                                    title="当前为文本嵌入（Embedding）配置"
                                     description="不会出现 temperature、maxTokens、toolChoice 等聊天采样参数；Embedding 类型仅支持 dimensions、executionConfig（超时/重试）及 baseUrl/apiKey。用于知识库向量化等。"
                                 />
                             ) : null}
@@ -645,7 +607,7 @@ function ModelsPageContent() {
                         </Form>
                     </Spin>
                 </Drawer>
-            </Space>
+            </PageShell>
         </AppLayout>
     );
 }

@@ -7,21 +7,27 @@ export function SectionCard(props: {
     title: React.ReactNode;
     extra?: React.ReactNode;
     children: React.ReactNode;
+    loading?: boolean;
 }) {
     return (
         <Card
             title={props.title}
             extra={props.extra}
+            loading={props.loading}
             style={{
-                borderRadius: 12,
-                borderColor: "#e9eef5",
+                borderRadius: "var(--app-radius-lg)",
+                borderColor: "var(--app-border)",
+                boxShadow: "var(--app-shadow-sm)",
+                background: "var(--app-surface)",
             }}
             styles={{
-                header: {minHeight: 52},
+                header: {
+                    minHeight: 52,
+                    fontWeight: 600,
+                },
             }}
         >
             {props.children}
         </Card>
     );
 }
-

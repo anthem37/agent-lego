@@ -68,7 +68,6 @@ class AgentControllerWebTest {
         dto.setSystemPrompt("SYS");
         dto.setModelId("m1");
         dto.setToolIds(List.of("t1"));
-        dto.setMemoryPolicy(Map.of());
         dto.setKnowledgeBasePolicy(Map.of());
         dto.setCreatedAt(Instant.parse("2020-01-01T00:00:00Z"));
 

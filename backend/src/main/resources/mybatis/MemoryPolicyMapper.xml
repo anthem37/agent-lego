@@ -1,0 +1,93 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.agentlego.backend.memorypolicy.infrastructure.persistence.MemoryPolicyMapper">
+
+    <resultMap id="MemoryPolicyDOMap"
+               type="com.agentlego.backend.memorypolicy.infrastructure.persistence.MemoryPolicyDO">
+        <id property="id" column="id"/>
+        <result property="name" column="name"/>
+        <result property="description" column="description"/>
+        <result property="ownerScope" column="owner_scope"/>
+        <result property="strategyKind" column="strategy_kind"/>
+        <result property="scopeKind" column="scope_kind"/>
+        <result property="retrievalMode" column="retrieval_mode"/>
+        <result property="topK" column="top_k"/>
+        <result property="writeMode" column="write_mode"/>
+        <result property="writeBackOnDuplicate" column="write_back_on_duplicate"/>
+        <result property="createdAt" column="created_at"/>
+        <result property="updatedAt" column="updated_at"/>
+    </resultMap>
+
+    <insert id="insert" parameterType="com.agentlego.backend.memorypolicy.infrastructure.persistence.MemoryPolicyDO">
+        insert into lego_memory_policies (id, name, description, owner_scope, strategy_kind, scope_kind, retrieval_mode,
+                                          top_k, write_mode, write_back_on_duplicate, created_at, updated_at)
+        values (#{id}, #{name}, #{description}, #{ownerScope}, #{strategyKind}, #{scopeKind}, #{retrievalMode},
+                #{topK}, #{writeMode}, #{writeBackOnDuplicate}, #{createdAt}, #{updatedAt})
+    </insert>
+
+    <update id="update" parameterType="com.agentlego.backend.memorypolicy.infrastructure.persistence.MemoryPolicyDO">
+        update lego_memory_policies
+        set name                    = #{name},
+            description             = #{description},
+            owner_scope             = #{ownerScope},
+            strategy_kind           = #{strategyKind},
+            scope_kind              = #{scopeKind},
+            retrieval_mode          = #{retrievalMode},
+            top_k                   = #{topK},
+            write_mode              = #{writeMode},
+            write_back_on_duplicate = #{writeBackOnDuplicate},
+            updated_at              = #{updatedAt}
+        where id = #{id}
+    </update>
+
+    <select id="findById" resultMap="MemoryPolicyDOMap">
+        select id,
+               name,
+               description,
+               owner_scope,
+               strategy_kind,
+               scope_kind,
+               retrieval_mode,
+               top_k,
+               write_mode,
+               write_back_on_duplicate,
+               created_at,
+               updated_at
+        from lego_memory_policies
+        where id = #{id}
+    </select>
+
+    <select id="listAll" resultMap="MemoryPolicyDOMap">
+        select id,
+               name,
+               description,
+               owner_scope,
+               strategy_kind,
+               scope_kind,
+               retrieval_mode,
+               top_k,
+               write_mode,
+               write_back_on_duplicate,
+               created_at,
+               updated_at
+        from lego_memory_policies
+        order by created_at desc
+    </select>
+
+    <delete id="deleteById">
+        delete
+        from lego_memory_policies
+        where id = #{id}
+    </delete>
+
+    <select id="countByOwnerScopeExceptId" resultType="int">
+        select count(*)::int
+        from lego_memory_policies
+        where owner_scope = #{ownerScope}
+        <if test="exceptId != null and exceptId != ''">
+            and id &lt;&gt; #{exceptId}
+        </if>
+    </select>
+</mapper>

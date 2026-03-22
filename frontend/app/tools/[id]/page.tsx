@@ -1,6 +1,6 @@
 "use client";
 
-import {EditOutlined, MinusCircleOutlined, PlusOutlined} from "@ant-design/icons";
+import {EditOutlined, MinusCircleOutlined, PlusOutlined, ToolOutlined} from "@ant-design/icons";
 import {Button, Descriptions, Form, Input, message, Space, Spin, Tabs, Tag, Typography} from "antd";
 import Link from "next/link";
 import {useRouter} from "next/navigation";
@@ -13,8 +13,8 @@ import {ErrorAlert} from "@/components/ErrorAlert";
 import {LocalBuiltinIoPreview} from "@/components/tools/LocalBuiltinIoPreview";
 import {ToolFormDrawer} from "@/components/tools/ToolFormDrawer";
 import {PageHeaderBlock} from "@/components/PageHeaderBlock";
+import {PageShell} from "@/components/PageShell";
 import {SectionCard} from "@/components/SectionCard";
-import {request} from "@/lib/api/request";
 import {
     deleteTool,
     fetchLocalBuiltinToolsMeta,
@@ -22,6 +22,7 @@ import {
     fetchToolReferences,
     fetchToolTypeMeta,
     getTool,
+    testToolCall,
 } from "@/lib/tools/api";
 import {stringifyPretty} from "@/lib/json";
 import {shouldPreserveHttpOutputFields, shouldPreserveHttpParameterFields} from "@/lib/tools/form";
@@ -100,10 +101,6 @@ function summarizeToolResult(result: unknown): string {
     }
     return stringifyPretty(result);
 }
-
-type TestToolCallApiResponse = {
-    result?: unknown;
-};
 
 export default function ToolDetailPage(props: { params: Promise<{ id: string }> }) {
     const router = useRouter();
@@ -206,10 +203,7 @@ export default function ToolDetailPage(props: { params: Promise<{ id: string }> 
         setTestOut(null);
         try {
             const input = buildTestInputFromRows(values.paramRows);
-            const data = await request<TestToolCallApiResponse>(`/tools/${tool.id}/test-call`, {
-                method: "POST",
-                body: {input},
-            });
+            const data = await testToolCall(tool.id, {input});
             setTestOut({
                 output: summarizeToolResult(data?.result),
                 raw: stringifyPretty(data?.result ?? data),
@@ -397,7 +391,7 @@ export default function ToolDetailPage(props: { params: Promise<{ id: string }> 
             <Typography.Paragraph type="secondary" style={{marginBottom: 0}}>
                 打开本页或刷新后，会根据工具类型<strong>自动预填参数名</strong>（LOCAL 来自内置契约，HTTP 来自
                 parameters / URL 占位符，WORKFLOW 默认 <Typography.Text code>input</Typography.Text>
-                ）。只需补全「取值」即可；若取值本身是 JSON 对象/数组，可直接粘贴到取值框。MCP 将请求发到已登记的远端 SSE
+                ）。只需补全「取值」即可；复杂结构可先写文本，由服务端/运行时解析。MCP 将请求发到已登记的远端 SSE
                 Server。
             </Typography.Paragraph>
             <Form<TestToolCallForm> form={form} layout="vertical" onFinish={onTest}>
@@ -423,7 +417,7 @@ export default function ToolDetailPage(props: { params: Promise<{ id: string }> 
                                             name={[name, "paramValue"]}
                                             style={{flex: 1, marginBottom: 0}}
                                         >
-                                            <Input placeholder="取值（可为空；可粘贴小段 JSON）"/>
+                                            <Input placeholder="取值（可为空）"/>
                                         </Form.Item>
                                         <MinusCircleOutlined onClick={() => remove(name)}/>
                                     </Space>
@@ -453,7 +447,7 @@ export default function ToolDetailPage(props: { params: Promise<{ id: string }> 
                     <Descriptions.Item label="摘要（output）">
                         <pre style={{margin: 0, whiteSpace: "pre-wrap"}}>{testOut.output}</pre>
                     </Descriptions.Item>
-                    <Descriptions.Item label="原始 JSON">
+                    <Descriptions.Item label="原始响应（调试用）">
                         <pre style={{margin: 0, whiteSpace: "pre-wrap"}}>{testOut.raw}</pre>
                     </Descriptions.Item>
                 </Descriptions>
@@ -465,17 +459,16 @@ export default function ToolDetailPage(props: { params: Promise<{ id: string }> 
 
     return (
         <AppLayout>
-            <Space orientation="vertical" size={16} style={{width: "100%"}}>
+            <PageShell>
                 <PageHeaderBlock
+                    icon={<ToolOutlined/>}
+                    backHref="/tools"
                     title={tool ? `工具：${tool.name}` : "工具详情"}
                     subtitle={tool ? `ID ${tool.id}` : toolId ? `加载 ${toolId} …` : "加载中…"}
                     extra={
                         <Space wrap>
                             {tool ? <Tag
                                 color={toolTypeTagColor(tool.toolType)}>{toolTypeDisplayName(tool.toolType)}</Tag> : null}
-                            <Link href="/tools">
-                                <Button>返回列表</Button>
-                            </Link>
                             {tool ? (
                                 <>
                                     <Button icon={<EditOutlined/>} onClick={() => setEditOpen(true)}>
@@ -528,7 +521,7 @@ export default function ToolDetailPage(props: { params: Promise<{ id: string }> 
                         }}
                     />
                 ) : null}
-            </Space>
+            </PageShell>
         </AppLayout>
     );
 }

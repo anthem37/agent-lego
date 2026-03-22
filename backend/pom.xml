@@ -121,6 +121,13 @@
             <version>0.64.8</version>
         </dependency>
 
+        <!-- 知识库向量存储（Milvus）；不使用 PostgreSQL pgvector -->
+        <dependency>
+            <groupId>io.milvus</groupId>
+            <artifactId>milvus-sdk-java</artifactId>
+            <version>2.4.11</version>
+        </dependency>
+
         <!-- MCP server transport (SSE over WebMVC)；与 mcp-core 版本必须一致 -->
         <dependency>
             <groupId>io.modelcontextprotocol.sdk</groupId>

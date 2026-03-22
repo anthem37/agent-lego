@@ -1,0 +1,45 @@
+/**
+ * 详情抽屉 / 表单侧栏：与 kb-shell 的 subtleCollapse、SectionCard 同一套表面语言。
+ */
+.root {
+    border: 1px solid var(--app-border);
+    border-radius: var(--app-radius-md);
+    background: rgba(15, 23, 42, 0.02);
+    padding: 12px 14px;
+    width: 100%;
+    box-sizing: border-box;
+}
+
+@media (prefers-color-scheme: dark) {
+    .root {
+        background: rgba(248, 250, 252, 0.04);
+    }
+}
+
+.header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 10px;
+    margin-bottom: 8px;
+}
+
+.title {
+    margin: 0;
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    color: var(--app-text-muted, rgba(0, 0, 0, 0.45));
+    line-height: 1.45;
+}
+
+.hint {
+    margin: 4px 0 0;
+    font-size: 12px;
+    line-height: 1.5;
+    color: var(--app-text-muted, rgba(0, 0, 0, 0.45));
+}
+
+.body {
+    min-height: 0;
+}

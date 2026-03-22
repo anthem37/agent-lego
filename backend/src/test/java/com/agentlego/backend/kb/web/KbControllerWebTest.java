@@ -12,6 +12,7 @@ import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
 
 import java.time.Instant;
+import java.util.List;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
@@ -41,6 +42,16 @@ class KbControllerWebTest {
     }
 
     @Test
+    void agentPolicySummaries_meta_ok() throws Exception {
+        when(kbApplicationService.listAgentKbPolicySummaries()).thenReturn(List.of());
+
+        mockMvc.perform(get("/kb/meta/agent-policy-summaries"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value("OK"))
+                .andExpect(jsonPath("$.data").isArray());
+    }
+
+    @Test
     void createCollection_created_shouldReturnDto() throws Exception {
         KbCollectionDto dto = new KbCollectionDto();
         dto.setId("c1");
@@ -55,7 +66,8 @@ class KbControllerWebTest {
         mockMvc.perform(
                         post("/kb/collections")
                                 .contentType(MediaType.APPLICATION_JSON)
-                                .content("{\"name\":\"n\",\"description\":\"\",\"embeddingModelId\":\"m1\"}"))
+                                .content("{\"name\":\"n\",\"description\":\"\",\"vectorStoreProfileId\":\"vs1\","
+                                        + "\"vectorStoreConfig\":{\"collectionName\":\"kb_n\"}}"))
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.code").value("OK"))
                 .andExpect(jsonPath("$.data.id").value("c1"))
@@ -148,5 +160,46 @@ class KbControllerWebTest {
                 .andExpect(jsonPath("$.data.agentsPolicyUpdated").value(2));
 
         verify(kbApplicationService).deleteCollection("c1");
+    }
+
+    @Test
+    void retrievePreviewMulti_ok_shouldCallService() throws Exception {
+        KbRetrievePreviewResponse resp = new KbRetrievePreviewResponse();
+        resp.setQuery("q");
+        resp.setHits(List.of());
+        when(kbApplicationService.previewRetrieveMulti(any(KbMultiRetrievePreviewRequest.class))).thenReturn(resp);
+
+        mockMvc.perform(
+                        post("/kb/retrieve-preview")
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content("{\"collectionIds\":[\"c1\",\"c2\"],\"query\":\"hello\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value("OK"))
+                .andExpect(jsonPath("$.data.query").value("q"));
+
+        verify(kbApplicationService).previewRetrieveMulti(any(KbMultiRetrievePreviewRequest.class));
+    }
+
+    @Test
+    void validateAllDocuments_ok_shouldCallService() throws Exception {
+        KbCollectionDocumentsValidationResponse resp = new KbCollectionDocumentsValidationResponse();
+        resp.setCollectionId("c1");
+        resp.setCollectionName("C");
+        resp.setTotalDocuments(0);
+        resp.setDocumentsOk(0);
+        resp.setDocumentsWithErrors(0);
+        resp.setDocumentsWithWarningsOnly(0);
+        resp.setItems(List.of());
+        when(kbApplicationService.validateCollectionDocuments(eq("c1"), any())).thenReturn(resp);
+
+        mockMvc.perform(
+                        post("/kb/collections/c1/documents/validate-all")
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content("{\"includeIssues\":true}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value("OK"))
+                .andExpect(jsonPath("$.data.totalDocuments").value(0));
+
+        verify(kbApplicationService).validateCollectionDocuments(eq("c1"), any());
     }
 }

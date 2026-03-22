@@ -15,7 +15,7 @@ public final class KbPolicies {
     public static final String KEY_SCORE_THRESHOLD = "scoreThreshold";
     public static final String KEY_EMBEDDING_MODEL_ID = "embeddingModelId";
     /**
-     * 是否启用全文检索通道并与向量做混合召回（RRF）；未设置时沿用应用配置默认值。
+     * 历史字段：曾用于 pgvector + PostgreSQL 全文混合召回。当前检索走外置向量库（Milvus / Qdrant），该键**不再影响** RAG 行为，可保留于旧策略 JSON 中兼容。
      */
     public static final String KEY_FULLTEXT_ENABLED = "fullTextEnabled";
 
@@ -54,7 +54,7 @@ public final class KbPolicies {
     }
 
     /**
-     * 是否启用 KB 全文检索分支；策略中显式设置时优先生效，否则使用应用层默认值（如 {@code agentlego.kb.retrieve.fulltext-enabled}）。
+     * 已废弃：当前实现不执行 PostgreSQL 全文分支。返回值仅便于旧代码/配置读取，不参与 {@link com.agentlego.backend.kb.rag.KbVectorRetrieveEngine}。
      */
     public static boolean fullTextEnabled(Map<String, Object> policy, boolean defaultWhenAbsent) {
         Boolean b = JsonMaps.getBooleanOpt(policy == null ? Map.of() : policy, KEY_FULLTEXT_ENABLED);

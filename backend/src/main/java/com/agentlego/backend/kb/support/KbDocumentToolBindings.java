@@ -14,7 +14,9 @@ import java.util.regex.Pattern;
 public final class KbDocumentToolBindings {
 
     private static final int MAX_MAPPINGS = 64;
-    /** 历史：短占位符如 pab5e01d3、或自定义 orderNo */
+    /**
+     * 历史：短占位符如 pab5e01d3、或自定义 orderNo
+     */
     private static final Pattern PLACEHOLDER_KEY_LEGACY = Pattern.compile("^[a-zA-Z][a-zA-Z0-9_]{0,63}$");
     /**
      * 语义占位：正文为 {@code {{tool_field:运行时工具名.出参路径}}}，mappings.placeholder 存不含外层括号的整段，
@@ -24,14 +26,14 @@ public final class KbDocumentToolBindings {
             "^tool_field:[A-Za-z0-9_.\\[\\]-]{1,400}$"
     );
 
+    private KbDocumentToolBindings() {
+    }
+
     static boolean isValidPlaceholderKey(String s) {
         if (s == null || s.isBlank() || s.length() > 512) {
             return false;
         }
         return PLACEHOLDER_KEY_LEGACY.matcher(s).matches() || PLACEHOLDER_KEY_TOOL_FIELD.matcher(s).matches();
-    }
-
-    private KbDocumentToolBindings() {
     }
 
     /**

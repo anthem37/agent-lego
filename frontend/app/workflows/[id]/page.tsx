@@ -1,29 +1,18 @@
 "use client";
 
-import {Button, Card, Descriptions, Form, Input, Space, Typography} from "antd";
+import {BranchesOutlined} from "@ant-design/icons";
+import {Button, Descriptions, Form, Input, Typography} from "antd";
 import Link from "next/link";
 import React from "react";
 
 import {AppLayout} from "@/components/AppLayout";
 import {ErrorAlert} from "@/components/ErrorAlert";
-import {request} from "@/lib/api/request";
+import {PageHeaderBlock} from "@/components/PageHeaderBlock";
+import {PageShell} from "@/components/PageShell";
+import {SectionCard} from "@/components/SectionCard";
 import {stringifyPretty} from "@/lib/json";
-
-type WorkflowDto = {
-    id: string;
-    name: string;
-    definition?: Record<string, unknown>;
-    createdAt?: string;
-};
-
-type RunWorkflowForm = {
-    input: string;
-};
-
-type RunWorkflowResponse = {
-    runId: string;
-    status: string;
-};
+import {getWorkflow, runWorkflow} from "@/lib/workflows/api";
+import type {RunWorkflowForm, RunWorkflowResponse, WorkflowDto} from "@/lib/workflows/types";
 
 export default function WorkflowDetailPage(props: { params: Promise<{ id: string }> }) {
     const [workflow, setWorkflow] = React.useState<WorkflowDto | null>(null);
@@ -39,7 +28,7 @@ export default function WorkflowDetailPage(props: { params: Promise<{ id: string
         setError(null);
         void props.params.then(async ({id}) => {
             try {
-                const data = await request<WorkflowDto>(`/workflows/${id}`);
+                const data = await getWorkflow(id);
                 if (!cancelled) {
                     setWorkflow(data);
                 }
@@ -66,10 +55,7 @@ export default function WorkflowDetailPage(props: { params: Promise<{ id: string
         setRunning(true);
         setRunResp(null);
         try {
-            const data = await request<RunWorkflowResponse>(`/workflows/${workflow.id}/runs`, {
-                method: "POST",
-                body: values,
-            });
+            const data = await runWorkflow(workflow.id, values);
             setRunResp(data);
         } catch (e) {
             setError(e);
@@ -80,25 +66,25 @@ export default function WorkflowDetailPage(props: { params: Promise<{ id: string
 
     return (
         <AppLayout>
-            <Space orientation="vertical" size={16} style={{width: "100%"}}>
-                <div>
-                    <Typography.Title level={3} style={{margin: 0}}>
-                        工作流详情
-                    </Typography.Title>
-                    <Typography.Text type="secondary">
-                        {workflow ? (
+            <PageShell>
+                <PageHeaderBlock
+                    icon={<BranchesOutlined/>}
+                    backHref="/workflows"
+                    title="工作流详情"
+                    subtitle={
+                        workflow ? (
                             <>
                                 ID：<Typography.Text code>{workflow.id}</Typography.Text>
                             </>
                         ) : (
                             "加载中…"
-                        )}
-                    </Typography.Text>
-                </div>
+                        )
+                    }
+                />
 
                 <ErrorAlert error={error}/>
 
-                <Card title="定义" loading={loading}>
+                <SectionCard title="定义" loading={loading}>
                     {workflow ? (
                         <Descriptions column={1} size="small">
                             <Descriptions.Item label="name">{workflow.name}</Descriptions.Item>
@@ -113,12 +99,12 @@ export default function WorkflowDetailPage(props: { params: Promise<{ id: string
                     ) : (
                         <Typography.Text type="secondary">未加载到数据</Typography.Text>
                     )}
-                </Card>
+                </SectionCard>
 
-                <Card title="触发运行">
+                <SectionCard title="触发运行">
                     <Form<RunWorkflowForm> form={form} layout="vertical" onFinish={onRun}>
-                        <Form.Item name="input" label="input" rules={[{required: true, message: "请输入 input"}]}>
-                            <Input.TextArea rows={4} placeholder="作为工作流首步输入"/>
+                        <Form.Item name="input" label="首步输入内容" rules={[{required: true, message: "请输入内容"}]}>
+                            <Input.TextArea rows={4} placeholder="作为工作流第一步的用户输入"/>
                         </Form.Item>
                         <Form.Item>
                             <Button type="primary" htmlType="submit" loading={running} disabled={!workflow}>
@@ -129,14 +115,14 @@ export default function WorkflowDetailPage(props: { params: Promise<{ id: string
 
                     {runResp ? (
                         <Typography.Paragraph style={{marginBottom: 0}}>
-                            runId：<Typography.Text code>{runResp.runId}</Typography.Text>（{runResp.status}）{" "}
-                            <Link href={`/runs/${runResp.runId}`}>去查看</Link>
+                            运行编号：<Typography.Text code>{runResp.runId}</Typography.Text>（{runResp.status}）{" "}
+                            <Link href={`/runs/${runResp.runId}`}>查看执行详情</Link>
                         </Typography.Paragraph>
                     ) : (
                         <Typography.Text type="secondary">尚未触发</Typography.Text>
                     )}
-                </Card>
-            </Space>
+                </SectionCard>
+            </PageShell>
         </AppLayout>
     );
 }

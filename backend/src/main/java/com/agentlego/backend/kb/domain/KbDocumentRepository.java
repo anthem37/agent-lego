@@ -12,7 +12,8 @@ public interface KbDocumentRepository {
             String body,
             String bodyRich,
             String linkedToolIdsJson,
-            String toolOutputBindingsJson
+            String toolOutputBindingsJson,
+            String similarQueriesJson
     );
 
     void markReady(String id);
@@ -20,7 +21,7 @@ public interface KbDocumentRepository {
     void markFailed(String id, String errorMessage);
 
     /**
-     * 更新正文与绑定并置为 PENDING，供重新分片与向量化（调用方应先删除旧 chunks）。
+     * 更新正文与绑定并置为 PENDING，供重新分片与向量化（调用方应先删除外置向量库中该文档的旧向量）。
      */
     void updateReingest(
             String id,
@@ -28,7 +29,8 @@ public interface KbDocumentRepository {
             String body,
             String bodyRich,
             String linkedToolIdsJson,
-            String toolOutputBindingsJson
+            String toolOutputBindingsJson,
+            String similarQueriesJson
     );
 
     Optional<KbDocumentRow> findById(String id);

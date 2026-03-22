@@ -22,11 +22,23 @@ public interface AgentMapper {
 
     List<String> listAgentIdsReferencingKbCollection(@Param("collectionId") String collectionId);
 
+    List<AgentDO> listKbPolicyPicker();
+
     int updateKnowledgeBasePolicy(
             @Param("id") String id,
             @Param("knowledgeBasePolicyJson") String knowledgeBasePolicyJson
     );
 
     int insertAgentTools(@Param("agentId") String agentId, @Param("toolIds") List<String> toolIds);
+
+    int deleteAgentToolsByAgentId(@Param("agentId") String agentId);
+
+    int updateAgent(AgentDO agent);
+
+    int countByMemoryPolicyId(@Param("policyId") String policyId);
+
+    List<AgentMemoryPolicyCountRow> countAgentsByMemoryPolicyIds(@Param("policyIds") List<String> policyIds);
+
+    List<AgentDO> listAgentsByMemoryPolicyId(@Param("policyId") String policyId);
 }
 

@@ -8,8 +8,8 @@ import React from "react";
 
 import {
     KB_KNOWLEDGE_TAG_BLOT,
-    type KbTagValue,
     kbKnowledgeTagClipboardMatchers,
+    type KbTagValue,
     registerKbKnowledgeQuillFormats,
 } from "@/components/kb/kb-quill-formats";
 import {applyKbQuillSnowChineseUi} from "@/components/kb/kb-quill-zh-ui";
@@ -57,8 +57,6 @@ export const KbRichTextField = React.forwardRef<KbRichTextFieldHandle, KbRichTex
         const syncingFromProps = React.useRef(false);
         const minHeightRef = React.useRef(minHeight);
 
-        toolbarExtrasRef.current = toolbarExtras;
-
         React.useEffect(() => {
             onChangeRef.current = onChange;
         }, [onChange]);
@@ -66,6 +64,10 @@ export const KbRichTextField = React.forwardRef<KbRichTextFieldHandle, KbRichTex
         React.useEffect(() => {
             minHeightRef.current = minHeight;
         }, [minHeight]);
+
+        React.useEffect(() => {
+            toolbarExtrasRef.current = toolbarExtras;
+        }, [toolbarExtras]);
 
         const emitHtml = React.useCallback(() => {
             const q = quillRef.current;
@@ -161,7 +163,7 @@ export const KbRichTextField = React.forwardRef<KbRichTextFieldHandle, KbRichTex
                 applyKbQuillSnowChineseUi(wrap);
             });
             if (toolbarExtrasRef.current) {
-                const tb = q.getModule("toolbar") as {container?: HTMLElement} | undefined;
+                const tb = q.getModule("toolbar") as { container?: HTMLElement } | undefined;
                 if (tb?.container) {
                     const span = document.createElement("span");
                     span.className = "ql-formats kb-quill-toolbar-extras";
@@ -201,7 +203,7 @@ export const KbRichTextField = React.forwardRef<KbRichTextFieldHandle, KbRichTex
                     tb.container.appendChild(span);
                 }
             }
-            const kbd = q.getModule("keyboard") as {bindings: Record<string, unknown[]>};
+            const kbd = q.getModule("keyboard") as { bindings: Record<string, unknown[]> };
             const delEmbed = (index: number) => {
                 q.deleteText(index, 1, Quill.sources.USER);
                 emitHtml();
@@ -213,7 +215,7 @@ export const KbRichTextField = React.forwardRef<KbRichTextFieldHandle, KbRichTex
                 metaKey: null,
                 shiftKey: null,
                 collapsed: true,
-                handler(range: {index: number; length: number}) {
+                handler(range: { index: number; length: number }) {
                     if (!range || range.length > 0 || range.index < 1) {
                         return true;
                     }
@@ -233,7 +235,7 @@ export const KbRichTextField = React.forwardRef<KbRichTextFieldHandle, KbRichTex
                 metaKey: null,
                 shiftKey: null,
                 collapsed: true,
-                handler(range: {index: number; length: number}) {
+                handler(range: { index: number; length: number }) {
                     if (!range || range.length > 0) {
                         return true;
                     }

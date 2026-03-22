@@ -8,11 +8,11 @@ import com.agentlego.backend.agent.application.service.AgentApplicationService;
 import com.agentlego.backend.agent.domain.AgentAggregate;
 import com.agentlego.backend.agent.domain.AgentRepository;
 import com.agentlego.backend.api.ApiException;
-import com.agentlego.backend.kb.application.KbRagKnowledgeFactory;
-import com.agentlego.backend.memory.application.dto.MemoryItemDto;
-import com.agentlego.backend.memory.application.dto.MemoryQueryRequest;
-import com.agentlego.backend.memory.application.dto.MemoryQueryResponse;
-import com.agentlego.backend.memory.application.service.MemoryApplicationService;
+import com.agentlego.backend.kb.rag.KbRagKnowledgeFactory;
+import com.agentlego.backend.memorypolicy.domain.MemoryItemRepository;
+import com.agentlego.backend.memorypolicy.domain.MemoryPolicyRepository;
+import com.agentlego.backend.memorypolicy.infrastructure.persistence.MemoryItemDO;
+import com.agentlego.backend.memorypolicy.infrastructure.persistence.MemoryPolicyDO;
 import com.agentlego.backend.model.domain.ModelAggregate;
 import com.agentlego.backend.model.domain.ModelRepository;
 import com.agentlego.backend.runtime.AgentRuntime;
@@ -56,29 +56,35 @@ class AgentApplicationServiceTest {
     @Mock
     private AgentRuntime agentRuntime;
     @Mock
-    private MemoryApplicationService memoryApplicationService;
-    @Mock
     private KbRagKnowledgeFactory kbRagKnowledgeFactory;
+    @Mock
+    private MemoryPolicyRepository memoryPolicyRepository;
+    @Mock
+    private MemoryItemRepository memoryItemRepository;
 
-    @Test
-    void createAgent_shouldDefaultPoliciesAndToolIds() {
-        AgentApplicationService service = new AgentApplicationService(
+    private AgentApplicationService newAgentApplicationService() {
+        return new AgentApplicationService(
                 agentRepository,
                 modelRepository,
                 toolRepository,
                 toolExecutionService,
                 agentRuntime,
-                memoryApplicationService,
                 kbRagKnowledgeFactory,
+                memoryPolicyRepository,
+                memoryItemRepository,
                 AGENT_DTO_MAPPER
         );
+    }
+
+    @Test
+    void createAgent_shouldDefaultPoliciesAndToolIds() {
+        AgentApplicationService service = newAgentApplicationService();
 
         CreateAgentRequest req = new CreateAgentRequest();
         req.setName("agent1");
         req.setSystemPrompt("SYS");
         req.setModelId("model1");
         req.setToolIds(null);
-        req.setMemoryPolicy(null);
 
         ModelAggregate model = new ModelAggregate();
         model.setId("model1");
@@ -94,25 +100,15 @@ class AgentApplicationServiceTest {
         AgentAggregate saved = captor.getValue();
         assertNotNull(saved.getToolIds());
         assertTrue(saved.getToolIds().isEmpty());
-        assertNotNull(saved.getMemoryPolicy());
-        assertTrue(saved.getMemoryPolicy().isEmpty());
         assertNotNull(saved.getKnowledgeBasePolicy());
         assertTrue(saved.getKnowledgeBasePolicy().isEmpty());
+        assertNull(saved.getMemoryPolicyId());
         assertEquals("model1", saved.getModelId());
     }
 
     @Test
-    void runAgent_shouldAppendMemoryToSystemPrompt() {
-        AgentApplicationService service = new AgentApplicationService(
-                agentRepository,
-                modelRepository,
-                toolRepository,
-                toolExecutionService,
-                agentRuntime,
-                memoryApplicationService,
-                kbRagKnowledgeFactory,
-                AGENT_DTO_MAPPER
-        );
+    void runAgent_shouldBuildDefinitionWithoutLongTermMemory() {
+        AgentApplicationService service = newAgentApplicationService();
         when(kbRagKnowledgeFactory.resolve(any(AgentAggregate.class), any())).thenReturn(Optional.empty());
 
         AgentAggregate agentAgg = new AgentAggregate();
@@ -120,13 +116,12 @@ class AgentApplicationServiceTest {
         agentAgg.setName("Agent1");
         agentAgg.setSystemPrompt("SYS");
         agentAgg.setToolIds(List.of("tool1"));
-        agentAgg.setMemoryPolicy(Map.of("ownerScope", "user1", "topK", 2));
         agentAgg.setCreatedAt(Instant.now());
 
         when(agentRepository.findById("agent1")).thenReturn(Optional.of(agentAgg));
 
         ModelAggregate model = new ModelAggregate();
-        model.setId("model1");
+        model.setId("modelA");
         model.setProvider("DASHSCOPE");
         model.setModelKey("m");
         model.setApiKeyCipher("k");
@@ -142,13 +137,6 @@ class AgentApplicationServiceTest {
 
         when(toolExecutionService.buildToolkitForToolIds(anyList())).thenReturn(new Toolkit());
 
-        MemoryQueryResponse mResp = new MemoryQueryResponse();
-        MemoryItemDto item1 = new MemoryItemDto();
-        item1.setContent("memA");
-        mResp.setItems(List.of(item1));
-
-        when(memoryApplicationService.query(any(MemoryQueryRequest.class))).thenReturn(mResp);
-
         when(agentRuntime.call(any(AgentDefinition.class), eq("question"), any(Toolkit.class)))
                 .thenReturn(Mono.just(Msg.builder().name("assistant").textContent("final").build()));
 
@@ -159,46 +147,59 @@ class AgentApplicationServiceTest {
 
         RunAgentResponse resp = service.runAgent("agent1", req);
         assertEquals("final", resp.getOutput());
+        assertNull(resp.getMemory());
 
         ArgumentCaptor<AgentDefinition> defCaptor = ArgumentCaptor.forClass(AgentDefinition.class);
         verify(agentRuntime).call(defCaptor.capture(), eq("question"), any(Toolkit.class));
         AgentDefinition def = defCaptor.getValue();
 
-        assertEquals("SYS\n\n[Memory]\n- memA\n", def.systemPrompt());
+        assertEquals("SYS", def.systemPrompt());
+        assertNull(def.longTermMemory());
         assertNull(def.knowledge());
-        verify(memoryApplicationService, times(1)).query(any(MemoryQueryRequest.class));
     }
 
     @Test
-    void runAgent_shouldNotQueryMemoryWhenOwnerScopeMissing() {
-        AgentApplicationService service = new AgentApplicationService(
-                agentRepository,
-                modelRepository,
-                toolRepository,
-                toolExecutionService,
-                agentRuntime,
-                memoryApplicationService,
-                kbRagKnowledgeFactory,
-                AGENT_DTO_MAPPER
-        );
+    void runAgent_withMemoryPolicyId_shouldInjectLongTermMemory() {
+        AgentApplicationService service = newAgentApplicationService();
         when(kbRagKnowledgeFactory.resolve(any(AgentAggregate.class), any())).thenReturn(Optional.empty());
 
         AgentAggregate agentAgg = new AgentAggregate();
         agentAgg.setId("agent1");
         agentAgg.setName("Agent1");
         agentAgg.setSystemPrompt("SYS");
-        agentAgg.setToolIds(List.of());
-        agentAgg.setMemoryPolicy(Map.of("topK", 2));
+        agentAgg.setToolIds(List.of("tool1"));
+        agentAgg.setMemoryPolicyId("pol1");
+        agentAgg.setCreatedAt(Instant.now());
+
+        MemoryPolicyDO pol = new MemoryPolicyDO();
+        pol.setId("pol1");
+        pol.setName("策略一");
+        pol.setOwnerScope("scope-a");
+        pol.setStrategyKind("EPISODIC_DIALOGUE");
+        pol.setTopK(3);
+        pol.setRetrievalMode("KEYWORD");
+        pol.setWriteMode("OFF");
+        pol.setWriteBackOnDuplicate("skip");
+        when(memoryPolicyRepository.findById("pol1")).thenReturn(Optional.of(pol));
+        when(memoryItemRepository.searchByKeyword(eq("pol1"), eq("question"), eq(3))).thenReturn(List.of());
 
         when(agentRepository.findById("agent1")).thenReturn(Optional.of(agentAgg));
 
         ModelAggregate model = new ModelAggregate();
+        model.setId("modelA");
         model.setProvider("DASHSCOPE");
         model.setModelKey("m");
         model.setApiKeyCipher("k");
+        model.setCreatedAt(Instant.now());
         when(modelRepository.findById("modelA")).thenReturn(Optional.of(model));
 
-        when(toolRepository.findAll()).thenReturn(List.of());
+        ToolAggregate tool = new ToolAggregate();
+        tool.setId("tool1");
+        tool.setToolType(ToolType.LOCAL);
+        tool.setName("echo");
+
+        when(toolRepository.findAll()).thenReturn(List.of(tool));
+
         when(toolExecutionService.buildToolkitForToolIds(anyList())).thenReturn(new Toolkit());
 
         when(agentRuntime.call(any(AgentDefinition.class), eq("question"), any(Toolkit.class)))
@@ -211,25 +212,80 @@ class AgentApplicationServiceTest {
         RunAgentResponse resp = service.runAgent("agent1", req);
         assertEquals("final", resp.getOutput());
 
-        verify(memoryApplicationService, never()).query(any());
-
         ArgumentCaptor<AgentDefinition> defCaptor = ArgumentCaptor.forClass(AgentDefinition.class);
         verify(agentRuntime).call(defCaptor.capture(), eq("question"), any(Toolkit.class));
-        assertEquals("SYS", defCaptor.getValue().systemPrompt());
+        AgentDefinition def = defCaptor.getValue();
+
+        assertNotNull(def.longTermMemory());
+        assertNull(def.knowledge());
+        assertNotNull(resp.getMemory());
+        assertEquals("pol1", resp.getMemory().getMemoryPolicyId());
+        assertEquals("策略一", resp.getMemory().getMemoryPolicyName());
+        assertEquals(0, resp.getMemory().getPreviewHitCount().intValue());
+    }
+
+    @Test
+    void runAgent_withMemoryPolicyId_shouldIncludePreviewHits() {
+        AgentApplicationService service = newAgentApplicationService();
+        when(kbRagKnowledgeFactory.resolve(any(AgentAggregate.class), any())).thenReturn(Optional.empty());
+
+        AgentAggregate agentAgg = new AgentAggregate();
+        agentAgg.setId("agent1");
+        agentAgg.setName("Agent1");
+        agentAgg.setSystemPrompt("SYS");
+        agentAgg.setToolIds(List.of("tool1"));
+        agentAgg.setMemoryPolicyId("pol1");
+        agentAgg.setCreatedAt(Instant.now());
+
+        MemoryPolicyDO pol = new MemoryPolicyDO();
+        pol.setId("pol1");
+        pol.setName("P");
+        pol.setOwnerScope("scope-a");
+        pol.setStrategyKind("EPISODIC_DIALOGUE");
+        pol.setTopK(3);
+        pol.setRetrievalMode("KEYWORD");
+        pol.setWriteMode("OFF");
+        pol.setWriteBackOnDuplicate("skip");
+        when(memoryPolicyRepository.findById("pol1")).thenReturn(Optional.of(pol));
+
+        MemoryItemDO hit = new MemoryItemDO();
+        hit.setContent("hello memory");
+        when(memoryItemRepository.searchByKeyword(eq("pol1"), eq("q1"), eq(3))).thenReturn(List.of(hit));
+
+        when(agentRepository.findById("agent1")).thenReturn(Optional.of(agentAgg));
+
+        ModelAggregate model = new ModelAggregate();
+        model.setId("modelA");
+        model.setProvider("DASHSCOPE");
+        model.setModelKey("m");
+        model.setApiKeyCipher("k");
+        model.setCreatedAt(Instant.now());
+        when(modelRepository.findById("modelA")).thenReturn(Optional.of(model));
+
+        ToolAggregate tool = new ToolAggregate();
+        tool.setId("tool1");
+        tool.setToolType(ToolType.LOCAL);
+        tool.setName("echo");
+
+        when(toolRepository.findAll()).thenReturn(List.of(tool));
+
+        when(toolExecutionService.buildToolkitForToolIds(anyList())).thenReturn(new Toolkit());
+
+        when(agentRuntime.call(any(AgentDefinition.class), eq("q1"), any(Toolkit.class)))
+                .thenReturn(Mono.just(Msg.builder().name("assistant").textContent("final").build()));
+
+        RunAgentRequest req = new RunAgentRequest();
+        req.setModelId("modelA");
+        req.setInput("q1");
+
+        RunAgentResponse resp = service.runAgent("agent1", req);
+        assertEquals(1, resp.getMemory().getPreviewHitCount().intValue());
+        assertTrue(resp.getMemory().getPreviewText().contains("hello memory"));
     }
 
     @Test
     void createAgent_withEmbeddingModel_shouldReject() {
-        AgentApplicationService service = new AgentApplicationService(
-                agentRepository,
-                modelRepository,
-                toolRepository,
-                toolExecutionService,
-                agentRuntime,
-                memoryApplicationService,
-                kbRagKnowledgeFactory,
-                AGENT_DTO_MAPPER
-        );
+        AgentApplicationService service = newAgentApplicationService();
 
         CreateAgentRequest req = new CreateAgentRequest();
         req.setName("a");

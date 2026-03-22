@@ -1,5 +1,6 @@
 "use client";
 
+import {CloudServerOutlined} from "@ant-design/icons";
 import {Alert, Button, Descriptions, Input, InputNumber, Popconfirm, Space, Tag, Typography} from "antd";
 import Link from "next/link";
 import {useRouter} from "next/navigation";
@@ -8,35 +9,12 @@ import React from "react";
 import {AppLayout} from "@/components/AppLayout";
 import {ErrorAlert} from "@/components/ErrorAlert";
 import {PageHeaderBlock} from "@/components/PageHeaderBlock";
+import {PageShell} from "@/components/PageShell";
 import {SectionCard} from "@/components/SectionCard";
 import {ModelConfigDisplay} from "@/components/ModelConfigDisplay";
 import {providerDisplayName} from "@/lib/model-config-labels";
-import {request} from "@/lib/api/request";
-
-type ModelDto = {
-    id: string;
-    name: string;
-    description?: string;
-    provider: string;
-    modelKey: string;
-    baseUrl?: string;
-    config?: Record<string, unknown>;
-    createdAt?: string;
-    apiKeyConfigured?: boolean;
-};
-
-type TestModelResponse = {
-    testType?: string;
-    status?: string;
-    latencyMs?: number;
-    streamChunks?: number;
-    promptUsed?: string;
-    maxTokensUsed?: number;
-    message: string;
-    raw: string;
-    embeddingDimension?: number;
-    embeddingPreview?: string;
-};
+import {deleteModel, getModel, testModel} from "@/lib/models/api";
+import type {ModelDto, TestModelResponse} from "@/lib/models/types";
 
 export default function ModelDetailPage(props: { params: Promise<{ id: string }> }) {
     const router = useRouter();
@@ -72,7 +50,7 @@ export default function ModelDetailPage(props: { params: Promise<{ id: string }>
         setError(null);
         void (async () => {
             try {
-                const data = await request<ModelDto>(`/models/${modelId}`);
+                const data = await getModel(modelId);
                 if (!cancelled) {
                     setModel(data);
                 }
@@ -113,10 +91,7 @@ export default function ModelDetailPage(props: { params: Promise<{ id: string }>
             if (testMaxStreamChunks != null && testMaxStreamChunks > 0) {
                 body.maxStreamChunks = testMaxStreamChunks;
             }
-            const data = await request<TestModelResponse>(`/models/${model.id}/test`, {
-                method: "POST",
-                body,
-            });
+            const data = await testModel(model.id, body);
             setTestResult(data);
         } catch (e) {
             setError(e);
@@ -132,7 +107,7 @@ export default function ModelDetailPage(props: { params: Promise<{ id: string }>
         setError(null);
         setDeleting(true);
         try {
-            await request(`/models/${model.id}`, {method: "DELETE"});
+            await deleteModel(model.id);
             router.push("/models");
         } catch (e) {
             setError(e);
@@ -143,15 +118,14 @@ export default function ModelDetailPage(props: { params: Promise<{ id: string }>
 
     return (
         <AppLayout>
-            <Space orientation="vertical" size={16} style={{width: "100%"}}>
+            <PageShell>
                 <PageHeaderBlock
+                    icon={<CloudServerOutlined/>}
+                    backHref="/models"
                     title="模型详情"
                     subtitle={model ? `${model.name} · ID：${model.id}` : "加载中…"}
                     extra={
                         <Space wrap>
-                            <Link href="/models">
-                                <Button>返回列表</Button>
-                            </Link>
                             {model ? (
                                 <>
                                     <Link href={`/models?edit=${model.id}`}>
@@ -176,6 +150,30 @@ export default function ModelDetailPage(props: { params: Promise<{ id: string }>
                 />
 
                 <ErrorAlert error={error}/>
+
+                {model ? (
+                    <Alert
+                        type="info"
+                        showIcon
+                        style={{marginBottom: 0}}
+                        title="与其他模块的联动"
+                        description={
+                            <Space orientation="vertical" size={4}>
+                                <span>
+                                    <Link href="/agents">创建或编辑智能体</Link>
+                                    时可绑定本模型；嵌入类模型用于
+                                    <Link href="/kb"> 知识库 </Link>的向量检索与入库。
+                                </span>
+                                {isChatProvider ? (
+                                    <span>对话类模型用于智能体主对话与工具调用后的回复生成。</span>
+                                ) : null}
+                                {isEmbeddingProvider ? (
+                                    <span>嵌入模型请与知识库写入时选用的一致，否则维度不匹配无法检索。</span>
+                                ) : null}
+                            </Space>
+                        }
+                    />
+                ) : null}
 
                 <SectionCard
                     title="基本信息"
@@ -411,7 +409,7 @@ export default function ModelDetailPage(props: { params: Promise<{ id: string }>
                         )}
                     </Space>
                 </SectionCard>
-            </Space>
+            </PageShell>
         </AppLayout>
     );
 }

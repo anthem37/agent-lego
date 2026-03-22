@@ -1,8 +1,6 @@
--- Agent Lego 单文件基线（空库专用）。已合并原 V1–V21 演进史；若库中已有 flyway_schema_history 旧版本，请勿替换迁移文件。
--- 依赖：PostgreSQL + pgvector 镜像或已安装 vector 扩展。
+-- Agent Lego 空库唯一基线（全新部署专用）。
+-- 依赖：PostgreSQL 14+；仅需 pg_trgm（长记忆模糊检索）。知识库向量存 Milvus，不使用 pgvector 扩展。
 
-CREATE
-EXTENSION IF NOT EXISTS vector;
 CREATE
 EXTENSION IF NOT EXISTS pg_trgm;
 
@@ -27,15 +25,24 @@ CREATE INDEX ix_lego_models_provider_model_key ON lego_models (provider, model_k
 
 CREATE TABLE lego_tools
 (
-    id         varchar(32) PRIMARY KEY,
-    tool_type  varchar(32) NOT NULL,
-    name       text        NOT NULL,
-    definition jsonb       NOT NULL DEFAULT '{}'::jsonb,
-    created_at timestamptz NOT NULL DEFAULT now(),
-    UNIQUE (tool_type, name)
+    id            varchar(32) PRIMARY KEY,
+    tool_type     varchar(32) NOT NULL,
+    name          text        NOT NULL,
+    definition    jsonb       NOT NULL DEFAULT '{}'::jsonb,
+    tool_category varchar(32) NOT NULL DEFAULT 'ACTION',
+    display_label varchar(256),
+    description   text,
+    created_at    timestamptz NOT NULL DEFAULT now()
 );
 
 CREATE UNIQUE INDEX ux_lego_tools_name_lower ON lego_tools (lower(name));
+
+COMMENT
+ON COLUMN lego_tools.tool_category IS '语义分类：QUERY 查询类（只读） / ACTION 操作类（默认）';
+COMMENT
+ON COLUMN lego_tools.display_label IS '展示名/中文名（可选）；运行时仍以 name 为键';
+COMMENT
+ON COLUMN lego_tools.description IS '平台侧工具说明（给人读）；模型侧说明仍可放在 definition.description';
 
 -- ---------------------------------------------------------------------------
 -- 智能体（工具多对多：lego_agent_tools）
@@ -146,66 +153,75 @@ CREATE INDEX ix_lego_memory_items_owner_scope_created_at ON lego_memory_items (o
 CREATE INDEX ix_lego_memory_items_content_trgm ON lego_memory_items USING gin (content gin_trgm_ops);
 
 -- ---------------------------------------------------------------------------
--- 知识库 v3 + pgvector
+-- 知识库（元数据在 PG，向量在 Milvus）
 -- ---------------------------------------------------------------------------
 CREATE TABLE lego_kb_collections
 (
-    id                 varchar(32) PRIMARY KEY,
-    name               text        NOT NULL,
-    description        text,
-    embedding_model_id varchar(32) NOT NULL REFERENCES lego_models (id),
-    embedding_dims     int         NOT NULL DEFAULT 1536,
-    created_at         timestamptz NOT NULL DEFAULT now(),
-    updated_at         timestamptz NOT NULL DEFAULT now()
+    id                  varchar(32) PRIMARY KEY,
+    name                text        NOT NULL,
+    description         text,
+    embedding_model_id  varchar(32) NOT NULL REFERENCES lego_models (id),
+    embedding_dims      int         NOT NULL,
+    vector_store_kind   varchar(32) NOT NULL DEFAULT 'MILVUS',
+    vector_store_config jsonb       NOT NULL DEFAULT '{}'::jsonb,
+    chunk_strategy      varchar(32) NOT NULL DEFAULT 'FIXED_WINDOW',
+    chunk_params        jsonb       NOT NULL DEFAULT '{
+      "maxChars": 900,
+      "overlap": 120
+    }'::jsonb,
+    created_at          timestamptz NOT NULL DEFAULT now(),
+    updated_at          timestamptz NOT NULL DEFAULT now()
 );
 
 COMMENT
-ON COLUMN lego_kb_collections.embedding_dims IS '上游 embedding 输出维度；入库向量 padding 到 3072 维';
+ON COLUMN lego_kb_collections.embedding_dims IS '与上游 embedding 输出及 Milvus 向量字段维度一致';
+COMMENT
+ON COLUMN lego_kb_collections.vector_store_kind IS 'MILVUS 等；由应用解析 vector_store_config';
+COMMENT
+ON COLUMN lego_kb_collections.vector_store_config IS '连接与物理 collection 等 JSON：host、port、collectionName、token 等';
+COMMENT
+ON COLUMN lego_kb_collections.chunk_strategy IS 'FIXED_WINDOW | PARAGRAPH | HEADING_SECTION';
+COMMENT
+ON COLUMN lego_kb_collections.chunk_params IS 'JSON：maxChars、overlap；HEADING_SECTION 另有 headingLevel、leadMaxChars';
 
 CREATE INDEX ix_lego_kb_collections_created_at ON lego_kb_collections (created_at DESC);
 CREATE INDEX ix_lego_kb_collections_embedding_model_id ON lego_kb_collections (embedding_model_id);
 
 CREATE TABLE lego_kb_documents
 (
-    id            varchar(32) PRIMARY KEY,
-    collection_id varchar(32) NOT NULL REFERENCES lego_kb_collections (id) ON DELETE CASCADE,
-    title         text        NOT NULL,
-    body          text        NOT NULL,
-    status        varchar(32) NOT NULL DEFAULT 'PENDING',
-    error_message text,
-    metadata      jsonb       NOT NULL DEFAULT '{}'::jsonb,
-    created_at    timestamptz NOT NULL DEFAULT now(),
-    updated_at    timestamptz NOT NULL DEFAULT now(),
+    id                   varchar(32) PRIMARY KEY,
+    collection_id        varchar(32) NOT NULL REFERENCES lego_kb_collections (id) ON DELETE CASCADE,
+    title                text        NOT NULL,
+    body                 text        NOT NULL,
+    body_rich            text,
+    status               varchar(32) NOT NULL DEFAULT 'PENDING',
+    error_message        text,
+    linked_tool_ids      jsonb       NOT NULL DEFAULT '[]'::jsonb,
+    tool_output_bindings jsonb       NOT NULL DEFAULT '{
+      "mappings": []
+    }'::jsonb,
+    metadata             jsonb       NOT NULL DEFAULT '{}'::jsonb,
+    created_at           timestamptz NOT NULL DEFAULT now(),
+    updated_at           timestamptz NOT NULL DEFAULT now(),
     CONSTRAINT chk_lego_kb_documents_status
         CHECK (status IN ('PENDING', 'READY', 'FAILED'))
 );
 
+COMMENT
+ON COLUMN lego_kb_documents.body IS '用于分块、向量化与召回的 Markdown 正文';
+COMMENT
+ON COLUMN lego_kb_documents.body_rich IS '可选：富文本 HTML；可为空';
+COMMENT
+ON COLUMN lego_kb_documents.linked_tool_ids IS '本条知识关联的工具 ID（JSON 字符串数组）';
+COMMENT
+ON COLUMN lego_kb_documents.tool_output_bindings IS '占位符与工具 JSON 出参映射：{"mappings":[...]}';
+
 CREATE INDEX ix_lego_kb_documents_collection_created ON lego_kb_documents (collection_id, created_at DESC);
 
-CREATE TABLE lego_kb_chunks
-(
-    id            varchar(32) PRIMARY KEY,
-    document_id   varchar(32) NOT NULL REFERENCES lego_kb_documents (id) ON DELETE CASCADE,
-    collection_id varchar(32) NOT NULL REFERENCES lego_kb_collections (id) ON DELETE CASCADE,
-    chunk_index   int         NOT NULL,
-    content       text        NOT NULL,
-    embedding_vec vector(3072),
-    created_at    timestamptz NOT NULL DEFAULT now(),
-    UNIQUE (document_id, chunk_index)
-);
-
-COMMENT
-ON COLUMN lego_kb_chunks.embedding_vec IS 'pgvector 余弦检索；维度固定 3072，短向量零填充';
-
-CREATE INDEX ix_lego_kb_chunks_collection_id ON lego_kb_chunks (collection_id);
-CREATE INDEX ix_lego_kb_chunks_document_id ON lego_kb_chunks (document_id);
-
--- pgvector：在默认 8KB 页下 HNSW/IVFFlat 索引约限 2000 维；本列 vector(3072) 无法建 ANN 索引。
--- 检索仍用 SQL 余弦算子 (<=>)；数据量大时可：按 collection 过滤缩小扫描、降维后再建索引、或外置向量库。
 -- ---------------------------------------------------------------------------
 -- 可选种子：默认 MCP 工具（与 agentlego.mcp.server.sse-path 一致时可改 endpoint）
 -- ---------------------------------------------------------------------------
-INSERT INTO lego_tools (id, tool_type, name, definition, created_at)
+INSERT INTO lego_tools (id, tool_type, name, definition, tool_category, created_at)
 VALUES ('1800000000001000001', 'MCP', 'mcp_local_echo',
         jsonb_build_object(
                 'endpoint', 'http://127.0.0.1:8080/mcp',
@@ -219,9 +235,10 @@ VALUES ('1800000000001000001', 'MCP', 'mcp_local_echo',
                         'required', jsonb_build_array('content')
                               )
         ),
-        now()) ON CONFLICT (tool_type, name) DO NOTHING;
+        'ACTION',
+        now()) ON CONFLICT (id) DO NOTHING;
 
-INSERT INTO lego_tools (id, tool_type, name, definition, created_at)
+INSERT INTO lego_tools (id, tool_type, name, definition, tool_category, created_at)
 VALUES ('1800000000001000002', 'MCP', 'mcp_local_now',
         jsonb_build_object(
                 'endpoint', 'http://127.0.0.1:8080/mcp',
@@ -235,9 +252,10 @@ VALUES ('1800000000001000002', 'MCP', 'mcp_local_now',
                         'required', '[]'::jsonb
                               )
         ),
-        now()) ON CONFLICT (tool_type, name) DO NOTHING;
+        'ACTION',
+        now()) ON CONFLICT (id) DO NOTHING;
 
-INSERT INTO lego_tools (id, tool_type, name, definition, created_at)
+INSERT INTO lego_tools (id, tool_type, name, definition, tool_category, created_at)
 VALUES ('1800000000001000003', 'MCP', 'mcp_local_format_line',
         jsonb_build_object(
                 'endpoint', 'http://127.0.0.1:8080/mcp',
@@ -253,6 +271,7 @@ VALUES ('1800000000001000003', 'MCP', 'mcp_local_format_line',
                         'required', jsonb_build_array('template', 'who')
                               )
         ),
-        now()) ON CONFLICT (tool_type, name) DO NOTHING;
+        'ACTION',
+        now()) ON CONFLICT (id) DO NOTHING;
 
 ANALYZE;

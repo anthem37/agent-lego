@@ -8,17 +8,15 @@ import org.jsoup.Jsoup;
 import org.jsoup.nodes.Document;
 import org.jsoup.nodes.Element;
 import org.jsoup.nodes.TextNode;
-import java.util.ArrayList;
-import java.util.LinkedHashMap;
-import java.util.LinkedHashSet;
-import java.util.List;
-import java.util.Locale;
-import java.util.Map;
-import java.util.Set;
+
+import java.util.*;
 
 /**
  * 入库前将富文本中的知识库标签展开为 Markdown 中的 {@code {{tool:运行时名}}} / {@code {{tool_field:运行时名.点分路径}}}，
  * 并为 {@code tool_field} 标签<strong>自动生成</strong> {@code toolOutputBindings.mappings}（placeholder 与正文 token 一致，便于召回匹配与按绑定替换）。
+ * <p>
+ * <strong>约束</strong>：出参字段嵌入仅适用于「查询」类工具（{@link com.agentlego.backend.tool.domain.ToolCategory#QUERY}），
+ * 入库与控制台校验由 {@link com.agentlego.backend.kb.application.validation.KbDocumentValidator} 强制执行。
  * <p>
  * 与前端约定（属性可用 {@code data-*} 形式，兼容无 data- 前缀的 {@code tool-code} / {@code tool-field}）：
  * <ul>
@@ -34,9 +32,6 @@ import java.util.Set;
 public final class KbRichHtmlExpansion {
 
     private static final int MAX_AUTO_MAPPINGS = 64;
-
-    public record ExpandOutcome(String html, String bindingsJson) {
-    }
 
     private KbRichHtmlExpansion() {
     }
@@ -180,7 +175,9 @@ public final class KbRichHtmlExpansion {
         return "$." + f;
     }
 
-    /** 正文与 mappings.placeholder 共用，不含外层 {@code {{ }}} */
+    /**
+     * 正文与 mappings.placeholder 共用，不含外层 {@code {{ }}}
+     */
     static String toolFieldMarkdownToken(String toolRuntimeCode, String fieldDotPath) {
         return "tool_field:" + toolRuntimeCode.trim() + "." + fieldDotPath.trim();
     }
@@ -207,5 +204,8 @@ public final class KbRichHtmlExpansion {
         } catch (Exception e) {
             return List.of();
         }
+    }
+
+    public record ExpandOutcome(String html, String bindingsJson) {
     }
 }

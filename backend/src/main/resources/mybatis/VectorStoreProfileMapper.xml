@@ -1,0 +1,68 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.agentlego.backend.vectorstore.infrastructure.persistence.VectorStoreProfileMapper">
+
+    <resultMap id="VectorStoreProfileDOMap"
+               type="com.agentlego.backend.vectorstore.infrastructure.persistence.VectorStoreProfileDO">
+        <id property="id" column="id"/>
+        <result property="name" column="name"/>
+        <result property="vectorStoreKind" column="vector_store_kind"/>
+        <result property="vectorStoreConfigJson" column="vector_store_config_json"/>
+        <result property="embeddingModelId" column="embedding_model_id"/>
+        <result property="embeddingDims" column="embedding_dims"/>
+        <result property="createdAt" column="created_at"/>
+        <result property="updatedAt" column="updated_at"/>
+    </resultMap>
+
+    <insert id="insert"
+            parameterType="com.agentlego.backend.vectorstore.infrastructure.persistence.VectorStoreProfileDO">
+        insert into lego_vector_store_profiles (id, name, vector_store_kind, vector_store_config,
+                                                embedding_model_id, embedding_dims, created_at, updated_at)
+        values (#{id}, #{name}, #{vectorStoreKind}, cast(#{vectorStoreConfigJson} as jsonb),
+                #{embeddingModelId}, #{embeddingDims}, #{createdAt}, #{updatedAt})
+    </insert>
+
+    <select id="findById" resultMap="VectorStoreProfileDOMap">
+        select id,
+               name,
+               vector_store_kind,
+               vector_store_config::text as vector_store_config_json, embedding_model_id,
+               embedding_dims,
+               created_at,
+               updated_at
+        from lego_vector_store_profiles
+        where id = #{id}
+    </select>
+
+    <select id="listAll" resultMap="VectorStoreProfileDOMap">
+        select id,
+               name,
+               vector_store_kind,
+               vector_store_config::text as vector_store_config_json, embedding_model_id,
+               embedding_dims,
+               created_at,
+               updated_at
+        from lego_vector_store_profiles
+        order by created_at desc
+    </select>
+
+    <update id="update"
+            parameterType="com.agentlego.backend.vectorstore.infrastructure.persistence.VectorStoreProfileDO">
+        update lego_vector_store_profiles
+        set name                = #{name},
+            vector_store_kind   = #{vectorStoreKind},
+            vector_store_config = cast(#{vectorStoreConfigJson} as jsonb),
+            embedding_model_id  = #{embeddingModelId},
+            embedding_dims      = #{embeddingDims},
+            updated_at          = #{updatedAt}
+        where id = #{id}
+    </update>
+
+    <delete id="deleteById">
+        delete
+        from lego_vector_store_profiles
+        where id = #{id}
+    </delete>
+</mapper>

@@ -5,6 +5,7 @@ import type {
     BatchImportMcpToolsResponse,
     LocalBuiltinToolMetaDto,
     RemoteMcpToolMetaDto,
+    TestToolCallApiResponse,
     ToolCategoryMetaDto,
     ToolDto,
     ToolPageDto,
@@ -81,7 +82,7 @@ export async function deleteTool(id: string): Promise<void> {
 }
 
 export async function fetchToolReferences(id: string): Promise<ToolReferencesDto> {
-    return request(`/tools/${id}/references`);
+    return request<ToolReferencesDto>(`/tools/${encodeURIComponent(id)}/references`);
 }
 
 export async function fetchToolTypeMeta(): Promise<ToolTypeMetaDto[]> {
@@ -109,4 +110,14 @@ export async function batchImportMcpTools(
     body: BatchImportMcpToolsRequest,
 ): Promise<BatchImportMcpToolsResponse> {
     return request<BatchImportMcpToolsResponse>("/tools/meta/mcp/batch-import", {method: "POST", body});
+}
+
+export async function testToolCall(
+    toolId: string,
+    body: { input: Record<string, unknown> },
+): Promise<TestToolCallApiResponse> {
+    return request<TestToolCallApiResponse>(`/tools/${encodeURIComponent(toolId)}/test-call`, {
+        method: "POST",
+        body,
+    });
 }

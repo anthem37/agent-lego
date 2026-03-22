@@ -67,6 +67,10 @@ export async function request<T>(path: string, options?: RequestOptions): Promis
         });
     }
 
+    if (res.status === 204) {
+        return undefined as T;
+    }
+
     const apiResp = parsed as ApiResponse<T> | null;
     if (!apiResp || typeof apiResp !== "object") {
         throw new ApiError("响应解析失败（不是有效 JSON）");

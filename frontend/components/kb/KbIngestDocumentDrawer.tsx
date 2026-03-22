@@ -5,22 +5,22 @@ import {
     Alert,
     Button,
     Cascader,
-    Col,
-    Divider,
+    Collapse,
     Drawer,
     Form,
     Input,
     message,
     Modal,
-    Row,
     Select,
     Space,
     Spin,
+    Tag,
     Typography,
 } from "antd";
 import React from "react";
 
 import "@/components/kb/kb-quill-knowledge.css";
+import kbShell from "@/components/kb/kb-shell.module.css";
 
 import {KbKnowledgeBodyEditor} from "@/components/kb/KbKnowledgeBodyEditor";
 import type {KbRichTextFieldHandle} from "@/components/kb/KbRichTextField";
@@ -37,6 +37,11 @@ import {toolTypeDisplayName} from "@/lib/tool-labels";
 
 const MAX_SIMILAR_QUERIES = 32;
 const MAX_SIMILAR_QUERY_CHARS = 512;
+
+/** 后端仅允许 QUERY 类工具在正文中使用 tool_field / 出参字段嵌入。 */
+function isQueryTool(t: ToolDto | undefined): boolean {
+    return (t?.toolCategory ?? "ACTION").toUpperCase() === "QUERY";
+}
 
 export type IngestFormValues = {
     title: string;
@@ -74,14 +79,14 @@ export type KbIngestDocumentDrawerProps = {
  * 新增 / 编辑知识文档：单页滚动；绑定工具 + 富文本内嵌标签；tool_field 占位由服务端从 HTML 生成。
  */
 export function KbIngestDocumentDrawer({
-    open,
-    onClose,
-    collectionId,
-    collectionName,
-    editDocumentId,
-    onSuccess,
-    onError,
-}: KbIngestDocumentDrawerProps) {
+                                           open,
+                                           onClose,
+                                           collectionId,
+                                           collectionName,
+                                           editDocumentId,
+                                           onSuccess,
+                                           onError,
+                                       }: KbIngestDocumentDrawerProps) {
     const [form] = Form.useForm<IngestFormValues>();
     const [submitting, setSubmitting] = React.useState(false);
     const [toolCatalog, setToolCatalog] = React.useState<ToolDto[]>([]);
@@ -114,7 +119,14 @@ export function KbIngestDocumentDrawer({
                 value: t.id,
                 label: (
                     <div style={{lineHeight: 1.35}}>
-                        <div>{kbToolRichTagLabel(t)}</div>
+                        <div>
+                            <Space size={6} wrap>
+                                <span>{kbToolRichTagLabel(t)}</span>
+                                <Tag color={isQueryTool(t) ? "blue" : "default"} style={{marginInlineEnd: 0}}>
+                                    {isQueryTool(t) ? "查询 QUERY" : "动作 ACTION"}
+                                </Tag>
+                            </Space>
+                        </div>
                         <Typography.Text type="secondary" style={{fontSize: 11}}>
                             {toolTypeDisplayName(t.toolType)}
                         </Typography.Text>
@@ -129,7 +141,13 @@ export function KbIngestDocumentDrawer({
         [watchedLinkedToolIds],
     );
 
-    const fieldModalToolOptions = React.useMemo(() => {
+    const linkedQueryToolIds = React.useMemo(
+        () => linkedIds.filter((id) => isQueryTool(toolById.get(id))),
+        [linkedIds, toolById],
+    );
+
+    /** 插入「工具」标签：允许所有已绑定工具。 */
+    const pickToolSelectOptions = React.useMemo(() => {
         return linkedIds.map((id) => {
             const t = toolById.get(id);
             return {
@@ -138,6 +156,17 @@ export function KbIngestDocumentDrawer({
             };
         });
     }, [linkedIds, toolById]);
+
+    /** 插入「字段」标签：仅 QUERY 类已绑定工具（与后端校验一致）。 */
+    const fieldModalToolOptions = React.useMemo(() => {
+        return linkedQueryToolIds.map((id) => {
+            const t = toolById.get(id);
+            return {
+                value: id,
+                label: t ? kbToolRichTagLabel(t) : id,
+            };
+        });
+    }, [linkedQueryToolIds, toolById]);
 
     React.useEffect(() => {
         if (!open) {
@@ -182,6 +211,8 @@ export function KbIngestDocumentDrawer({
                     return;
                 }
                 const rich = d.bodyRich?.trim();
+                /** 与 GET 一致：含空数组；勿用 length>0 否则无法回显「有数据」以外的合法状态 */
+                const sq = Array.isArray(d.similarQueries) ? d.similarQueries : [];
                 if (rich) {
                     setLegacyMarkdownMode(false);
                     form.setFieldsValue({
@@ -189,7 +220,7 @@ export function KbIngestDocumentDrawer({
                         bodyRich: d.bodyRich,
                         bodyMarkdown: "",
                         linkedToolIds: d.linkedToolIds ?? [],
-                        similarQueries: [],
+                        similarQueries: sq,
                     });
                 } else {
                     setLegacyMarkdownMode(true);
@@ -198,7 +229,7 @@ export function KbIngestDocumentDrawer({
                         bodyRich: "",
                         bodyMarkdown: d.body ?? "",
                         linkedToolIds: d.linkedToolIds ?? [],
-                        similarQueries: [],
+                        similarQueries: sq,
                     });
                 }
             })
@@ -221,10 +252,13 @@ export function KbIngestDocumentDrawer({
         if (!fieldModalOpen) {
             return;
         }
-        if (!fieldToolId && linkedIds.length > 0) {
-            setFieldToolId(linkedIds[0]);
+        if (linkedQueryToolIds.length === 0) {
+            return;
         }
-    }, [fieldModalOpen, fieldToolId, linkedIds]);
+        if (!fieldToolId || !linkedQueryToolIds.includes(fieldToolId)) {
+            setFieldToolId(linkedQueryToolIds[0]);
+        }
+    }, [fieldModalOpen, fieldToolId, linkedQueryToolIds]);
 
     React.useEffect(() => {
         if (!fieldModalOpen || !fieldToolId) {
@@ -320,8 +354,8 @@ export function KbIngestDocumentDrawer({
                         ? "已保存但向量化失败，请查看列表中的错误信息"
                         : "文档已写入但向量化失败，请查看列表中的错误信息"
                     : isEdit
-                      ? "已保存并完成向量化"
-                      : "文档已写入并完成向量化",
+                        ? "已保存并完成向量化"
+                        : "文档已写入并完成向量化",
             );
             form.resetFields();
             setLegacyMarkdownMode(false);
@@ -345,6 +379,11 @@ export function KbIngestDocumentDrawer({
         const id = fieldToolId;
         if (!id) {
             message.warning("请选择工具");
+            return;
+        }
+        const picked = toolById.get(id);
+        if (!isQueryTool(picked)) {
+            message.warning("出参字段嵌入仅支持「查询」类工具（QUERY），请重新选择或调整绑定。");
             return;
         }
         if (fieldCascaderOptions.length === 0) {
@@ -380,6 +419,7 @@ export function KbIngestDocumentDrawer({
     };
 
     const linkedIdsKey = linkedIds.join("\u0001");
+    const linkedQueryIdsKey = linkedQueryToolIds.join("\u0001");
 
     const editorToolbarExtras = React.useMemo(
         () => ({
@@ -396,14 +436,20 @@ export function KbIngestDocumentDrawer({
                     message.warning("请先在右侧「绑定工具」中选择至少一个工具");
                     return;
                 }
+                if (linkedQueryToolIds.length === 0) {
+                    message.warning(
+                        "出参字段嵌入仅支持「查询」类工具（QUERY）。请至少绑定一个查询类工具，或到工具管理将工具分类设为查询类。",
+                    );
+                    return;
+                }
                 setFieldPathCascader([]);
                 setFieldModalOpen(true);
             },
             insertToolDisabled: linkedIds.length === 0,
-            insertFieldDisabled: linkedIds.length === 0,
+            insertFieldDisabled: linkedQueryToolIds.length === 0,
         }),
-        // eslint-disable-next-line react-hooks/exhaustive-deps -- 仅随已绑定 id 集合变化
-        [linkedIdsKey],
+        // eslint-disable-next-line react-hooks/exhaustive-deps -- 仅随已绑定 id / QUERY 子集变化
+        [linkedIdsKey, linkedQueryIdsKey],
     );
 
     const drawerTitle = isEdit
@@ -411,18 +457,21 @@ export function KbIngestDocumentDrawer({
             ? `编辑文档 · ${collectionName}`
             : "编辑文档"
         : collectionName && collectionName.length > 0
-          ? `新增文档 · ${collectionName}`
-          : "新增文档";
+            ? `新增文档 · ${collectionName}`
+            : "新增文档";
 
     return (
         <>
             <Drawer
                 title={drawerTitle}
-                width={1080}
+                size="min(1180px, calc(100vw - 24px))"
                 open={open}
                 onClose={onClose}
                 destroyOnHidden
-                styles={{body: {paddingBottom: 96}}}
+                styles={{
+                    body: {padding: "20px 24px 96px"},
+                    header: {padding: "16px 24px"},
+                }}
                 afterOpenChange={(o) => {
                     if (o && !editDocumentId) {
                         form.resetFields();
@@ -434,10 +483,11 @@ export function KbIngestDocumentDrawer({
                     }
                 }}
                 extra={
-                    <Space>
+                    <Space size={10}>
                         <Button onClick={onClose}>取消</Button>
                         <Button
                             type="primary"
+                            size="large"
                             loading={submitting || loadingEditDoc}
                             disabled={loadingEditDoc}
                             onClick={() => void form.submit()}
@@ -448,166 +498,207 @@ export function KbIngestDocumentDrawer({
                 }
             >
                 <Spin spinning={loadingEditDoc}>
-                <Alert
-                    type="info"
-                    showIcon
-                    message="编写说明"
-                    description={
-                        <ul style={{margin: 0, paddingLeft: 18, fontSize: 13, lineHeight: 1.65}}>
-                            <li>
-                                在右侧 <strong>绑定工具</strong>，仅允许插入这些工具的标签（与工具管理列表一致）。
-                            </li>
-                            <li>
-                                在正文中点击定位光标，使用工具栏右侧 <strong>图标按钮</strong>：插入工具引用，或插入出参字段（须级联选择路径）。
-                            </li>
-                            <li>
-                                文中展示：工具标签为<strong>工具展示名</strong>（不显示英文 id）；字段标签为<strong>工具展示名.字段说明</strong>（与工具管理 HTTP 出参表「说明」列一致；未填说明时退回字段名）。悬停可看技术路径。删除标签请用退格/Delete 贴近标签操作。
-                            </li>
-                            <li>占位与向量化由服务端根据标签自动生成，无需另配映射表。</li>
-                        </ul>
-                    }
-                    style={{marginBottom: 16}}
-                />
+                    <Collapse
+                        bordered={false}
+                        className={kbShell.introCollapse}
+                        defaultActiveKey={[]}
+                        items={[
+                            {
+                                key: "intro",
+                                label: (
+                                    <span style={{fontWeight: 500, color: "rgba(0,0,0,0.75)"}}>
+                                    编写与工具标签说明（建议首次阅读）
+                                </span>
+                                ),
+                                children: (
+                                    <ul className={kbShell.introList}>
+                                        <li>
+                                            在侧栏 <strong>绑定工具</strong>，仅允许插入这些工具的标签（与工具管理一致）。
+                                        </li>
+                                        <li>
+                                            <strong>出参字段</strong>仅支持 <Tag color="blue">QUERY</Tag>；ACTION 仅可插入
+                                            <strong>工具引用</strong>。
+                                        </li>
+                                        <li>
+                                            正文中用工具栏图标插入工具或字段（字段需级联选出参路径）。
+                                        </li>
+                                        <li>
+                                            展示名为工具展示名与字段说明；占位与向量化由服务端生成。
+                                        </li>
+                                    </ul>
+                                ),
+                            },
+                        ]}
+                    />
 
-                <Form
-                    form={form}
-                    layout="vertical"
-                    onFinish={handleSubmit}
-                    initialValues={{
-                        bodyRich: "",
-                        bodyMarkdown: "",
-                        similarQueries: [],
-                        linkedToolIds: [],
-                    }}
-                >
-                    <Form.Item
-                        name="title"
-                        label="文档标题"
-                        rules={[{required: true, message: "请输入标题"}]}
+                    <Form
+                        form={form}
+                        layout="vertical"
+                        onFinish={handleSubmit}
+                        initialValues={{
+                            bodyRich: "",
+                            bodyMarkdown: "",
+                            similarQueries: [],
+                            linkedToolIds: [],
+                        }}
                     >
-                        <Input size="large" placeholder="列表中显示的标题" allowClear/>
-                    </Form.Item>
+                        <Form.Item
+                            name="title"
+                            label={<span style={{fontWeight: 500}}>文档标题</span>}
+                            rules={[{required: true, message: "请输入标题"}]}
+                        >
+                            <Input size="large" placeholder="在文档列表中显示的标题" allowClear/>
+                        </Form.Item>
 
-                    <Divider plain style={{margin: "12px 0 8px"}}>
-                        <Typography.Text type="secondary">相似问（可选）</Typography.Text>
-                    </Divider>
-                    <Typography.Paragraph type="secondary" style={{fontSize: 12, marginTop: -4}}>
-                        放在标题下方；口语化问法会拼入各分片向量文本以提升召回，最多 {MAX_SIMILAR_QUERIES} 条。
-                    </Typography.Paragraph>
-                    <Form.List name="similarQueries">
-                        {(fields, {add, remove}) => (
-                            <Space orientation="vertical" size={8} style={{width: "100%", marginBottom: 16}}>
-                                {fields.map((field) => (
-                                    <Space.Compact key={field.key} style={{width: "100%"}}>
+                        <Collapse
+                            bordered={false}
+                            className={kbShell.subtleCollapse}
+                            defaultActiveKey={[]}
+                            items={[
+                                {
+                                    key: "similar",
+                                    label: (
+                                        <Typography.Text type="secondary" style={{fontSize: 13}}>
+                                            相似问（可选）— 用于提升召回，默认折叠
+                                        </Typography.Text>
+                                    ),
+                                    children: (
+                                        <>
+                                            <Typography.Paragraph type="secondary" style={{fontSize: 12, marginTop: 0}}>
+                                                会拼入<strong>每条分片</strong>的向量化文本与库的{" "}
+                                                <Typography.Text code>embedding_text</Typography.Text>
+                                                （与全文检索 GIN 索引），用语义接近用户真实提问的说法可提升召回。单条 ≤
+                                                {MAX_SIMILAR_QUERY_CHARS} 字，最多 {MAX_SIMILAR_QUERIES} 条；与正文合计有长度上限时
+                                                <strong>优先保留相似问块</strong>。
+                                            </Typography.Paragraph>
+                                            <Form.List name="similarQueries">
+                                                {(fields, {add, remove}) => (
+                                                    <Space orientation="vertical" size={8} style={{width: "100%"}}>
+                                                        {fields.map((field) => (
+                                                            <Space.Compact key={field.key} style={{width: "100%"}}>
+                                                                <Form.Item
+                                                                    {...field}
+                                                                    noStyle
+                                                                    rules={[
+                                                                        {
+                                                                            max: MAX_SIMILAR_QUERY_CHARS,
+                                                                            message: `单条不超过 ${MAX_SIMILAR_QUERY_CHARS} 字符`,
+                                                                        },
+                                                                    ]}
+                                                                >
+                                                                    <Input
+                                                                        placeholder="例如：怎么退款？"
+                                                                        maxLength={MAX_SIMILAR_QUERY_CHARS}
+                                                                        showCount
+                                                                        style={{width: "calc(100% - 36px)"}}
+                                                                    />
+                                                                </Form.Item>
+                                                                <Button type="text" danger
+                                                                        onClick={() => remove(field.name)}>
+                                                                    删
+                                                                </Button>
+                                                            </Space.Compact>
+                                                        ))}
+                                                        <Button
+                                                            type="dashed"
+                                                            icon={<PlusOutlined/>}
+                                                            onClick={() => add("")}
+                                                            disabled={fields.length >= MAX_SIMILAR_QUERIES}
+                                                            block
+                                                        >
+                                                            添加一条（{fields.length}/{MAX_SIMILAR_QUERIES}）
+                                                        </Button>
+                                                    </Space>
+                                                )}
+                                            </Form.List>
+                                        </>
+                                    ),
+                                },
+                            ]}
+                        />
+
+                        <div className={kbShell.ingestSplit}>
+                            <div className={kbShell.ingestMain}>
+                                <span className={kbShell.sectionLabel}>正文</span>
+                                {legacyMarkdownMode ? (
+                                    <>
+                                        <Alert
+                                            type="warning"
+                                            showIcon
+                                            style={{marginBottom: 12, borderRadius: 10}}
+                                            title="该文档尚无富文本副本"
+                                            description="当前以 Markdown 编辑；保存后按纯文本路径重新分片与向量化。若需工具/字段标签，可新建文档并仅使用富文本入库。"
+                                        />
                                         <Form.Item
-                                            {...field}
-                                            noStyle
-                                            rules={[
-                                                {
-                                                    max: MAX_SIMILAR_QUERY_CHARS,
-                                                    message: `单条不超过 ${MAX_SIMILAR_QUERY_CHARS} 字符`,
-                                                },
-                                            ]}
+                                            name="bodyMarkdown"
+                                            rules={[{required: true, message: "请输入 Markdown 正文"}]}
                                         >
-                                            <Input
-                                                placeholder="例如：怎么退款？"
-                                                maxLength={MAX_SIMILAR_QUERY_CHARS}
-                                                showCount
-                                                style={{width: "calc(100% - 36px)"}}
+                                            <Input.TextArea
+                                                rows={18}
+                                                placeholder="Markdown 正文"
+                                                style={{fontFamily: "ui-monospace, monospace", fontSize: 13}}
                                             />
                                         </Form.Item>
-                                        <Button type="text" danger onClick={() => remove(field.name)}>
-                                            删
-                                        </Button>
-                                    </Space.Compact>
-                                ))}
-                                <Button
-                                    type="dashed"
-                                    icon={<PlusOutlined/>}
-                                    onClick={() => add("")}
-                                    disabled={fields.length >= MAX_SIMILAR_QUERIES}
-                                    block
-                                >
-                                    添加一条（{fields.length}/{MAX_SIMILAR_QUERIES}）
-                                </Button>
-                            </Space>
-                        )}
-                    </Form.List>
-
-                    <Row gutter={[20, 20]} align="top">
-                        <Col xs={24} lg={16} flex="1 1 520px" style={{minWidth: 0}}>
-                            <Typography.Text strong style={{display: "block", marginBottom: 8}}>
-                                正文
-                            </Typography.Text>
-                            {legacyMarkdownMode ? (
-                                <>
-                                    <Alert
-                                        type="warning"
-                                        showIcon
-                                        style={{marginBottom: 12}}
-                                        message="该文档尚无富文本副本"
-                                        description="当前以 Markdown 编辑；保存后按纯文本路径重新分片与向量化。若需工具/字段标签，可新建文档并仅使用富文本入库。"
+                                    </>
+                                ) : (
+                                    <KbKnowledgeBodyEditor
+                                        editorRef={richRef}
+                                        minHeight={440}
+                                        toolbarExtras={editorToolbarExtras}
                                     />
-                                    <Form.Item
-                                        name="bodyMarkdown"
-                                        rules={[{required: true, message: "请输入 Markdown 正文"}]}
-                                    >
-                                        <Input.TextArea
-                                            rows={18}
-                                            placeholder="Markdown 正文"
-                                            style={{fontFamily: "ui-monospace, monospace", fontSize: 13}}
-                                        />
-                                    </Form.Item>
-                                </>
-                            ) : (
-                                <KbKnowledgeBodyEditor
-                                    editorRef={richRef}
-                                    minHeight={420}
-                                    toolbarExtras={editorToolbarExtras}
+                                )}
+                            </div>
+                            <aside className={kbShell.ingestAside}>
+                                <span className={kbShell.asideTitle}>工具关联</span>
+                                <span className={kbShell.asideHint}>
+                                与工具管理同源；正文中的引用仅能来自此处绑定。移动端会先显示本区，便于先选工具再写正文。
+                            </span>
+                                <Alert
+                                    type="info"
+                                    showIcon
+                                    className={kbShell.asideAlert}
+                                    title="出参字段"
+                                    description="仅 QUERY 查询类可嵌入字段；ACTION 仍可使用工具引用标签。"
                                 />
-                            )}
-                        </Col>
-                        <Col xs={24} lg={8} flex="0 0 280px" style={{minWidth: 260, maxWidth: 320}}>
-                            <Typography.Text strong style={{display: "block", marginBottom: 4}}>
-                                工具关联
-                            </Typography.Text>
-                            <Typography.Text type="secondary" style={{fontSize: 12, display: "block", marginBottom: 12}}>
-                                列表与工具管理同源；正文中的「工具 / 字段」仅可插入此处绑定的工具。
-                            </Typography.Text>
-                            <Form.Item
-                                name="linkedToolIds"
-                                label="绑定工具"
-                                style={{marginBottom: 8}}
-                                extra="正文标签按运行时 name 写入 HTML。"
-                            >
-                                <Select
-                                    mode="multiple"
-                                    allowClear
-                                    loading={loadingTools}
-                                    options={toolSelectOptions}
-                                    placeholder={loadingTools ? "加载工具中…" : "搜索并选择工具"}
-                                    showSearch
-                                    filterOption={(input, option) => {
-                                        const q = input.trim().toLowerCase();
-                                        if (!q) {
-                                            return true;
-                                        }
-                                        const id = String(option?.value ?? "");
-                                        const t = toolById.get(id);
-                                        return t ? kbToolSearchBlob(t).includes(q) : false;
-                                    }}
-                                    popupMatchSelectWidth={520}
-                                    maxTagCount="responsive"
-                                />
-                            </Form.Item>
-                        </Col>
-                    </Row>
-                </Form>
+                                <Form.Item
+                                    name="linkedToolIds"
+                                    label={<span style={{fontSize: 13}}>绑定工具</span>}
+                                    style={{marginBottom: 0}}
+                                    extra={
+                                        <span style={{fontSize: 12}}>
+                                        下拉标签区分 QUERY / ACTION；标签按运行时 name 写入 HTML。
+                                    </span>
+                                    }
+                                >
+                                    <Select
+                                        mode="multiple"
+                                        allowClear
+                                        loading={loadingTools}
+                                        options={toolSelectOptions}
+                                        placeholder={loadingTools ? "加载工具中…" : "搜索并选择工具"}
+                                        showSearch
+                                        filterOption={(input, option) => {
+                                            const q = input.trim().toLowerCase();
+                                            if (!q) {
+                                                return true;
+                                            }
+                                            const id = String(option?.value ?? "");
+                                            const t = toolById.get(id);
+                                            return t ? kbToolSearchBlob(t).includes(q) : false;
+                                        }}
+                                        popupMatchSelectWidth={520}
+                                        maxTagCount="responsive"
+                                    />
+                                </Form.Item>
+                            </aside>
+                        </div>
+                    </Form>
                 </Spin>
             </Drawer>
 
             <Modal
                 title="插入工具标签"
+                width={480}
                 open={pickToolModalOpen}
                 onOk={() => confirmPickToolInsert()}
                 onCancel={() => {
@@ -617,13 +708,14 @@ export function KbIngestDocumentDrawer({
                 okText="插入"
                 okButtonProps={{disabled: !pickToolId}}
                 destroyOnHidden
+                styles={{body: {paddingTop: 8}}}
             >
                 <Typography.Paragraph type="secondary" style={{fontSize: 12, marginBottom: 8}}>
                     仅能选择右侧已绑定的工具；标签按该工具运行时 name 写入正文。
                 </Typography.Paragraph>
                 <Select
                     style={{width: "100%"}}
-                    options={fieldModalToolOptions}
+                    options={pickToolSelectOptions}
                     value={pickToolId}
                     onChange={setPickToolId}
                     placeholder="选择工具"
@@ -642,6 +734,7 @@ export function KbIngestDocumentDrawer({
 
             <Modal
                 title="插入工具字段标签"
+                width={560}
                 open={fieldModalOpen}
                 onOk={() => confirmInsertField()}
                 onCancel={() => {
@@ -657,12 +750,13 @@ export function KbIngestDocumentDrawer({
                         fieldPathCascader.length === 0,
                 }}
                 destroyOnHidden
+                styles={{body: {paddingTop: 8}}}
             >
                 <Spin spinning={loadingFieldTool}>
                     <Space orientation="vertical" size={12} style={{width: "100%"}}>
                         <div>
                             <Typography.Text type="secondary" style={{fontSize: 12, display: "block", marginBottom: 4}}>
-                                工具（与工具管理一致，打开时拉取最新 definition）
+                                工具（仅列出已绑定且为 QUERY 查询类的工具，与后端校验一致；打开时拉取最新 definition）
                             </Typography.Text>
                             <Select
                                 style={{width: "100%"}}
@@ -677,7 +771,8 @@ export function KbIngestDocumentDrawer({
                         </div>
                         {fieldCascaderOptions.length > 0 ? (
                             <div>
-                                <Typography.Text type="secondary" style={{fontSize: 12, display: "block", marginBottom: 4}}>
+                                <Typography.Text type="secondary"
+                                                 style={{fontSize: 12, display: "block", marginBottom: 4}}>
                                     出参路径（须级联选择到底层字段，与工具管理 HTTP 出参表一致）
                                 </Typography.Text>
                                 <Cascader
@@ -714,7 +809,8 @@ export function KbIngestDocumentDrawer({
                                         </Typography.Text>
                                         <br/>
                                         <Typography.Text type="secondary" style={{fontSize: 11}}>
-                                            技术路径（入库用）：<Typography.Text code>{fieldPathCascader.join(".")}</Typography.Text>
+                                            技术路径（入库用）：<Typography.Text
+                                            code>{fieldPathCascader.join(".")}</Typography.Text>
                                         </Typography.Text>
                                     </Typography.Paragraph>
                                 ) : null}
@@ -724,8 +820,8 @@ export function KbIngestDocumentDrawer({
                                 {loadingFieldTool
                                     ? "正在加载工具详情…"
                                     : fieldToolId
-                                      ? "当前工具没有可用的表格化 outputSchema（常见于未配置 HTTP 出参或非 HTTP 工具）。请先到「工具管理」为该工具配置出参结构后，再使用级联选择插入字段。"
-                                      : "请先选择工具。"}
+                                        ? "当前工具没有可用的表格化 outputSchema（常见于未配置 HTTP 出参或非 HTTP 工具）。请先到「工具管理」为该工具配置出参结构后，再使用级联选择插入字段。"
+                                        : "请先选择工具。"}
                             </Typography.Paragraph>
                         )}
                     </Space>

@@ -7,47 +7,36 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * 创建智能体请求 DTO。
- * <p>
- * - systemPrompt：作为 agent 的 system message（可被 memory 策略注入额外上下文）
- * - toolIds：允许使用的工具列表（工具权限）
- * - memoryPolicy：记忆检索与注入策略（当前以 JSON object 形式承载）
- * - knowledgeBasePolicy：知识库 RAG 策略（collectionIds 等）
+ * 创建 / 更新智能体共用的请求体（{@code POST /agents} 与 {@code PUT /agents/{id}} 契约一致）。
  */
 @Data
 public class CreateAgentRequest {
 
-    /**
-     * 智能体名称（name）。
-     */
     @NotBlank
     private String name;
 
-    /**
-     * 系统提示词（system prompt）。
-     */
     @NotBlank
     private String systemPrompt;
 
-    /**
-     * 绑定的默认模型 ID（modelId）。
-     */
     @NotBlank
     private String modelId;
 
-    /**
-     * 允许使用的工具 ID 列表（tool permissions）。
-     */
     private List<String> toolIds;
 
-    /**
-     * 记忆策略（memory policy），例如 topK、queryTemplate 等。
-     */
-    private Map<String, Object> memoryPolicy;
-
-    /**
-     * 知识库策略（knowledge base policy），例如 collectionIds、topK、scoreThreshold。
-     */
     private Map<String, Object> knowledgeBasePolicy;
-}
 
+    /**
+     * 记忆策略 ID（可选）；绑定后运行时按策略检索/写回。
+     */
+    private String memoryPolicyId;
+
+    /**
+     * 运行时形态：{@code REACT}（默认）= ReActAgent；{@code CHAT} = 轻量对话。
+     */
+    private String runtimeKind;
+
+    /**
+     * ReAct 最大迭代，仅 REACT 时有效；默认 10。
+     */
+    private Integer maxReactIters;
+}

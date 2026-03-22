@@ -1,10 +1,14 @@
 "use client";
 
-import {Button, Card, Form, Input, Space, Typography} from "antd";
+import {PlayCircleOutlined} from "@ant-design/icons";
+import {Button, Form, Input} from "antd";
 import {useRouter} from "next/navigation";
 import React from "react";
 
 import {AppLayout} from "@/components/AppLayout";
+import {PageHeaderBlock} from "@/components/PageHeaderBlock";
+import {PageShell} from "@/components/PageShell";
+import {SectionCard} from "@/components/SectionCard";
 
 type RunQueryForm = {
     runId: string;
@@ -20,15 +24,14 @@ export default function RunsIndexPage() {
 
     return (
         <AppLayout>
-            <Space orientation="vertical" size={16} style={{width: "100%"}}>
-                <div>
-                    <Typography.Title level={3} style={{margin: 0}}>
-                        运行查询
-                    </Typography.Title>
-                    <Typography.Text type="secondary">输入 runId，查询工作流运行状态与输出。</Typography.Text>
-                </div>
+            <PageShell>
+                <PageHeaderBlock
+                    icon={<PlayCircleOutlined/>}
+                    title="运行查询"
+                    subtitle="由工作流触发运行后得到 runId；在此输入 runId 查看状态、输入输出与错误信息。"
+                />
 
-                <Card title="按 runId 查询">
+                <SectionCard title="按 runId 查询">
                     <Form form={form} layout="vertical" onFinish={onGo}>
                         <Form.Item name="runId" label="runId" rules={[{required: true, message: "请输入 runId"}]}>
                             <Input placeholder="从 /workflows/{id}/runs 返回的 runId"/>
@@ -39,9 +42,8 @@ export default function RunsIndexPage() {
                             </Button>
                         </Form.Item>
                     </Form>
-                </Card>
-            </Space>
+                </SectionCard>
+            </PageShell>
         </AppLayout>
     );
 }
-

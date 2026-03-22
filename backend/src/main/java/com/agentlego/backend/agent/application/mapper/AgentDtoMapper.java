@@ -24,6 +24,8 @@ public interface AgentDtoMapper {
     @Mapping(target = "modelProvider", ignore = true)
     @Mapping(target = "modelModelKey", ignore = true)
     @Mapping(target = "modelConfigSummary", ignore = true)
+    @Mapping(target = "memoryPolicyName", ignore = true)
+    @Mapping(target = "memoryPolicyOwnerScope", ignore = true)
     AgentDto fromAggregate(AgentAggregate agg);
 
     default AgentDto toDto(AgentAggregate agg, Optional<ModelAggregate> boundModel) {

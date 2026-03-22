@@ -21,4 +21,15 @@ public final class ApiRequires {
         }
         return value;
     }
+
+    /**
+     * trim 后非空，错误文案与知识库召回等接口一致（「xxx 不能为空」）。
+     */
+    public static String nonBlankTrimmed(String value, String fieldName) {
+        String q = value == null ? "" : value.trim();
+        if (q.isEmpty()) {
+            throw new ApiException("VALIDATION_ERROR", fieldName + " 不能为空", HttpStatus.BAD_REQUEST);
+        }
+        return q;
+    }
 }

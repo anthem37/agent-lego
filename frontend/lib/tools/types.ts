@@ -157,3 +157,8 @@ export type ToolFormValues = {
     sendJsonBody?: boolean;
     workflowId?: string;
 };
+
+/** POST /tools/{id}/test-call */
+export type TestToolCallApiResponse = {
+    result?: unknown;
+};

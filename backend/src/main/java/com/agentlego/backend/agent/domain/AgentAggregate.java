@@ -11,7 +11,7 @@ import java.util.Map;
  * <p>
  * 说明：
  * - 该对象代表平台侧“智能体”的核心配置快照；
- * - memoryPolicy / knowledgeBasePolicy 以 JSON object（Map）承载，便于策略迭代与灰度。
+ * - knowledgeBasePolicy 以 JSON object（Map）承载，便于策略迭代与灰度。
  */
 @Data
 public class AgentAggregate {
@@ -36,13 +36,22 @@ public class AgentAggregate {
      */
     private List<String> toolIds;
     /**
-     * 记忆检索/注入策略（JSON object）。
+     * 引用的记忆策略 ID（{@code lego_memory_policies.id}）；为空表示不启用平台长期记忆检索。
      */
-    private Map<String, Object> memoryPolicy;
+    private String memoryPolicyId;
     /**
      * 知识库 RAG 策略（JSON object），例如 collectionIds、topK、scoreThreshold。
      */
     private Map<String, Object> knowledgeBasePolicy;
+    /**
+     * AgentScope 运行时形态：REACT = ReActAgent（工具 + 多步推理）；
+     * CHAT = 轻量对话（不挂载工具，运行时 maxIters=1）。
+     */
+    private String runtimeKind;
+    /**
+     * ReAct 最大迭代步数（对应 ReActAgent.Builder.maxIters），仅 {@code REACT} 时有效；默认 10。
+     */
+    private Integer maxReactIters;
     /**
      * 创建时间。
      */

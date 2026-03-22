@@ -10,19 +10,30 @@
         <result property="systemPrompt" column="system_prompt"/>
         <result property="modelId" column="model_id"/>
         <result property="toolIdsCsv" column="tool_ids_csv"/>
-        <result property="memoryPolicyJson" column="memory_policy_json"/>
+        <result property="memoryPolicyId" column="memory_policy_id"/>
         <result property="knowledgeBasePolicyJson" column="knowledge_base_policy_json"/>
+        <result property="runtimeKind" column="runtime_kind"/>
+        <result property="maxReactIters" column="max_react_iters"/>
         <result property="createdAt" column="created_at"/>
     </resultMap>
 
+    <resultMap id="AgentKbPickMap" type="com.agentlego.backend.agent.infrastructure.persistence.AgentDO">
+        <id property="id" column="id"/>
+        <result property="name" column="name"/>
+        <result property="knowledgeBasePolicyJson" column="knowledge_base_policy_json"/>
+    </resultMap>
+
     <insert id="insert" parameterType="com.agentlego.backend.agent.infrastructure.persistence.AgentDO">
-        insert into lego_agents (id, name, system_prompt, model_id, memory_policy, knowledge_base_policy)
+        insert into lego_agents (id, name, system_prompt, model_id, memory_policy_id, knowledge_base_policy,
+                                 runtime_kind, max_react_iters)
         values (#{id},
                 #{name},
                 #{systemPrompt},
                 #{modelId},
-                cast(#{memoryPolicyJson} as jsonb),
-                cast(#{knowledgeBasePolicyJson} as jsonb))
+                #{memoryPolicyId},
+                cast(#{knowledgeBasePolicyJson} as jsonb),
+                #{runtimeKind},
+                #{maxReactIters})
     </insert>
 
     <insert id="insertAgentTools">
@@ -38,13 +49,16 @@
                a.system_prompt,
                a.model_id,
                coalesce(string_agg(t.tool_id, ',' order by t.tool_id), '') as tool_ids_csv,
-               cast(a.memory_policy as text)                               as memory_policy_json,
+               a.memory_policy_id,
                cast(a.knowledge_base_policy as text)                       as knowledge_base_policy_json,
+               a.runtime_kind,
+               a.max_react_iters,
                a.created_at
         from lego_agents a
                  left join lego_agent_tools t on t.agent_id = a.id
         where a.id = #{id}
-        group by a.id, a.name, a.system_prompt, a.model_id, a.memory_policy, a.knowledge_base_policy, a.created_at
+        group by a.id, a.name, a.system_prompt, a.model_id, a.memory_policy_id, a.knowledge_base_policy,
+                 a.runtime_kind, a.max_react_iters, a.created_at
     </select>
 
     <select id="countByModelId" parameterType="java.lang.String" resultType="int">
@@ -70,8 +84,16 @@
     <select id="listAgentIdsReferencingKbCollection" resultType="java.lang.String">
         select id
         from lego_agents
-        where jsonb_typeof(knowledge_base_policy - &gt; 'collectionIds') = 'array'
-          and knowledge_base_policy - &gt; 'collectionIds' @> jsonb_build_array(#{collectionId})
+        where jsonb_typeof(knowledge_base_policy - > 'collectionIds') = 'array'
+          and knowledge_base_policy - > 'collectionIds' @> jsonb_build_array(#{collectionId})
+        order by created_at desc
+    </select>
+
+    <select id="listKbPolicyPicker" resultMap="AgentKbPickMap">
+        select id,
+               name,
+               cast(knowledge_base_policy as text) as knowledge_base_policy_json
+        from lego_agents
         order by created_at desc
     </select>
 
@@ -80,4 +102,51 @@
         set knowledge_base_policy = cast(#{knowledgeBasePolicyJson} as jsonb)
         where id = #{id}
     </update>
+
+    <delete id="deleteAgentToolsByAgentId">
+        delete
+        from lego_agent_tools
+        where agent_id = #{agentId}
+    </delete>
+
+    <update id="updateAgent" parameterType="com.agentlego.backend.agent.infrastructure.persistence.AgentDO">
+        update lego_agents
+        set name                  = #{name},
+            system_prompt         = #{systemPrompt},
+            model_id              = #{modelId},
+            memory_policy_id      = #{memoryPolicyId},
+            knowledge_base_policy = cast(#{knowledgeBasePolicyJson} as jsonb),
+            runtime_kind          = #{runtimeKind},
+            max_react_iters       = #{maxReactIters}
+        where id = #{id}
+    </update>
+
+    <select id="countByMemoryPolicyId" resultType="int">
+        select count(*) ::int
+        from lego_agents
+        where memory_policy_id = #{policyId}
+    </select>
+
+    <select id="countAgentsByMemoryPolicyIds"
+            resultType="com.agentlego.backend.agent.infrastructure.persistence.AgentMemoryPolicyCountRow">
+        select memory_policy_id as policyId, count(*) ::int as cnt
+        from lego_agents
+        where memory_policy_id in
+        <foreach collection="policyIds" item="pid" open="(" separator="," close=")">
+            #{pid}
+        </foreach>
+        group by memory_policy_id
+    </select>
+
+    <resultMap id="AgentRefMap" type="com.agentlego.backend.agent.infrastructure.persistence.AgentDO">
+        <id property="id" column="id"/>
+        <result property="name" column="name"/>
+    </resultMap>
+
+    <select id="listAgentsByMemoryPolicyId" resultMap="AgentRefMap">
+        select id, name
+        from lego_agents
+        where memory_policy_id = #{policyId}
+        order by created_at desc
+    </select>
 </mapper>

@@ -22,7 +22,8 @@ public interface KbDocumentMapper {
             @Param("body") String body,
             @Param("bodyRich") String bodyRich,
             @Param("linkedToolIdsJson") String linkedToolIdsJson,
-            @Param("toolOutputBindingsJson") String toolOutputBindingsJson
+            @Param("toolOutputBindingsJson") String toolOutputBindingsJson,
+            @Param("similarQueriesJson") String similarQueriesJson
     );
 
     KbDocumentDO findById(@Param("id") String id);

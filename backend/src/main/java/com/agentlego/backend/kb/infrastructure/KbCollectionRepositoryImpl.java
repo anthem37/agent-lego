@@ -2,6 +2,7 @@ package com.agentlego.backend.kb.infrastructure;
 
 import com.agentlego.backend.kb.domain.KbCollectionAggregate;
 import com.agentlego.backend.kb.domain.KbCollectionRepository;
+import com.agentlego.backend.kb.domain.KbVectorStoreKind;
 import com.agentlego.backend.kb.infrastructure.persistence.KbCollectionDO;
 import com.agentlego.backend.kb.infrastructure.persistence.KbCollectionMapper;
 import org.springframework.stereotype.Repository;
@@ -26,6 +27,9 @@ public class KbCollectionRepositoryImpl implements KbCollectionRepository {
         row.setDescription(aggregate.getDescription());
         row.setEmbeddingModelId(aggregate.getEmbeddingModelId());
         row.setEmbeddingDims(aggregate.getEmbeddingDims());
+        row.setVectorStoreKind(aggregate.getVectorStoreKind());
+        row.setVectorStoreConfigJson(aggregate.getVectorStoreConfigJson());
+        row.setVectorStoreProfileId(aggregate.getVectorStoreProfileId());
         row.setChunkStrategy(aggregate.getChunkStrategy());
         row.setChunkParamsJson(aggregate.getChunkParamsJson());
         row.setCreatedAt(aggregate.getCreatedAt());
@@ -73,6 +77,15 @@ public class KbCollectionRepositoryImpl implements KbCollectionRepository {
         a.setDescription(row.getDescription());
         a.setEmbeddingModelId(row.getEmbeddingModelId());
         a.setEmbeddingDims(row.getEmbeddingDims() == null ? 1536 : row.getEmbeddingDims());
+        a.setVectorStoreKind(row.getVectorStoreKind() == null || row.getVectorStoreKind().isBlank()
+                ? KbVectorStoreKind.MILVUS.name()
+                : row.getVectorStoreKind());
+        a.setVectorStoreConfigJson(
+                row.getVectorStoreConfigJson() == null || row.getVectorStoreConfigJson().isBlank()
+                        ? "{}"
+                        : row.getVectorStoreConfigJson()
+        );
+        a.setVectorStoreProfileId(row.getVectorStoreProfileId());
         a.setChunkStrategy(row.getChunkStrategy() == null ? "FIXED_WINDOW" : row.getChunkStrategy());
         a.setChunkParamsJson(
                 row.getChunkParamsJson() == null || row.getChunkParamsJson().isBlank()

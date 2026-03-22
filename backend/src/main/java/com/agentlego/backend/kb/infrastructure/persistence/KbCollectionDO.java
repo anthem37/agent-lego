@@ -11,6 +11,9 @@ public class KbCollectionDO {
     private String description;
     private String embeddingModelId;
     private Integer embeddingDims;
+    private String vectorStoreKind;
+    private String vectorStoreConfigJson;
+    private String vectorStoreProfileId;
     private String chunkStrategy;
     private String chunkParamsJson;
     private Instant createdAt;

@@ -15,6 +15,18 @@ public class KbCollectionAggregate {
      */
     private int embeddingDims;
     /**
+     * 外置向量库类型，与 {@link KbVectorStoreKind#name()} 一致。
+     */
+    private String vectorStoreKind = KbVectorStoreKind.MILVUS.name();
+    /**
+     * 向量库连接与物理集合等配置 JSON（如 Milvus 的 host、collectionName）。
+     */
+    private String vectorStoreConfigJson = "{}";
+    /**
+     * 可选：引用 {@code lego_vector_store_profiles}（创建时写入，读路径使用已落库的合并配置）。
+     */
+    private String vectorStoreProfileId;
+    /**
      * 分片策略编码，与 {@link KbChunkStrategyKind#name()} 一致。
      */
     private String chunkStrategy = "FIXED_WINDOW";

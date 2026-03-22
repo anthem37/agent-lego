@@ -50,13 +50,29 @@ public class AgentDto {
      */
     private List<String> toolIds;
     /**
-     * 记忆策略（JSON object）。
+     * 记忆策略 ID。
      */
-    private Map<String, Object> memoryPolicy;
+    private String memoryPolicyId;
+    /**
+     * 记忆策略名称（列表/详情展示，非持久化冗余）。
+     */
+    private String memoryPolicyName;
+    /**
+     * 记忆策略隔离键 owner_scope（展示用）。
+     */
+    private String memoryPolicyOwnerScope;
     /**
      * 知识库策略（JSON object）。
      */
     private Map<String, Object> knowledgeBasePolicy;
+    /**
+     * 运行时形态：REACT / CHAT。
+     */
+    private String runtimeKind;
+    /**
+     * ReAct 最大迭代步数（仅 REACT 时有效）。
+     */
+    private Integer maxReactIters;
     /**
      * 创建时间。
      */

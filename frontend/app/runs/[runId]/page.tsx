@@ -1,24 +1,17 @@
 "use client";
 
-import {Button, Card, Descriptions, Space, Typography} from "antd";
+import {PlayCircleOutlined} from "@ant-design/icons";
+import {Button, Descriptions, Typography} from "antd";
 import React from "react";
 
 import {AppLayout} from "@/components/AppLayout";
 import {ErrorAlert} from "@/components/ErrorAlert";
-import {request} from "@/lib/api/request";
+import {PageHeaderBlock} from "@/components/PageHeaderBlock";
+import {PageShell} from "@/components/PageShell";
+import {SectionCard} from "@/components/SectionCard";
 import {stringifyPretty} from "@/lib/json";
-
-type WorkflowRunDto = {
-    id: string;
-    workflowId: string;
-    status: string;
-    input?: Record<string, unknown>;
-    output?: Record<string, unknown>;
-    error?: string;
-    startedAt?: string;
-    finishedAt?: string;
-    createdAt?: string;
-};
+import {getWorkflowRun} from "@/lib/runs/api";
+import type {WorkflowRunDto} from "@/lib/runs/types";
 
 export default function RunDetailPage(props: { params: Promise<{ runId: string }> }) {
     const [run, setRun] = React.useState<WorkflowRunDto | null>(null);
@@ -29,7 +22,7 @@ export default function RunDetailPage(props: { params: Promise<{ runId: string }
         setError(null);
         setLoading(true);
         try {
-            const data = await request<WorkflowRunDto>(`/runs/${runId}`);
+            const data = await getWorkflowRun(runId);
             setRun(data);
         } catch (e) {
             setError(e);
@@ -62,37 +55,35 @@ export default function RunDetailPage(props: { params: Promise<{ runId: string }
 
     return (
         <AppLayout>
-            <Space orientation="vertical" size={16} style={{width: "100%"}}>
-                <div>
-                    <Typography.Title level={3} style={{margin: 0}}>
-                        运行详情
-                    </Typography.Title>
-                    <Typography.Text type="secondary">
-                        {run ? (
+            <PageShell>
+                <PageHeaderBlock
+                    icon={<PlayCircleOutlined/>}
+                    backHref="/runs"
+                    title="工作流运行详情"
+                    subtitle={
+                        run ? (
                             <>
                                 runId：<Typography.Text code>{run.id}</Typography.Text>（{run.status}）
                             </>
                         ) : (
                             "加载中…"
-                        )}
-                    </Typography.Text>
-                </div>
+                        )
+                    }
+                />
 
                 <ErrorAlert error={error}/>
 
-                <Card
+                <SectionCard
                     title="运行状态"
                     extra={
-                        <Space>
-                            <Button
-                                onClick={() => {
-                                    void props.params.then(({runId}) => reload(runId));
-                                }}
-                                loading={loading}
-                            >
-                                刷新
-                            </Button>
-                        </Space>
+                        <Button
+                            onClick={() => {
+                                void props.params.then(({runId}) => reload(runId));
+                            }}
+                            loading={loading}
+                        >
+                            刷新
+                        </Button>
                     }
                 >
                     {run ? (
@@ -116,8 +107,8 @@ export default function RunDetailPage(props: { params: Promise<{ runId: string }
                     ) : (
                         <Typography.Text type="secondary">未加载到数据</Typography.Text>
                     )}
-                </Card>
-            </Space>
+                </SectionCard>
+            </PageShell>
         </AppLayout>
     );
 }
