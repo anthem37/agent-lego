@@ -1,5 +1,6 @@
 package com.agentlego.backend.mcp.adapter;
 
+import cn.hutool.core.util.StrUtil;
 import com.agentlego.backend.api.ApiException;
 import com.agentlego.backend.mcp.support.McpJsonSchemas;
 import com.agentlego.backend.mcp.support.McpPlatformResponses;
@@ -19,29 +20,31 @@ import org.springframework.stereotype.Service;
 import reactor.core.publisher.Mono;
 
 import java.time.Duration;
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Map;
-import java.util.Objects;
-import java.util.Set;
+import java.util.*;
 import java.util.stream.Collectors;
 
+/**
+ * MCP 双角色适配：
+ * <ul>
+ *   <li><b>本机 Server</b>：{@link #buildPlatformMcpServerBundle} 搭 SSE、注册 LOCAL 内置工具；{@link #syncLocalBuiltinTools} 在暴露策略变更时对齐 tools/list。</li>
+ *   <li><b>外连 Client</b>：{@link #buildMcpClient} 供运行时按需创建（与 Registry 配合）。</li>
+ * </ul>
+ */
 @Service
 public class McpAdapter {
 
     private static final Duration LOCAL_TOOL_TIMEOUT = Duration.ofSeconds(30);
 
     private static String normalizeMcpBasePath(String path) {
-        String p = Objects.requireNonNull(path, "sseEndpointBase").trim();
-        if (p.isEmpty()) {
+        String p = StrUtil.trim(StrUtil.blankToDefault(path, null));
+        if (StrUtil.isEmpty(p)) {
             throw new IllegalArgumentException("sseEndpointBase must not be blank");
         }
-        if (!p.startsWith("/")) {
-            p = "/" + p;
+        if (!StrUtil.startWith(p, StrUtil.SLASH)) {
+            p = StrUtil.SLASH + p;
         }
-        while (p.length() > 1 && p.endsWith("/")) {
-            p = p.substring(0, p.length() - 1);
+        while (StrUtil.length(p) > 1 && StrUtil.endWith(p, StrUtil.SLASH)) {
+            p = StrUtil.removeSuffix(p, StrUtil.SLASH);
         }
         return p;
     }
@@ -82,8 +85,8 @@ public class McpAdapter {
     }
 
     /**
-     * 与 {@link #buildPlatformMcpServerBundle} 启动时注册的工具列表对齐：按当前应暴露的内置元数据增删 MCP tools，
-     * 并通知已连接的客户端刷新 tools/list（例如用户变更「内置工具是否暴露到 MCP」后）。
+     * 与 {@link #buildPlatformMcpServerBundle} 启动态对齐：按 {@code exposedMetas} 做差集增删，并 {@code notifyToolsListChanged}。
+     * <p>移除顺序任意；新增顺序与 {@code exposedMetas} 列表一致（避免 HashSet 无序）。
      */
     public void syncLocalBuiltinTools(
             McpSyncServer server,
@@ -94,19 +97,10 @@ public class McpAdapter {
         Objects.requireNonNull(toolExecutionService, "toolExecutionService");
         Objects.requireNonNull(exposedMetas, "exposedMetas");
 
-        Set<String> desired = exposedMetas.stream()
-                .map(m -> m.getName().trim())
-                .collect(Collectors.toCollection(HashSet::new));
+        Set<String> desired = exposedMetas.stream().map(m -> m.getName().trim()).collect(Collectors.toSet());
+        Set<String> current = server.listTools().stream().map(McpSchema.Tool::name).collect(Collectors.toSet());
 
-        Set<String> current = server.listTools().stream()
-                .map(McpSchema.Tool::name)
-                .collect(Collectors.toCollection(HashSet::new));
-
-        for (String name : current) {
-            if (!desired.contains(name)) {
-                server.removeTool(name);
-            }
-        }
+        current.stream().filter(n -> !desired.contains(n)).forEach(server::removeTool);
         for (LocalBuiltinToolMetaDto meta : exposedMetas) {
             String toolName = meta.getName().trim();
             if (!current.contains(toolName)) {
@@ -127,8 +121,8 @@ public class McpAdapter {
                 McpServerFeatures.SyncToolSpecification.builder()
                         .tool(McpSchema.Tool.builder()
                                 .name(toolName)
-                                .description(meta.getDescription() != null && !meta.getDescription().isBlank()
-                                        ? meta.getDescription()
+                                .description(StrUtil.isNotBlank(meta.getDescription())
+                                        ? meta.getDescription().trim()
                                         : toolName)
                                 .inputSchema(inputSchema)
                                 .build())

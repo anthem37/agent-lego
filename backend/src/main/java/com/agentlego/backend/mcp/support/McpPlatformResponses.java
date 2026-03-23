@@ -7,6 +7,9 @@ import io.modelcontextprotocol.spec.McpSchema;
 
 import java.util.List;
 
+/**
+ * 本机 MCP 调用 LOCAL 内置成功时，把 {@link io.agentscope.core.message.ToolResultBlock} 折叠为 MCP {@code CallToolResult} 文本。
+ */
 public final class McpPlatformResponses {
 
     private McpPlatformResponses() {

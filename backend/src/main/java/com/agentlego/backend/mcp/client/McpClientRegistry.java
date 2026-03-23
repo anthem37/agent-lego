@@ -1,11 +1,11 @@
 package com.agentlego.backend.mcp.client;
 
+import cn.hutool.core.util.StrUtil;
 import io.agentscope.core.tool.mcp.McpClientBuilder;
 import io.agentscope.core.tool.mcp.McpClientWrapper;
 import io.modelcontextprotocol.spec.McpSchema;
 import jakarta.annotation.PreDestroy;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
 import java.time.Duration;
@@ -13,10 +13,13 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
+/**
+ * 外连 MCP：按 endpoint 复用 {@link McpClientWrapper}，并缓存 {@code tools/list} 供管理端发现；
+ * {@link #invalidateRemoteToolsCache} 在导入前强制重拉。
+ */
+@Slf4j
 @Component
 public class McpClientRegistry {
-
-    private static final Logger log = LoggerFactory.getLogger(McpClientRegistry.class);
     private static final Duration INIT_TIMEOUT = Duration.ofSeconds(60);
     private static final Duration BUILD_TIMEOUT = Duration.ofSeconds(60);
 
@@ -24,16 +27,16 @@ public class McpClientRegistry {
     private final Map<String, List<McpSchema.Tool>> toolsByEndpoint = new ConcurrentHashMap<>();
 
     public McpClientWrapper getOrCreate(String sseEndpoint) {
-        if (sseEndpoint == null || sseEndpoint.isBlank()) {
+        if (StrUtil.isBlank(sseEndpoint)) {
             throw new IllegalArgumentException("MCP endpoint is blank");
         }
-        String key = sseEndpoint.trim();
+        String key = StrUtil.trim(sseEndpoint);
         return clients.computeIfAbsent(key, this::connect);
     }
 
     private McpClientWrapper connect(String url) {
         String name = "lego-mcp-" + Integer.toHexString(url.hashCode());
-        log.info("Connecting MCP client '{}' → {}", name, url);
+        log.info("Connecting MCP client '{}' -> {}", name, url);
         McpClientWrapper w = McpClientBuilder.create(name)
                 .sseTransport(url)
                 .timeout(BUILD_TIMEOUT)
@@ -44,7 +47,7 @@ public class McpClientRegistry {
     }
 
     public List<McpSchema.Tool> listRemoteTools(String sseEndpoint) {
-        String key = sseEndpoint.trim();
+        String key = StrUtil.trim(sseEndpoint);
         return toolsByEndpoint.computeIfAbsent(key, ep -> {
             McpClientWrapper c = getOrCreate(ep);
             List<McpSchema.Tool> list = c.listTools().block(INIT_TIMEOUT);
@@ -53,10 +56,10 @@ public class McpClientRegistry {
     }
 
     public void invalidateRemoteToolsCache(String sseEndpoint) {
-        if (sseEndpoint == null) {
+        if (StrUtil.isBlank(sseEndpoint)) {
             return;
         }
-        toolsByEndpoint.remove(sseEndpoint.trim());
+        toolsByEndpoint.remove(StrUtil.trim(sseEndpoint));
     }
 
     @PreDestroy

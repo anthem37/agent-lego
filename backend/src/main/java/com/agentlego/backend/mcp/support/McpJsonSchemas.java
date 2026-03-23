@@ -5,6 +5,9 @@ import io.modelcontextprotocol.spec.McpSchema;
 
 import java.util.*;
 
+/**
+ * 将平台 LOCAL 内置参数元数据转为 MCP {@code inputSchema}（JSON Schema 子集）。
+ */
 public final class McpJsonSchemas {
 
     private McpJsonSchemas() {

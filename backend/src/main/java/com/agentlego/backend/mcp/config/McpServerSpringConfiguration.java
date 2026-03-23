@@ -7,8 +7,6 @@ import com.agentlego.backend.mcp.properties.McpServerProperties;
 import com.agentlego.backend.tool.application.service.LocalBuiltinExposureApplicationService;
 import com.agentlego.backend.tool.application.service.ToolExecutionService;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -17,12 +15,16 @@ import org.springframework.web.servlet.function.ServerResponse;
 
 import java.time.Duration;
 
+/**
+ * 装配本进程 MCP Server：{@link PlatformMcpServerBundle}（SSE + tools）、路由、进程退出时关闭 transport。
+ * <p>开关见 {@link ConditionalOnMcpServerEnabled}（{@code agentlego.mcp.server.enabled}）。
+ */
 @Configuration
 @EnableConfigurationProperties({McpServerProperties.class, McpClientProperties.class})
 public class McpServerSpringConfiguration {
 
     @Bean
-    @ConditionalOnProperty(prefix = "agentlego.mcp.server", name = "enabled", havingValue = "true", matchIfMissing = true)
+    @ConditionalOnMcpServerEnabled
     public PlatformMcpServerBundle platformMcpServerBundle(
             McpAdapter mcpAdapter,
             ObjectMapper objectMapper,
@@ -38,28 +40,14 @@ public class McpServerSpringConfiguration {
         );
     }
 
-    /**
-     * 必须与 {@link #platformMcpServerBundle} 同配置类且声明在其后，保证 {@link PlatformMcpServerBundle} 已存在后再注册，
-     * 否则 {@link LocalBuiltinExposureApplicationService} 更新暴露策略时无法同步 tools/list。
-     */
     @Bean
-    @ConditionalOnBean(PlatformMcpServerBundle.class)
-    public McpBuiltinToolsSynchronizer mcpBuiltinToolsSynchronizer(
-            PlatformMcpServerBundle bundle,
-            McpAdapter mcpAdapter,
-            ToolExecutionService toolExecutionService
-    ) {
-        return new McpBuiltinToolsSynchronizer(bundle, mcpAdapter, toolExecutionService);
-    }
-
-    @Bean
-    @ConditionalOnBean(PlatformMcpServerBundle.class)
+    @ConditionalOnMcpServerEnabled
     public RouterFunction<ServerResponse> platformMcpRouterFunction(PlatformMcpServerBundle bundle) {
         return bundle.routerFunction();
     }
 
     @Bean
-    @ConditionalOnBean(PlatformMcpServerBundle.class)
+    @ConditionalOnMcpServerEnabled
     public McpServerLifecycle mcpServerLifecycle(PlatformMcpServerBundle bundle) {
         return new McpServerLifecycle(bundle);
     }
