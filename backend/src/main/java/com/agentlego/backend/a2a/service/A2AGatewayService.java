@@ -18,12 +18,15 @@ public class A2AGatewayService {
         this.agentApplicationService = agentApplicationService;
     }
 
-    public String delegateLocal(String agentId, String modelId, String input) {
+    public String delegateLocal(String agentId, String modelId, String input, String memoryNamespace) {
         String safeAgentId = ApiRequires.nonBlank(agentId, "agentId");
         String safeModelId = ApiRequires.nonBlank(modelId, "modelId");
         String safeInput = (input == null) ? "" : input;
 
-        RunAgentResponse resp = agentApplicationService.runAgent(safeAgentId, AgentRunRequests.of(safeModelId, safeInput));
+        RunAgentResponse resp = agentApplicationService.runAgent(
+                safeAgentId,
+                AgentRunRequests.of(safeModelId, safeInput, memoryNamespace)
+        );
         return (resp == null || resp.getOutput() == null) ? "" : resp.getOutput();
     }
 }

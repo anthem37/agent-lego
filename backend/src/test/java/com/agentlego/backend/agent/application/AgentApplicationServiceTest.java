@@ -13,6 +13,7 @@ import com.agentlego.backend.memorypolicy.domain.MemoryItemRepository;
 import com.agentlego.backend.memorypolicy.domain.MemoryPolicyRepository;
 import com.agentlego.backend.memorypolicy.infrastructure.persistence.MemoryItemDO;
 import com.agentlego.backend.memorypolicy.infrastructure.persistence.MemoryPolicyDO;
+import com.agentlego.backend.memorypolicy.runtime.MemoryVectorIndexService;
 import com.agentlego.backend.model.domain.ModelAggregate;
 import com.agentlego.backend.model.domain.ModelRepository;
 import com.agentlego.backend.runtime.AgentRuntime;
@@ -61,6 +62,8 @@ class AgentApplicationServiceTest {
     private MemoryPolicyRepository memoryPolicyRepository;
     @Mock
     private MemoryItemRepository memoryItemRepository;
+    @Mock
+    private MemoryVectorIndexService memoryVectorIndexService;
 
     private AgentApplicationService newAgentApplicationService() {
         return new AgentApplicationService(
@@ -72,6 +75,7 @@ class AgentApplicationServiceTest {
                 kbRagKnowledgeFactory,
                 memoryPolicyRepository,
                 memoryItemRepository,
+                memoryVectorIndexService,
                 AGENT_DTO_MAPPER
         );
     }
@@ -131,7 +135,7 @@ class AgentApplicationServiceTest {
         ToolAggregate tool = new ToolAggregate();
         tool.setId("tool1");
         tool.setToolType(ToolType.LOCAL);
-        tool.setName("echo");
+        tool.setName("agent_tool");
 
         when(toolRepository.findAll()).thenReturn(List.of(tool));
 
@@ -181,7 +185,8 @@ class AgentApplicationServiceTest {
         pol.setWriteMode("OFF");
         pol.setWriteBackOnDuplicate("skip");
         when(memoryPolicyRepository.findById("pol1")).thenReturn(Optional.of(pol));
-        when(memoryItemRepository.searchByKeyword(eq("pol1"), eq("question"), eq(3))).thenReturn(List.of());
+        when(memoryItemRepository.searchByKeyword(eq("pol1"), eq("question"), eq(3), isNull(), eq("EPISODIC_DIALOGUE"), eq(true)))
+                .thenReturn(List.of());
 
         when(agentRepository.findById("agent1")).thenReturn(Optional.of(agentAgg));
 
@@ -196,7 +201,7 @@ class AgentApplicationServiceTest {
         ToolAggregate tool = new ToolAggregate();
         tool.setId("tool1");
         tool.setToolType(ToolType.LOCAL);
-        tool.setName("echo");
+        tool.setName("agent_tool");
 
         when(toolRepository.findAll()).thenReturn(List.of(tool));
 
@@ -222,6 +227,7 @@ class AgentApplicationServiceTest {
         assertEquals("pol1", resp.getMemory().getMemoryPolicyId());
         assertEquals("策略一", resp.getMemory().getMemoryPolicyName());
         assertEquals(0, resp.getMemory().getPreviewHitCount().intValue());
+        assertEquals(480, resp.getMemory().getRoughSummaryMaxCharsResolved().intValue());
     }
 
     @Test
@@ -250,7 +256,8 @@ class AgentApplicationServiceTest {
 
         MemoryItemDO hit = new MemoryItemDO();
         hit.setContent("hello memory");
-        when(memoryItemRepository.searchByKeyword(eq("pol1"), eq("q1"), eq(3))).thenReturn(List.of(hit));
+        when(memoryItemRepository.searchByKeyword(eq("pol1"), eq("q1"), eq(3), isNull(), eq("EPISODIC_DIALOGUE"), eq(true)))
+                .thenReturn(List.of(hit));
 
         when(agentRepository.findById("agent1")).thenReturn(Optional.of(agentAgg));
 
@@ -265,7 +272,7 @@ class AgentApplicationServiceTest {
         ToolAggregate tool = new ToolAggregate();
         tool.setId("tool1");
         tool.setToolType(ToolType.LOCAL);
-        tool.setName("echo");
+        tool.setName("agent_tool");
 
         when(toolRepository.findAll()).thenReturn(List.of(tool));
 
@@ -281,6 +288,65 @@ class AgentApplicationServiceTest {
         RunAgentResponse resp = service.runAgent("agent1", req);
         assertEquals(1, resp.getMemory().getPreviewHitCount().intValue());
         assertTrue(resp.getMemory().getPreviewText().contains("hello memory"));
+    }
+
+    @Test
+    void runAgent_withMemoryNamespace_shouldPassToKeywordPreview() {
+        AgentApplicationService service = newAgentApplicationService();
+        when(kbRagKnowledgeFactory.resolve(any(AgentAggregate.class), any())).thenReturn(Optional.empty());
+
+        AgentAggregate agentAgg = new AgentAggregate();
+        agentAgg.setId("agent1");
+        agentAgg.setName("Agent1");
+        agentAgg.setSystemPrompt("SYS");
+        agentAgg.setToolIds(List.of("tool1"));
+        agentAgg.setMemoryPolicyId("pol1");
+        agentAgg.setCreatedAt(Instant.now());
+
+        MemoryPolicyDO pol = new MemoryPolicyDO();
+        pol.setId("pol1");
+        pol.setName("P");
+        pol.setOwnerScope("scope-a");
+        pol.setStrategyKind("EPISODIC_DIALOGUE");
+        pol.setTopK(3);
+        pol.setRetrievalMode("KEYWORD");
+        pol.setWriteMode("OFF");
+        pol.setWriteBackOnDuplicate("skip");
+        when(memoryPolicyRepository.findById("pol1")).thenReturn(Optional.of(pol));
+
+        when(memoryItemRepository.searchByKeyword(eq("pol1"), eq("hi"), eq(3), eq("user-42"), eq("EPISODIC_DIALOGUE"), eq(true)))
+                .thenReturn(List.of());
+
+        when(agentRepository.findById("agent1")).thenReturn(Optional.of(agentAgg));
+
+        ModelAggregate model = new ModelAggregate();
+        model.setId("modelA");
+        model.setProvider("DASHSCOPE");
+        model.setModelKey("m");
+        model.setApiKeyCipher("k");
+        model.setCreatedAt(Instant.now());
+        when(modelRepository.findById("modelA")).thenReturn(Optional.of(model));
+
+        ToolAggregate tool = new ToolAggregate();
+        tool.setId("tool1");
+        tool.setToolType(ToolType.LOCAL);
+        tool.setName("agent_tool");
+
+        when(toolRepository.findAll()).thenReturn(List.of(tool));
+
+        when(toolExecutionService.buildToolkitForToolIds(anyList())).thenReturn(new Toolkit());
+
+        when(agentRuntime.call(any(AgentDefinition.class), eq("hi"), any(Toolkit.class)))
+                .thenReturn(Mono.just(Msg.builder().name("assistant").textContent("final").build()));
+
+        RunAgentRequest req = new RunAgentRequest();
+        req.setModelId("modelA");
+        req.setInput("hi");
+        req.setMemoryNamespace("user-42");
+
+        RunAgentResponse resp = service.runAgent("agent1", req);
+        assertEquals("user-42", resp.getMemory().getMemoryNamespace());
+        verify(memoryItemRepository).searchByKeyword(eq("pol1"), eq("hi"), eq(3), eq("user-42"), eq("EPISODIC_DIALOGUE"), eq(true));
     }
 
     @Test

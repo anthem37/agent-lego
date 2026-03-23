@@ -5,7 +5,7 @@ import lombok.Data;
 import java.util.List;
 
 /**
- * 工具被智能体引用情况（用于删除前提示）。
+ * 工具被智能体 / 知识库文档引用情况（用于删除前提示）。
  */
 @Data
 public class ToolReferencesDto {
@@ -17,4 +17,8 @@ public class ToolReferencesDto {
      * 部分引用方智能体 id（最多若干条，按创建时间倒序）。
      */
     private List<String> referencingAgentIds;
+    /**
+     * {@code linked_tool_ids} 绑定中含该工具 id 的知识库文档数量。
+     */
+    private long referencingKbDocumentCount;
 }

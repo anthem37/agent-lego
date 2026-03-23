@@ -5,12 +5,13 @@ import com.agentlego.backend.api.GlobalExceptionHandler;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
-import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.nullable;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -23,7 +24,7 @@ class A2AControllerWebTest {
     @Autowired
     private MockMvc mockMvc;
 
-    @MockBean
+    @MockitoBean
     private A2AGatewayService gatewayService;
 
     @Test
@@ -39,7 +40,7 @@ class A2AControllerWebTest {
 
     @Test
     void delegate_ok_shouldReturnOutput() throws Exception {
-        when(gatewayService.delegateLocal(anyString(), anyString(), anyString())).thenReturn("out");
+        when(gatewayService.delegateLocal(anyString(), anyString(), anyString(), nullable(String.class))).thenReturn("out");
 
         mockMvc.perform(post("/a2a/delegate")
                         .contentType(MediaType.APPLICATION_JSON)

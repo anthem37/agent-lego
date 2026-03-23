@@ -1,4 +1,4 @@
-import {request} from "@/lib/api/request";
+import {request, type RequestOptions} from "@/lib/api/request";
 
 import type {
     CreateKbCollectionBody,
@@ -18,55 +18,54 @@ import type {
     KbValidateCollectionDocumentsRequest,
 } from "@/lib/kb/types";
 
-export async function listKbChunkStrategies(signal?: AbortSignal): Promise<KbChunkStrategyMetaDto[]> {
-    const data = await request<KbChunkStrategyMetaDto[]>("/kb/meta/chunk-strategies", {signal});
+export type KbFetchOpts = Pick<RequestOptions, "signal" | "timeoutMs">;
+
+export async function listKbChunkStrategies(opts?: KbFetchOpts): Promise<KbChunkStrategyMetaDto[]> {
+    const data = await request<KbChunkStrategyMetaDto[]>("/kb/meta/chunk-strategies", {...opts});
     return Array.isArray(data) ? data : [];
 }
 
 /** 智能体 knowledge_base_policy 中的 collectionIds，用于召回调试一键对齐 */
-export async function listAgentKbPolicySummaries(signal?: AbortSignal): Promise<KbAgentPolicySummaryDto[]> {
-    const data = await request<KbAgentPolicySummaryDto[]>("/kb/meta/agent-policy-summaries", {signal});
+export async function listAgentKbPolicySummaries(opts?: KbFetchOpts): Promise<KbAgentPolicySummaryDto[]> {
+    const data = await request<KbAgentPolicySummaryDto[]>("/kb/meta/agent-policy-summaries", {...opts});
     return Array.isArray(data) ? data : [];
 }
 
-export async function listKbCollections(signal?: AbortSignal): Promise<KbCollectionDto[]> {
-    const data = await request<KbCollectionDto[]>("/kb/collections", {signal});
+export async function listKbCollections(opts?: KbFetchOpts): Promise<KbCollectionDto[]> {
+    const data = await request<KbCollectionDto[]>("/kb/collections", {...opts});
     return Array.isArray(data) ? data : [];
 }
 
-export async function listKbDocuments(collectionId: string, signal?: AbortSignal): Promise<KbDocumentDto[]> {
-    const data = await request<KbDocumentDto[]>(`/kb/collections/${collectionId}/documents`, {signal});
+export async function listKbDocuments(collectionId: string, opts?: KbFetchOpts): Promise<KbDocumentDto[]> {
+    const data = await request<KbDocumentDto[]>(`/kb/collections/${collectionId}/documents`, {...opts});
     return Array.isArray(data) ? data : [];
 }
 
 export async function getKbDocument(
     collectionId: string,
     documentId: string,
-    signal?: AbortSignal,
+    opts?: KbFetchOpts,
 ): Promise<KbDocumentDto> {
-    return request<KbDocumentDto>(`/kb/collections/${collectionId}/documents/${documentId}`, {signal});
+    return request<KbDocumentDto>(`/kb/collections/${collectionId}/documents/${documentId}`, {...opts});
 }
 
-export async function createKbCollection(
-    body: CreateKbCollectionBody,
-    signal?: AbortSignal,
-): Promise<KbCollectionDto> {
+export async function createKbCollection(body: CreateKbCollectionBody, opts?: KbFetchOpts): Promise<KbCollectionDto> {
     return request<KbCollectionDto>("/kb/collections", {
         method: "POST",
         body,
-        signal,
+        ...opts,
     });
 }
 
 export async function ingestKbDocument(
     collectionId: string,
     body: IngestKbDocumentBody,
-    signal?: AbortSignal,
+    opts?: KbFetchOpts,
 ): Promise<KbDocumentDto> {
     return request<KbDocumentDto>(`/kb/collections/${collectionId}/documents`, {
         method: "POST",
         body,
-        signal,
+        ...opts,
     });
 }
 
@@ -74,68 +73,64 @@ export async function updateKbDocument(
     collectionId: string,
     documentId: string,
     body: IngestKbDocumentBody,
-    signal?: AbortSignal,
+    opts?: KbFetchOpts,
 ): Promise<KbDocumentDto> {
     return request<KbDocumentDto>(`/kb/collections/${collectionId}/documents/${documentId}`, {
         method: "PUT",
         body,
-        signal,
+        ...opts,
     });
 }
 
 export async function deleteKbCollection(
     collectionId: string,
-    signal?: AbortSignal,
+    opts?: KbFetchOpts,
 ): Promise<KbCollectionDeleteResult> {
     return request<KbCollectionDeleteResult>(`/kb/collections/${collectionId}`, {
         method: "DELETE",
-        signal,
+        ...opts,
     });
 }
 
-export async function deleteKbDocument(
-    collectionId: string,
-    documentId: string,
-    signal?: AbortSignal,
-): Promise<void> {
+export async function deleteKbDocument(collectionId: string, documentId: string, opts?: KbFetchOpts): Promise<void> {
     await request<null>(`/kb/collections/${collectionId}/documents/${documentId}`, {
         method: "DELETE",
-        signal,
+        ...opts,
     });
 }
 
 export async function validateKbDocument(
     collectionId: string,
     documentId: string,
-    signal?: AbortSignal,
+    opts?: KbFetchOpts,
 ): Promise<KbDocumentValidationResponse> {
     return request<KbDocumentValidationResponse>(
         `/kb/collections/${collectionId}/documents/${documentId}/validate`,
-        {method: "POST", signal},
+        {method: "POST", ...opts},
     );
 }
 
 export async function previewKbRetrieve(
     collectionId: string,
     body: KbRetrievePreviewRequest,
-    signal?: AbortSignal,
+    opts?: KbFetchOpts,
 ): Promise<KbRetrievePreviewResponse> {
     return request<KbRetrievePreviewResponse>(`/kb/collections/${collectionId}/retrieve-preview`, {
         method: "POST",
         body,
-        signal,
+        ...opts,
     });
 }
 
 /** 多集合联合召回（须相同 embedding 模型），对齐智能体 knowledge_base_policy 多集合 */
 export async function previewKbRetrieveMulti(
     body: KbMultiRetrievePreviewRequest,
-    signal?: AbortSignal,
+    opts?: KbFetchOpts,
 ): Promise<KbRetrievePreviewResponse> {
     return request<KbRetrievePreviewResponse>("/kb/retrieve-preview", {
         method: "POST",
         body,
-        signal,
+        ...opts,
     });
 }
 
@@ -143,11 +138,11 @@ export async function previewKbRetrieveMulti(
 export async function validateKbCollectionDocuments(
     collectionId: string,
     body?: KbValidateCollectionDocumentsRequest,
-    signal?: AbortSignal,
+    opts?: KbFetchOpts,
 ): Promise<KbCollectionDocumentsValidationResponse> {
     return request<KbCollectionDocumentsValidationResponse>(
         `/kb/collections/${collectionId}/documents/validate-all`,
-        {method: "POST", body: body ?? {}, signal},
+        {method: "POST", body: body ?? {}, ...opts},
     );
 }
 
@@ -155,10 +150,10 @@ export async function renderKbDocument(
     collectionId: string,
     documentId: string,
     body?: KbRenderDocumentBody,
-    signal?: AbortSignal,
+    opts?: KbFetchOpts,
 ): Promise<KbRenderDocumentResponse> {
     return request<KbRenderDocumentResponse>(
         `/kb/collections/${collectionId}/documents/${documentId}/render`,
-        {method: "POST", body: body ?? {}, signal},
+        {method: "POST", body: body ?? {}, ...opts},
     );
 }

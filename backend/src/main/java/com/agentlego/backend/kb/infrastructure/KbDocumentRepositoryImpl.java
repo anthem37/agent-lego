@@ -135,6 +135,14 @@ public class KbDocumentRepositoryImpl implements KbDocumentRepository {
         mapper.deleteById(id);
     }
 
+    @Override
+    public long countDocumentsReferencingToolId(String toolId) {
+        if (toolId == null || toolId.isBlank()) {
+            return 0L;
+        }
+        return mapper.countDocumentsReferencingToolId(toolId.trim());
+    }
+
     private KbDocumentRow toRow(KbDocumentDO row) {
         KbDocumentRow r = new KbDocumentRow();
         r.setId(row.getId());

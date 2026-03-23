@@ -13,5 +13,10 @@ public class A2ADelegateRequest {
 
     @NotBlank
     private String input;
+
+    /**
+     * 可选：与 {@code RunAgentRequest#memoryNamespace} 一致。
+     */
+    private String memoryNamespace;
 }
 

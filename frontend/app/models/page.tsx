@@ -22,6 +22,8 @@ import Link from "next/link";
 import {useSearchParams} from "next/navigation";
 import React, {Suspense} from "react";
 
+import {isAbortError} from "@/lib/api/isAbortError";
+import {DEFAULT_REQUEST_TIMEOUT_MS} from "@/lib/api/request";
 import {AppLayout} from "@/components/AppLayout";
 import {ErrorAlert} from "@/components/ErrorAlert";
 import {ModelConfigForm} from "@/components/ModelConfigForm";
@@ -30,7 +32,15 @@ import {PageShell} from "@/components/PageShell";
 import {SectionCard} from "@/components/SectionCard";
 import {normalizeModelConfig} from "@/lib/model-config";
 import {providerDisplayName} from "@/lib/model-config-labels";
-import {createModel, deleteModel, getModelDetail, listModelProviders, listModels, updateModel,} from "@/lib/models/api";
+import {
+    createModel,
+    deleteModel,
+    getModelDetail,
+    listModelProviders,
+    listModels,
+    type ModelFetchOpts,
+    updateModel,
+} from "@/lib/models/api";
 import type {ModelFormValues, ModelSummary, ProviderMeta} from "@/lib/models/types";
 import {tablePaginationFriendly} from "@/lib/table-pagination";
 import {DRAWER_WIDTH_SIMPLE} from "@/lib/ui/sizes";
@@ -156,9 +166,9 @@ function ModelsPageContent() {
 
     const openedFromQueryRef = React.useRef<string | null>(null);
 
-    async function loadProviders() {
+    async function loadProviders(opts?: ModelFetchOpts) {
         try {
-            const data = await listModelProviders();
+            const data = await listModelProviders(opts);
             if (data.length > 0) {
                 setProviders(data);
             }
@@ -167,22 +177,27 @@ function ModelsPageContent() {
         }
     }
 
-    async function loadList() {
+    async function loadList(opts?: ModelFetchOpts) {
         setListLoading(true);
         setError(null);
         try {
-            const data = await listModels();
+            const data = await listModels(opts);
             setRows(data);
         } catch (e) {
-            setError(e);
+            if (!isAbortError(e)) {
+                setError(e);
+            }
         } finally {
             setListLoading(false);
         }
     }
 
     React.useEffect(() => {
-        void loadProviders();
-        void loadList();
+        const ac = new AbortController();
+        const opts = {signal: ac.signal, timeoutMs: DEFAULT_REQUEST_TIMEOUT_MS};
+        void loadProviders(opts);
+        void loadList(opts);
+        return () => ac.abort();
     }, []);
 
     function openCreate() {
@@ -200,7 +215,7 @@ function ModelsPageContent() {
         setDrawerLoading(true);
         setError(null);
         try {
-            const detail = await getModelDetail(id);
+            const detail = await getModelDetail(id, {timeoutMs: DEFAULT_REQUEST_TIMEOUT_MS});
             form.setFieldsValue({
                 name: detail.name ?? "",
                 description: detail.description ?? "",
@@ -237,8 +252,8 @@ function ModelsPageContent() {
     async function onDelete(id: string) {
         setError(null);
         try {
-            await deleteModel(id);
-            void loadList();
+            await deleteModel(id, {timeoutMs: DEFAULT_REQUEST_TIMEOUT_MS});
+            void loadList({timeoutMs: DEFAULT_REQUEST_TIMEOUT_MS});
             message.success("已删除");
         } catch (e) {
             setError(e);
@@ -252,15 +267,18 @@ function ModelsPageContent() {
             const supportedKeys = activeProvider?.supportedConfigKeys ?? [];
             const normalizedConfig = normalizeModelConfig(values.config, supportedKeys);
             if (drawerMode === "create") {
-                await createModel({
-                    name: values.name.trim(),
-                    description: values.description?.trim() ? values.description.trim() : undefined,
-                    provider: values.provider,
-                    modelKey: values.modelKey,
-                    apiKey: values.apiKey,
-                    baseUrl: values.baseUrl?.trim() ? values.baseUrl.trim() : undefined,
-                    ...(normalizedConfig ? {config: normalizedConfig} : {}),
-                });
+                await createModel(
+                    {
+                        name: values.name.trim(),
+                        description: values.description?.trim() ? values.description.trim() : undefined,
+                        provider: values.provider,
+                        modelKey: values.modelKey,
+                        apiKey: values.apiKey,
+                        baseUrl: values.baseUrl?.trim() ? values.baseUrl.trim() : undefined,
+                        ...(normalizedConfig ? {config: normalizedConfig} : {}),
+                    },
+                    {timeoutMs: DEFAULT_REQUEST_TIMEOUT_MS},
+                );
                 message.success("创建成功");
             } else if (editingId) {
                 const body: Record<string, unknown> = {
@@ -273,11 +291,11 @@ function ModelsPageContent() {
                 if (values.apiKey?.trim()) {
                     body.apiKey = values.apiKey.trim();
                 }
-                await updateModel(editingId, body);
+                await updateModel(editingId, body, {timeoutMs: DEFAULT_REQUEST_TIMEOUT_MS});
                 message.success("已保存");
             }
             setDrawerOpen(false);
-            await loadList();
+            await loadList({timeoutMs: DEFAULT_REQUEST_TIMEOUT_MS});
         } catch (e) {
             setError(e);
         } finally {
@@ -408,7 +426,8 @@ function ModelsPageContent() {
                     subtitle="同一提供方、同一模型标识可保存多套「配置实例」。聊天模型 config 支持常见生成参数（采样、流式、惩罚、toolChoice、executionConfig 等）；Embedding 类型用于文本向量化等能力。"
                     extra={
                         <Space wrap>
-                            <Button onClick={() => void loadList()} loading={listLoading}>
+                            <Button onClick={() => void loadList({timeoutMs: DEFAULT_REQUEST_TIMEOUT_MS})}
+                                    loading={listLoading}>
                                 刷新
                             </Button>
                             <Button type="primary" onClick={openCreate}>

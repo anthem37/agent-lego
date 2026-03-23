@@ -14,15 +14,27 @@ export const SCOPE_KIND_OPTIONS = [
 ] as const;
 
 export const RETRIEVAL_OPTIONS = [
-    {value: "KEYWORD", label: "关键词（已实现）", hint: "PG ILIKE / pg_trgm"},
-    {value: "VECTOR", label: "向量（未接好前降级）", hint: "需向量库与嵌入"},
-    {value: "HYBRID", label: "混合（未接好前降级）", hint: "关键词 + 向量"},
+    {value: "KEYWORD", label: "关键词（已实现）", hint: "ILIKE 子串匹配；非空查询时按 pg_trgm word_similarity 排序"},
+    {
+        value: "VECTOR",
+        label: "向量（运行时降级为关键词）",
+        hint: "API 可保存；当前运行时强制 KEYWORD，向量链路未接入",
+    },
+    {
+        value: "HYBRID",
+        label: "混合（运行时降级为关键词）",
+        hint: "API 可保存；当前运行时强制 KEYWORD，混合向量未接入",
+    },
 ] as const;
 
 export const WRITE_MODE_OPTIONS = [
     {value: "OFF", label: "不写回", hint: "不把助手输出写入记忆条目"},
     {value: "ASSISTANT_RAW", label: "写回助手原文", hint: "与去重策略配合"},
-    {value: "ASSISTANT_SUMMARY", label: "摘要后写回（占位）", hint: "当前与原文写回行为一致，待接摘要"},
+    {
+        value: "ASSISTANT_SUMMARY",
+        label: "粗略摘要后写回",
+        hint: "本地字数截断与句读边界，非 LLM 摘要；metadata.summaryKind=ROUGH_CHAR_CAP",
+    },
 ] as const;
 
 export function strategyLabel(v?: string): string {

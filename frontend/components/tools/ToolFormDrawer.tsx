@@ -18,6 +18,7 @@ import {
 } from "antd";
 import React from "react";
 
+import {DEFAULT_REQUEST_TIMEOUT_MS} from "@/lib/api/request";
 import {DRAWER_WIDTH_COMPLEX} from "@/lib/ui/sizes";
 import {ErrorAlert} from "@/components/ErrorAlert";
 import {HttpParameterRowsEditor} from "@/components/tools/HttpParameterRowsEditor";
@@ -26,12 +27,14 @@ import {McpBatchImportModal} from "@/components/tools/McpBatchImportModal";
 import {createTool, updateTool} from "@/lib/tools/api";
 import {
     buildToolDefinition,
+    collectRootHttpParameterAliases,
     collectRootHttpParameterNames,
     defaultHttpParameterRow,
     extractHttpUrlPlaceholderNames,
     HTTP_METHOD_OPTIONS,
     NAME_ID_RULES,
     TOOL_NAME_RUNTIME_HINT,
+    seedLocalParameterRowsFromBuiltin,
     toolDtoToFormValues,
     validateHttpOutputFieldRows,
     validateHttpParameterRows,
@@ -54,16 +57,31 @@ type Props = {
     toolTypeMeta: ToolTypeMetaDto[];
     /** 语义分类元数据（可选；缺省使用内置 QUERY/ACTION 选项） */
     toolCategoryMeta?: ToolCategoryMetaDto[];
-    /** 后端扫描得到的 LOCAL 内置工具（下拉与提示） */
+    /** 后端返回的 LOCAL 内置工具元数据（下拉与提示） */
     localBuiltins: LocalBuiltinToolMetaDto[];
     onClose: () => void;
     /** 保存成功后回调（列表刷新等） */
     onSaved: () => void | Promise<void>;
 };
 
+/** 新建 LOCAL 时默认选中的内置名（避免仅按字母序时落到 hash_sha256） */
+const LOCAL_BUILTIN_DEFAULT_PREFERENCE = [
+    "time_now",
+    "text_transform",
+    "uuid_generate",
+    "json_format",
+    "hash_sha256",
+] as const;
+
 function defaultLocalBuiltinName(builtins: LocalBuiltinToolMetaDto[]): string {
+    const byName = new Map(builtins.map((b) => [b.name?.trim() ?? "", b]));
+    for (const pref of LOCAL_BUILTIN_DEFAULT_PREFERENCE) {
+        if (byName.has(pref)) {
+            return pref;
+        }
+    }
     const n = builtins[0]?.name?.trim();
-    return n && n.length > 0 ? n : "echo";
+    return n && n.length > 0 ? n : "";
 }
 
 export function ToolFormDrawer(props: Props) {
@@ -75,10 +93,17 @@ export function ToolFormDrawer(props: Props) {
     const [mcpBulkDefaultEndpoint, setMcpBulkDefaultEndpoint] = React.useState<string | undefined>(undefined);
 
     const watchedToolType = Form.useWatch("toolType", form) ?? "LOCAL";
+    /** LOCAL 内置名：新建时用于预填入参行 */
+    const watchedLocalBuiltinName = Form.useWatch("name", form);
     const watchedHttpMethod = Form.useWatch("httpMethod", form) ?? "GET";
     const watchedPreserveHttpParams = Form.useWatch("httpParametersAdvancedPreserve", form) === true;
     const watchedPreserveHttpOutput = Form.useWatch("httpOutputSchemaAdvancedPreserve", form) === true;
     const watchedPreserveMcpParams = Form.useWatch("mcpParametersAdvancedPreserve", form) === true;
+    const watchedPreserveMcpOutput = Form.useWatch("mcpOutputSchemaAdvancedPreserve", form) === true;
+    const watchedPreserveWorkflowOutput = Form.useWatch("workflowOutputSchemaAdvancedPreserve", form) === true;
+    const watchedPreserveWorkflowParams = Form.useWatch("workflowParametersAdvancedPreserve", form) === true;
+    const watchedPreserveLocalOutput = Form.useWatch("localOutputSchemaAdvancedPreserve", form) === true;
+    const watchedPreserveLocalParams = Form.useWatch("localParametersAdvancedPreserve", form) === true;
 
     const categoryOptions = React.useMemo(() => {
         if (toolCategoryMeta && toolCategoryMeta.length > 0) {
@@ -145,11 +170,36 @@ export function ToolFormDrawer(props: Props) {
                     : [defaultHttpParameterRow()],
                 httpOutputSchemaAdvancedPreserve:
                     partial.toolType === "HTTP" ? partial.httpOutputSchemaAdvancedPreserve === true : false,
+                localOutputParameterRows: partial.localOutputParameterRows?.length
+                    ? partial.localOutputParameterRows
+                    : [defaultHttpParameterRow()],
+                localOutputSchemaAdvancedPreserve:
+                    partial.toolType === "LOCAL" ? partial.localOutputSchemaAdvancedPreserve === true : false,
+                localParameterRows: partial.localParameterRows?.length
+                    ? partial.localParameterRows
+                    : [defaultHttpParameterRow()],
+                localParametersAdvancedPreserve:
+                    partial.toolType === "LOCAL" ? partial.localParametersAdvancedPreserve === true : false,
                 mcpParameterRows: partial.mcpParameterRows?.length
                     ? partial.mcpParameterRows
                     : [defaultHttpParameterRow()],
                 mcpParametersAdvancedPreserve:
                     partial.toolType === "MCP" ? partial.mcpParametersAdvancedPreserve === true : false,
+                mcpOutputParameterRows: partial.mcpOutputParameterRows?.length
+                    ? partial.mcpOutputParameterRows
+                    : [defaultHttpParameterRow()],
+                mcpOutputSchemaAdvancedPreserve:
+                    partial.toolType === "MCP" ? partial.mcpOutputSchemaAdvancedPreserve === true : false,
+                workflowOutputParameterRows: partial.workflowOutputParameterRows?.length
+                    ? partial.workflowOutputParameterRows
+                    : [defaultHttpParameterRow()],
+                workflowOutputSchemaAdvancedPreserve:
+                    partial.toolType === "WORKFLOW" ? partial.workflowOutputSchemaAdvancedPreserve === true : false,
+                workflowParameterRows: partial.workflowParameterRows?.length
+                    ? partial.workflowParameterRows
+                    : [defaultHttpParameterRow()],
+                workflowParametersAdvancedPreserve:
+                    partial.toolType === "WORKFLOW" ? partial.workflowParametersAdvancedPreserve === true : false,
             } as ToolFormValues);
         } else if (mode === "create") {
             form.resetFields();
@@ -166,8 +216,18 @@ export function ToolFormDrawer(props: Props) {
                 httpParametersAdvancedPreserve: false,
                 httpOutputParameterRows: [defaultHttpParameterRow()],
                 httpOutputSchemaAdvancedPreserve: false,
+                localOutputParameterRows: [defaultHttpParameterRow()],
+                localOutputSchemaAdvancedPreserve: false,
                 mcpParameterRows: [defaultHttpParameterRow()],
                 mcpParametersAdvancedPreserve: false,
+                mcpOutputParameterRows: [defaultHttpParameterRow()],
+                mcpOutputSchemaAdvancedPreserve: false,
+                workflowOutputParameterRows: [defaultHttpParameterRow()],
+                workflowOutputSchemaAdvancedPreserve: false,
+                workflowParameterRows: [defaultHttpParameterRow()],
+                workflowParametersAdvancedPreserve: false,
+                localParameterRows: [defaultHttpParameterRow()],
+                localParametersAdvancedPreserve: false,
             } as Partial<ToolFormValues>);
         }
         // 故意不依赖 localBuiltins：异步到达时再跑会 resetFields，冲掉用户已填内容；见下方 effect 仅修正 name
@@ -190,6 +250,43 @@ export function ToolFormDrawer(props: Props) {
             form.setFieldsValue({name: defaultLocalBuiltinName(localBuiltins)});
         }
     }, [open, mode, localBuiltins, form]);
+
+    /** 新建 LOCAL：切换内置或内置列表就绪时预填入参表（与下方只读出参分离，避免入参展示两次） */
+    const localBuiltinSeedKeyRef = React.useRef<string>("");
+    React.useEffect(() => {
+        if (!open) {
+            localBuiltinSeedKeyRef.current = "";
+            return;
+        }
+        if (mode !== "create" || watchedToolType !== "LOCAL") {
+            return;
+        }
+        if (watchedPreserveLocalParams) {
+            return;
+        }
+        const n = watchedLocalBuiltinName;
+        if (!n || typeof n !== "string") {
+            return;
+        }
+        const opt = localBuiltins.find((b) => b.name === n);
+        if (!opt) {
+            return;
+        }
+        const key = `${n}:${localBuiltins.length}`;
+        if (localBuiltinSeedKeyRef.current === key) {
+            return;
+        }
+        localBuiltinSeedKeyRef.current = key;
+        form.setFieldsValue({localParameterRows: seedLocalParameterRowsFromBuiltin(opt)});
+    }, [
+        open,
+        mode,
+        watchedToolType,
+        watchedPreserveLocalParams,
+        watchedLocalBuiltinName,
+        localBuiltins,
+        form,
+    ]);
 
     /** POST/PUT/PATCH 时「发送 JSON 请求体」Switch 才挂载；避免 sendJsonBody 长期 undefined 被当成 false */
     React.useEffect(() => {
@@ -219,6 +316,16 @@ export function ToolFormDrawer(props: Props) {
             httpParametersAdvancedPreserve: false,
             httpOutputParameterRows: [defaultHttpParameterRow()],
             httpOutputSchemaAdvancedPreserve: false,
+            localOutputParameterRows: [defaultHttpParameterRow()],
+            localOutputSchemaAdvancedPreserve: false,
+            mcpOutputParameterRows: [defaultHttpParameterRow()],
+            mcpOutputSchemaAdvancedPreserve: false,
+            workflowOutputParameterRows: [defaultHttpParameterRow()],
+            workflowOutputSchemaAdvancedPreserve: false,
+            workflowParameterRows: [defaultHttpParameterRow()],
+            workflowParametersAdvancedPreserve: false,
+            localParameterRows: [defaultHttpParameterRow()],
+            localParametersAdvancedPreserve: false,
         };
         if (next === "LOCAL") {
             form.setFieldsValue({
@@ -226,6 +333,10 @@ export function ToolFormDrawer(props: Props) {
                 name: defaultLocalBuiltinName(localBuiltins),
                 httpMethod: "GET",
                 sendJsonBody: true,
+                localOutputParameterRows: [defaultHttpParameterRow()],
+                localOutputSchemaAdvancedPreserve: false,
+                localParameterRows: [defaultHttpParameterRow()],
+                localParametersAdvancedPreserve: false,
             });
         } else if (next === "HTTP") {
             form.setFieldsValue({
@@ -242,6 +353,8 @@ export function ToolFormDrawer(props: Props) {
                 mcpRemoteToolName: "",
                 mcpParameterRows: [defaultHttpParameterRow()],
                 mcpParametersAdvancedPreserve: false,
+                mcpOutputParameterRows: [defaultHttpParameterRow()],
+                mcpOutputSchemaAdvancedPreserve: false,
                 httpMethod: "GET",
                 sendJsonBody: true,
             });
@@ -250,6 +363,10 @@ export function ToolFormDrawer(props: Props) {
                 ...clear,
                 name: "",
                 workflowId: "",
+                workflowOutputParameterRows: [defaultHttpParameterRow()],
+                workflowOutputSchemaAdvancedPreserve: false,
+                workflowParameterRows: [defaultHttpParameterRow()],
+                workflowParametersAdvancedPreserve: false,
                 httpMethod: "GET",
                 sendJsonBody: true,
             });
@@ -286,6 +403,41 @@ export function ToolFormDrawer(props: Props) {
                 return;
             }
         }
+        if (values.toolType === "MCP" && values.mcpOutputSchemaAdvancedPreserve !== true) {
+            const mcpOutErr = validateHttpOutputFieldRows(values.mcpOutputParameterRows);
+            if (mcpOutErr) {
+                message.error(mcpOutErr);
+                return;
+            }
+        }
+        if (values.toolType === "WORKFLOW" && values.workflowParametersAdvancedPreserve !== true) {
+            const wfParamErr = validateHttpParameterRows(values.workflowParameterRows);
+            if (wfParamErr) {
+                message.error(wfParamErr);
+                return;
+            }
+        }
+        if (values.toolType === "WORKFLOW" && values.workflowOutputSchemaAdvancedPreserve !== true) {
+            const wfOutErr = validateHttpOutputFieldRows(values.workflowOutputParameterRows);
+            if (wfOutErr) {
+                message.error(wfOutErr);
+                return;
+            }
+        }
+        if (values.toolType === "LOCAL" && values.localParametersAdvancedPreserve !== true) {
+            const localParamErr = validateHttpParameterRows(values.localParameterRows);
+            if (localParamErr) {
+                message.error(localParamErr);
+                return;
+            }
+        }
+        if (values.toolType === "LOCAL" && values.localOutputSchemaAdvancedPreserve !== true) {
+            const localOutErr = validateHttpOutputFieldRows(values.localOutputParameterRows);
+            if (localOutErr) {
+                message.error(localOutErr);
+                return;
+            }
+        }
         setLocalError(null);
         setSubmitting(true);
         try {
@@ -306,9 +458,9 @@ export function ToolFormDrawer(props: Props) {
                 definition,
             };
             if (mode === "create") {
-                await createTool(body);
+                await createTool(body, {timeoutMs: DEFAULT_REQUEST_TIMEOUT_MS});
             } else if (editingTool) {
-                await updateTool(editingTool.id, body);
+                await updateTool(editingTool.id, body, {timeoutMs: DEFAULT_REQUEST_TIMEOUT_MS});
             }
             await onSaved();
             onClose();
@@ -330,7 +482,7 @@ export function ToolFormDrawer(props: Props) {
                 mode === "create" ? (
                     "新建工具"
                 ) : (
-                    <Space direction="vertical" size={0}>
+                    <Space orientation="vertical" size={0}>
                         <span>编辑工具</span>
                         {editingTool ? (
                             <Typography.Text type="secondary" style={{fontSize: 12}} copyable>
@@ -439,17 +591,15 @@ export function ToolFormDrawer(props: Props) {
 
                 {watchedToolType === "LOCAL" ? (
                     <>
-                        <Alert
-                            type={localBuiltins.length === 0 ? "warning" : "info"}
-                            showIcon
-                            title="本地内置"
-                            description={
-                                localBuiltins.length === 0
-                                    ? "未能从接口加载内置工具列表，请刷新或检查后端 /tools/meta/local-builtins。"
-                                    : `当前进程内置：${localBuiltins.map((b) => b.name).join("、")}；名称须与列表一致。`
-                            }
-                            style={{marginBottom: 16}}
-                        />
+                        {localBuiltins.length === 0 ? (
+                            <Alert
+                                type="warning"
+                                showIcon
+                                title="未加载到内置工具列表"
+                                description="请刷新页面或检查后端 /tools/meta/local-builtins。"
+                                style={{marginBottom: 16}}
+                            />
+                        ) : null}
                         <Form.Item
                             name="name"
                             label="内置工具"
@@ -462,12 +612,114 @@ export function ToolFormDrawer(props: Props) {
                         >
                             <Select
                                 disabled={localBuiltins.length === 0}
-                                options={localBuiltins.map((b) => ({
-                                    value: b.name,
-                                    label: (b.label && b.label.trim()) || b.name,
-                                }))}
+                                showSearch
+                                optionFilterProp="searchText"
+                                labelRender={(props) => {
+                                    const v = String(props.value ?? "");
+                                    const b = localBuiltins.find((x) => x.name === v);
+                                    if (!b) {
+                                        return v;
+                                    }
+                                    const title = (b.label && b.label.trim()) || b.name;
+                                    const d = b.description?.trim();
+                                    if (!d) {
+                                        return title;
+                                    }
+                                    const short = d.length > 72 ? `${d.slice(0, 72)}…` : d;
+                                    return `${title} — ${short}`;
+                                }}
+                                options={localBuiltins.map((b) => {
+                                    const title = (b.label && b.label.trim()) || b.name;
+                                    const desc = b.description?.trim() ?? "";
+                                    const searchText = `${b.name} ${title} ${desc}`;
+                                    return {
+                                        value: b.name,
+                                        searchText,
+                                        label: (
+                                            <div style={{lineHeight: 1.35}}>
+                                                <div>
+                                                    <Typography.Text strong>{title}</Typography.Text>
+                                                    <Typography.Text type="secondary" style={{fontSize: 12, marginLeft: 8}}>
+                                                        ({b.name})
+                                                    </Typography.Text>
+                                                </div>
+                                                {desc ? (
+                                                    <Typography.Paragraph
+                                                        type="secondary"
+                                                        style={{fontSize: 12, marginBottom: 0}}
+                                                        ellipsis={{rows: 2}}
+                                                    >
+                                                        {desc}
+                                                    </Typography.Paragraph>
+                                                ) : null}
+                                            </div>
+                                        ),
+                                    };
+                                })}
                             />
                         </Form.Item>
+                        <Form.Item name="localParametersAdvancedPreserve" valuePropName="checked" hidden>
+                            <Checkbox/>
+                        </Form.Item>
+                        {watchedPreserveLocalParams ? (
+                            <>
+                                <Alert
+                                    type="warning"
+                                    showIcon
+                                    title="高级入参已保留"
+                                    description={
+                                        <>
+                                            当前 <Typography.Text code>parameters</Typography.Text> /{" "}
+                                            <Typography.Text code>inputSchema</Typography.Text>{" "}
+                                            无法用表格无损表达。保存时<strong>不会覆盖</strong>
+                                            ；完整 JSON 见工具详情。
+                                        </>
+                                    }
+                                    style={{marginBottom: 12}}
+                                />
+                                <Button
+                                    type="primary"
+                                    ghost
+                                    style={{marginBottom: 16}}
+                                    onClick={() => {
+                                        Modal.confirm({
+                                            title: "改为表单配置入参？",
+                                            content:
+                                                "确认后，下次保存将删除现有的高级 parameters / inputSchema，并仅保留表格中的 definition.parameters。",
+                                            okText: "确认切换",
+                                            cancelText: "取消",
+                                            onOk: () => {
+                                                form.setFieldsValue({
+                                                    localParametersAdvancedPreserve: false,
+                                                    localParameterRows: [defaultHttpParameterRow()],
+                                                });
+                                                message.success("已切换为表单模式，请填写入参后再保存");
+                                            },
+                                        });
+                                    }}
+                                >
+                                    改为表单配置入参…
+                                </Button>
+                            </>
+                        ) : (
+                            <>
+                                <Form.Item
+                                    label="入参（parameters）"
+                                    extra="新建时随所选内置预填；可改别名、值来源等。"
+                                >
+                                    <HttpParameterRowsEditor
+                                        listName="localParameterRows"
+                                        storePathToList={["localParameterRows"]}
+                                        addButtonLabel="添加入参"
+                                        requiredCheckboxLabel="必填"
+                                        namePlaceholder="参数名"
+                                        descriptionPlaceholder="说明"
+                                        showParamAlias
+                                        showValueSource
+                                    />
+                                </Form.Item>
+                            </>
+                        )}
                         <Form.Item shouldUpdate noStyle>
                             {() => {
                                 const n = form.getFieldValue("name");
@@ -477,17 +729,76 @@ export function ToolFormDrawer(props: Props) {
                                 }
                                 const hint = opt.usageHint?.trim();
                                 return (
-                                    <Space direction="vertical" size={8} style={{width: "100%", marginTop: -8}}>
+                                    <Space orientation="vertical" size={8} style={{width: "100%", marginTop: 8}}>
                                         {hint ? (
                                             <Typography.Paragraph type="secondary" style={{marginBottom: 0}}>
                                                 {hint}
                                             </Typography.Paragraph>
                                         ) : null}
-                                        <LocalBuiltinIoPreview meta={opt} showTitle/>
+                                        <LocalBuiltinIoPreview meta={opt} showTitle showInputSection={false}/>
                                     </Space>
                                 );
                             }}
                         </Form.Item>
+                        <Form.Item name="localOutputSchemaAdvancedPreserve" valuePropName="checked" hidden>
+                            <Checkbox/>
+                        </Form.Item>
+                        {watchedPreserveLocalOutput ? (
+                            <>
+                                <Alert
+                                    type="warning"
+                                    showIcon
+                                    title="高级出参已保留"
+                                    description={
+                                        <>
+                                            <Typography.Text code>definition.outputSchema</Typography.Text>{" "}
+                                            存在无法用表格无损表达的结构。保存时<strong>不会覆盖</strong>
+                                            ；完整 JSON 见工具详情。
+                                        </>
+                                    }
+                                    style={{marginBottom: 12}}
+                                />
+                                <Button
+                                    type="primary"
+                                    ghost
+                                    style={{marginBottom: 16}}
+                                    onClick={() => {
+                                        Modal.confirm({
+                                            title: "改为表单配置出参？",
+                                            content:
+                                                "确认后，下次保存将删除现有高级 outputSchema，仅保留表格生成的 definition.outputSchema。",
+                                            okText: "确认切换",
+                                            cancelText: "取消",
+                                            onOk: () => {
+                                                form.setFieldsValue({
+                                                    localOutputSchemaAdvancedPreserve: false,
+                                                    localOutputParameterRows: [defaultHttpParameterRow()],
+                                                });
+                                                message.success("已切换为表单模式，请填写出参后再保存");
+                                            },
+                                        });
+                                    }}
+                                >
+                                    改为表单配置出参…
+                                </Button>
+                            </>
+                        ) : (
+                            <>
+                                <Form.Item
+                                    label="出参（可选）"
+                                    extra="写入 definition.outputSchema；留空则用内置默认。"
+                                >
+                                    <HttpParameterRowsEditor
+                                        listName="localOutputParameterRows"
+                                        storePathToList={["localOutputParameterRows"]}
+                                        addButtonLabel="添加出参字段"
+                                        requiredCheckboxLabel="响应中必有"
+                                        namePlaceholder="字段名"
+                                        descriptionPlaceholder="字段含义（可选）"
+                                    />
+                                </Form.Item>
+                            </>
+                        )}
                     </>
                 ) : null}
 
@@ -538,7 +849,7 @@ export function ToolFormDrawer(props: Props) {
                                     }
                                     style={{marginBottom: 12}}
                                 />
-                                <Space direction="vertical" size={8} style={{width: "100%", marginBottom: 16}}>
+                                <Space orientation="vertical" size={8} style={{width: "100%", marginBottom: 16}}>
                                     <Button
                                         type="primary"
                                         ghost
@@ -565,30 +876,6 @@ export function ToolFormDrawer(props: Props) {
                             </>
                         ) : (
                             <>
-                                <Alert
-                                    type="info"
-                                    showIcon
-                                    title="模型入参（parameters）"
-                                    description={
-                                        <>
-                                            此处定义模型调用工具时可见的<strong>参数名、类型、是否必填与说明</strong>，会写入{" "}
-                                            <Typography.Text code>definition.parameters</Typography.Text>
-                                            （JSON Schema 子集）。支持<strong>对象嵌套</strong>与<strong>数组</strong>
-                                            （含元素为对象时的子字段）。URL 占位符{" "}
-                                            <Typography.Text code>&#123;参数名&#125;</Typography.Text>{" "}
-                                            仅与<strong>顶层</strong>参数名一致。
-                                            {showHttpBodySwitch ? (
-                                                <>
-                                                    {" "}
-                                                    开启「发送 JSON 请求体」时，POST/PUT/PATCH
-                                                    会把<strong>整份入参对象</strong>
-                                                    序列化为 body。
-                                                </>
-                                            ) : null}
-                                        </>
-                                    }
-                                    style={{marginBottom: 16}}
-                                />
                                 <Form.Item shouldUpdate noStyle>
                                     {() => {
                                         const url = String(form.getFieldValue("httpUrl") ?? "");
@@ -617,12 +904,19 @@ export function ToolFormDrawer(props: Props) {
                                         }
                                         return (
                                             <Typography.Paragraph type="success" style={{marginBottom: 8}}>
-                                                URL 占位符与已填写的入参名称一致。
+                                                URL 占位符与已填写的参数名或别名一致。
                                             </Typography.Paragraph>
                                         );
                                     }}
                                 </Form.Item>
-                                <Form.Item label="调用参数（建议与 URL 占位符一致）">
+                                <Form.Item
+                                    label="调用参数（建议与 URL 占位符一致）"
+                                    extra={
+                                        showHttpBodySwitch
+                                            ? "写入 definition.parameters；URL 占位符与顶层参数名或别名一致。POST/PUT/PATCH 默认将整份入参序列化为 body。"
+                                            : "写入 definition.parameters；URL 占位符与顶层参数名或别名一致。"
+                                    }
+                                >
                                     <HttpParameterRowsEditor
                                         listName="httpParameterRows"
                                         storePathToList={["httpParameterRows"]}
@@ -630,6 +924,8 @@ export function ToolFormDrawer(props: Props) {
                                         requiredCheckboxLabel="必填"
                                         namePlaceholder="参数名"
                                         descriptionPlaceholder="给模型看的说明（可选）"
+                                        showParamAlias
+                                        showValueSource
                                     />
                                 </Form.Item>
                             </>
@@ -676,21 +972,7 @@ export function ToolFormDrawer(props: Props) {
                             </>
                         ) : (
                             <>
-                                <Alert
-                                    type="info"
-                                    showIcon
-                                    title="返回 / 出参（outputSchema）"
-                                    description={
-                                        <>
-                                            描述<strong>响应体</strong>（多为 JSON 文本）里有哪些字段，写入{" "}
-                                            <Typography.Text code>definition.outputSchema</Typography.Text>。
-                                            支持嵌套对象与数组结构。运行时<strong>不校验</strong>真实 HTTP 响应；后端会把说明合并进工具
-                                            description，供模型理解接口返回含义。
-                                        </>
-                                    }
-                                    style={{marginBottom: 16}}
-                                />
-                                <Form.Item label="出参字段（可选）">
+                                <Form.Item label="出参（可选）" extra="写入 definition.outputSchema；运行时不校验真实响应。">
                                     <HttpParameterRowsEditor
                                         listName="httpOutputParameterRows"
                                         storePathToList={["httpOutputParameterRows"]}
@@ -712,10 +994,7 @@ export function ToolFormDrawer(props: Props) {
                                 <Switch/>
                             </Form.Item>
                         ) : null}
-                        <Form.Item label="请求头（可选）">
-                            <Typography.Paragraph type="secondary" style={{marginTop: 0, marginBottom: 8}}>
-                                逐行填写名称与取值，无需手写 JSON。
-                            </Typography.Paragraph>
+                        <Form.Item label="请求头（可选）" extra="逐行填写，无需手写 JSON。">
                             <Form.List name="httpHeaderRows">
                                 {(fields, {add, remove}) => (
                                     <>
@@ -761,23 +1040,6 @@ export function ToolFormDrawer(props: Props) {
                         <Form.Item name="mcpParametersAdvancedPreserve" valuePropName="checked" hidden>
                             <Checkbox/>
                         </Form.Item>
-                        <Alert
-                            type="info"
-                            showIcon
-                            title="MCP（外部 Server）"
-                            description={
-                                <>
-                                    填写远端 MCP 的 <Typography.Text code>SSE</Typography.Text> 根地址（完整
-                                    URL，与对端文档一致；部分实现为{" "}
-                                    <Typography.Text code>/sse</Typography.Text>，本服务默认在{" "}
-                                    <Typography.Text code>/mcp</Typography.Text>）。本服务自身也会对外暴露 MCP（见后端{" "}
-                                    <Typography.Text code>agentlego.mcp.server.sse-path</Typography.Text>
-                                    ），供外部客户端连接并调用与 LOCAL 内置一致的工具列表。下方可配置{" "}
-                                    <Typography.Text code>definition.parameters</Typography.Text>，用于模型侧与联调表单的参数说明。
-                                </>
-                            }
-                            style={{marginBottom: 16}}
-                        />
                         <Form.Item
                             name="name"
                             label="平台工具名（name）"
@@ -794,6 +1056,7 @@ export function ToolFormDrawer(props: Props) {
                             name="mcpEndpoint"
                             label="远端 SSE 端点"
                             rules={[{required: true, message: "请填写外部 MCP Server 的 SSE URL"}]}
+                            extra="完整 URL，与对端文档一致（常见 /sse 或 /mcp）。"
                         >
                             <Input placeholder="例如 http://127.0.0.1:3000/sse"/>
                         </Form.Item>
@@ -854,21 +1117,10 @@ export function ToolFormDrawer(props: Props) {
                             </>
                         ) : (
                             <>
-                                <Alert
-                                    type="info"
-                                    showIcon
-                                    title="调用入参 Schema（可选）"
-                                    description={
-                                        <>
-                                            写入 <Typography.Text code>definition.parameters</Typography.Text>
-                                            ，与 HTTP 工具相同为 JSON Schema
-                                            子集，支持嵌套对象与数组。用于智能体侧工具描述与详情页展示。不填则运行时由后端按远端{" "}
-                                            <Typography.Text code>list_tools</Typography.Text> 推断或使用宽松 object。
-                                        </>
-                                    }
-                                    style={{marginBottom: 12}}
-                                />
-                                <Form.Item label="参数表（parameters）">
+                                <Form.Item
+                                    label="参数表（parameters）"
+                                    extra="可选；不填则运行时由远端 list_tools 推断。"
+                                >
                                     <HttpParameterRowsEditor
                                         listName="mcpParameterRows"
                                         storePathToList={["mcpParameterRows"]}
@@ -876,6 +1128,64 @@ export function ToolFormDrawer(props: Props) {
                                         requiredCheckboxLabel="必填"
                                         namePlaceholder="参数名"
                                         descriptionPlaceholder="说明"
+                                        showParamAlias
+                                        showValueSource
+                                    />
+                                </Form.Item>
+                            </>
+                        )}
+                        <Form.Item name="mcpOutputSchemaAdvancedPreserve" valuePropName="checked" hidden>
+                            <Checkbox/>
+                        </Form.Item>
+                        {watchedPreserveMcpOutput ? (
+                            <>
+                                <Alert
+                                    type="warning"
+                                    showIcon
+                                    title="高级出参已保留"
+                                    description={
+                                        <>
+                                            <Typography.Text code>definition.outputSchema</Typography.Text>{" "}
+                                            存在无法用表格无损表达的结构。保存时<strong>不会覆盖</strong>
+                                            ；完整 JSON 见工具详情。
+                                        </>
+                                    }
+                                    style={{marginBottom: 12}}
+                                />
+                                <Button
+                                    type="primary"
+                                    ghost
+                                    style={{marginBottom: 16}}
+                                    onClick={() => {
+                                        Modal.confirm({
+                                            title: "改为表单配置出参？",
+                                            content:
+                                                "确认后，下次保存将删除现有高级 outputSchema，仅保留表格生成的 definition.outputSchema。",
+                                            okText: "确认切换",
+                                            cancelText: "取消",
+                                            onOk: () => {
+                                                form.setFieldsValue({
+                                                    mcpOutputSchemaAdvancedPreserve: false,
+                                                    mcpOutputParameterRows: [defaultHttpParameterRow()],
+                                                });
+                                                message.success("已切换为表单模式，请填写出参后再保存");
+                                            },
+                                        });
+                                    }}
+                                >
+                                    改为表单配置出参…
+                                </Button>
+                            </>
+                        ) : (
+                            <>
+                                <Form.Item label="出参（可选）" extra="写入 definition.outputSchema。">
+                                    <HttpParameterRowsEditor
+                                        listName="mcpOutputParameterRows"
+                                        storePathToList={["mcpOutputParameterRows"]}
+                                        addButtonLabel="添加出参字段"
+                                        requiredCheckboxLabel="响应中必有"
+                                        namePlaceholder="字段名"
+                                        descriptionPlaceholder="字段含义（可选）"
                                     />
                                 </Form.Item>
                             </>
@@ -900,6 +1210,124 @@ export function ToolFormDrawer(props: Props) {
                         <Form.Item name="workflowId" label="工作流 ID" rules={[{required: true, message: "必填"}]}>
                             <Input placeholder="平台工作流 Snowflake ID"/>
                         </Form.Item>
+                        <Form.Item name="workflowParametersAdvancedPreserve" valuePropName="checked" hidden>
+                            <Checkbox/>
+                        </Form.Item>
+                        {watchedPreserveWorkflowParams ? (
+                            <>
+                                <Alert
+                                    type="warning"
+                                    showIcon
+                                    title="高级入参已保留"
+                                    description={
+                                        <>
+                                            当前 <Typography.Text code>parameters</Typography.Text> /{" "}
+                                            <Typography.Text code>inputSchema</Typography.Text>{" "}
+                                            无法用表格无损表达。保存时<strong>不会覆盖</strong>
+                                            ；完整 JSON 见工具详情。
+                                        </>
+                                    }
+                                    style={{marginBottom: 12}}
+                                />
+                                <Button
+                                    type="primary"
+                                    ghost
+                                    style={{marginBottom: 16}}
+                                    onClick={() => {
+                                        Modal.confirm({
+                                            title: "改为表单配置入参？",
+                                            content:
+                                                "确认后，下次保存将删除现有的高级 parameters / inputSchema，并仅保留表格中的 definition.parameters。",
+                                            okText: "确认切换",
+                                            cancelText: "取消",
+                                            onOk: () => {
+                                                form.setFieldsValue({
+                                                    workflowParametersAdvancedPreserve: false,
+                                                    workflowParameterRows: [defaultHttpParameterRow()],
+                                                });
+                                                message.success("已切换为表单模式，请填写入参后再保存");
+                                            },
+                                        });
+                                    }}
+                                >
+                                    改为表单配置入参…
+                                </Button>
+                            </>
+                        ) : (
+                            <>
+                                <Form.Item
+                                    label="入参（parameters）"
+                                    extra="可选；未配置时后端默认单字段 input。"
+                                >
+                                    <HttpParameterRowsEditor
+                                        listName="workflowParameterRows"
+                                        storePathToList={["workflowParameterRows"]}
+                                        addButtonLabel="添加入参"
+                                        requiredCheckboxLabel="必填"
+                                        namePlaceholder="参数名"
+                                        descriptionPlaceholder="说明"
+                                        showParamAlias
+                                        showValueSource
+                                    />
+                                </Form.Item>
+                            </>
+                        )}
+                        <Form.Item name="workflowOutputSchemaAdvancedPreserve" valuePropName="checked" hidden>
+                            <Checkbox/>
+                        </Form.Item>
+                        {watchedPreserveWorkflowOutput ? (
+                            <>
+                                <Alert
+                                    type="warning"
+                                    showIcon
+                                    title="高级出参已保留"
+                                    description={
+                                        <>
+                                            <Typography.Text code>definition.outputSchema</Typography.Text>{" "}
+                                            存在无法用表格无损表达的结构。保存时<strong>不会覆盖</strong>
+                                            ；完整 JSON 见工具详情。
+                                        </>
+                                    }
+                                    style={{marginBottom: 12}}
+                                />
+                                <Button
+                                    type="primary"
+                                    ghost
+                                    style={{marginBottom: 16}}
+                                    onClick={() => {
+                                        Modal.confirm({
+                                            title: "改为表单配置出参？",
+                                            content:
+                                                "确认后，下次保存将删除现有高级 outputSchema，仅保留表格生成的 definition.outputSchema。",
+                                            okText: "确认切换",
+                                            cancelText: "取消",
+                                            onOk: () => {
+                                                form.setFieldsValue({
+                                                    workflowOutputSchemaAdvancedPreserve: false,
+                                                    workflowOutputParameterRows: [defaultHttpParameterRow()],
+                                                });
+                                                message.success("已切换为表单模式，请填写出参后再保存");
+                                            },
+                                        });
+                                    }}
+                                >
+                                    改为表单配置出参…
+                                </Button>
+                            </>
+                        ) : (
+                            <>
+                                <Form.Item label="出参（可选）" extra="写入 definition.outputSchema。">
+                                    <HttpParameterRowsEditor
+                                        listName="workflowOutputParameterRows"
+                                        storePathToList={["workflowOutputParameterRows"]}
+                                        addButtonLabel="添加出参字段"
+                                        requiredCheckboxLabel="响应中必有"
+                                        namePlaceholder="字段名"
+                                        descriptionPlaceholder="字段含义（可选）"
+                                    />
+                                </Form.Item>
+                            </>
+                        )}
                     </>
                 ) : null}
 

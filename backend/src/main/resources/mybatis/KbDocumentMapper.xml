@@ -102,4 +102,10 @@
         from lego_kb_documents
         where id = #{id}
     </delete>
+
+    <select id="countDocumentsReferencingToolId" resultType="long">
+        select count(*) ::bigint
+        from lego_kb_documents
+        where linked_tool_ids @> jsonb_build_array(#{toolId})
+    </select>
 </mapper>

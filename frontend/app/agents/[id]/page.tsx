@@ -21,6 +21,8 @@ import {
 import Link from "next/link";
 import React from "react";
 
+import {isAbortError} from "@/lib/api/isAbortError";
+import {DEFAULT_REQUEST_TIMEOUT_MS} from "@/lib/api/request";
 import {AppLayout} from "@/components/AppLayout";
 import {ErrorAlert} from "@/components/ErrorAlert";
 import {PageHeaderBlock} from "@/components/PageHeaderBlock";
@@ -58,29 +60,37 @@ export default function AgentDetailPage(props: { params: Promise<{ id: string }>
     const editRuntime = Form.useWatch("runtimeKind", editForm);
     const editIsReact = editRuntime === AGENT_RUNTIME.REACT;
 
+    const runAbortRef = React.useRef<AbortController | null>(null);
     React.useEffect(() => {
-        let cancelled = false;
+        return () => {
+            runAbortRef.current?.abort();
+        };
+    }, []);
+
+    React.useEffect(() => {
+        const ac = new AbortController();
         setLoading(true);
         setError(null);
         void props.params.then(async ({id}) => {
             try {
-                const data = await getAgent(id);
-                if (!cancelled) {
-                    setAgent(data);
-                    form.setFieldsValue({modelId: data.modelId});
-                }
+                const data = await getAgent(id, {
+                    signal: ac.signal,
+                    timeoutMs: DEFAULT_REQUEST_TIMEOUT_MS,
+                });
+                setAgent(data);
+                form.setFieldsValue({modelId: data.modelId});
             } catch (e) {
-                if (!cancelled) {
+                if (!isAbortError(e)) {
                     setError(e);
                 }
             } finally {
-                if (!cancelled) {
+                if (!ac.signal.aborted) {
                     setLoading(false);
                 }
             }
         });
         return () => {
-            cancelled = true;
+            ac.abort();
         };
     }, [form, props.params]);
 
@@ -110,9 +120,11 @@ export default function AgentDetailPage(props: { params: Promise<{ id: string }>
         try {
             const kind = values.runtimeKind ?? AGENT_RUNTIME.REACT;
             const isReact = kind === AGENT_RUNTIME.REACT;
-            await updateAgent(agent.id, buildUpsertAgentRequestBody(values, isReact));
+            await updateAgent(agent.id, buildUpsertAgentRequestBody(values, isReact), {
+                timeoutMs: DEFAULT_REQUEST_TIMEOUT_MS,
+            });
             message.success("已保存");
-            const fresh = await getAgent(agent.id);
+            const fresh = await getAgent(agent.id, {timeoutMs: DEFAULT_REQUEST_TIMEOUT_MS});
             setAgent(fresh);
             form.setFieldsValue({modelId: fresh.modelId});
         } catch (e) {
@@ -129,6 +141,9 @@ export default function AgentDetailPage(props: { params: Promise<{ id: string }>
         setError(null);
         setRunning(true);
         setRunOut(null);
+        runAbortRef.current?.abort();
+        const runAc = new AbortController();
+        runAbortRef.current = runAc;
         try {
             const options = buildRunOptions({
                 temperature: values.temperature,
@@ -138,6 +153,10 @@ export default function AgentDetailPage(props: { params: Promise<{ id: string }>
             const body: Record<string, unknown> = {
                 input: values.input,
             };
+            const ns = values.memoryNamespace?.trim();
+            if (ns) {
+                body.memoryNamespace = ns;
+            }
             const mid = values.modelId?.trim();
             if (mid) {
                 body.modelId = mid;
@@ -145,12 +164,18 @@ export default function AgentDetailPage(props: { params: Promise<{ id: string }>
             if (options !== undefined) {
                 body.options = options;
             }
-            const data = await runAgent(agent.id, body);
+            const data = await runAgent(agent.id, body, {signal: runAc.signal});
             setRunOut(data);
         } catch (e) {
-            setError(e);
+            if (!isAbortError(e)) {
+                setError(e);
+            }
         } finally {
-            setRunning(false);
+            const stillThisRun = runAbortRef.current === runAc;
+            if (stillThisRun) {
+                runAbortRef.current = null;
+                setRunning(false);
+            }
         }
     }
 
@@ -507,6 +532,22 @@ export default function AgentDetailPage(props: { params: Promise<{ id: string }>
                                     <Typography.Text strong style={{display: "block", marginTop: 16, marginBottom: 8}}>
                                         记忆侧预览（调试）
                                     </Typography.Text>
+                                    {runOut.memory.implementationWarnings &&
+                                    runOut.memory.implementationWarnings.length > 0 ? (
+                                        <Alert
+                                            type="warning"
+                                            showIcon
+                                            style={{marginBottom: 12}}
+                                            message="策略能力提示（与当前实现一致）"
+                                            description={
+                                                <ul style={{margin: 0, paddingLeft: 20}}>
+                                                    {runOut.memory.implementationWarnings.map((w) => (
+                                                        <li key={w}>{w}</li>
+                                                    ))}
+                                                </ul>
+                                            }
+                                        />
+                                    ) : null}
                                     <Descriptions column={1} size="small" bordered>
                                         <Descriptions.Item label="策略">
                                             {runOut.memory.memoryPolicyName ?? "—"}{" "}
@@ -521,6 +562,21 @@ export default function AgentDetailPage(props: { params: Promise<{ id: string }>
                                         </Descriptions.Item>
                                         <Descriptions.Item label="retrieval / write">
                                             {runOut.memory.retrievalMode ?? "—"} / {runOut.memory.writeMode ?? "—"}
+                                        </Descriptions.Item>
+                                        <Descriptions.Item label="memoryNamespace">
+                                            {runOut.memory.memoryNamespace ?? "（未指定）"}
+                                        </Descriptions.Item>
+                                        <Descriptions.Item label="粗略摘要上限（解析后）">
+                                            {typeof runOut.memory.roughSummaryMaxCharsResolved === "number"
+                                                ? runOut.memory.roughSummaryMaxCharsResolved
+                                                : "—"}
+                                        </Descriptions.Item>
+                                        <Descriptions.Item label="预览排序">
+                                            {runOut.memory.keywordPreviewSort === "TRGM_WORD_SIMILARITY"
+                                                ? "词相似度（pg_trgm，与当前输入非空一致）"
+                                                : runOut.memory.keywordPreviewSort === "RECENCY"
+                                                    ? "仅按时间（当前输入为空）"
+                                                    : (runOut.memory.keywordPreviewSort ?? "—")}
                                         </Descriptions.Item>
                                         <Descriptions.Item label="预览命中条数">
                                             {runOut.memory.previewHitCount ?? 0}

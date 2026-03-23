@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.agentlego.backend.tool.infrastructure.persistence.LocalBuiltinExposureMapper">
+
+    <resultMap id="ExposureMap" type="com.agentlego.backend.tool.infrastructure.persistence.LocalBuiltinExposureDO">
+        <id property="toolName" column="tool_name"/>
+        <result property="exposeMcp" column="expose_mcp"/>
+        <result property="showInUi" column="show_in_ui"/>
+        <result property="updatedAt" column="updated_at"/>
+    </resultMap>
+
+    <select id="selectAll" resultMap="ExposureMap">
+        select tool_name, expose_mcp, show_in_ui, updated_at
+        from lego_local_builtin_tool_exposure
+    </select>
+
+    <insert id="insertIfAbsent">
+        insert into lego_local_builtin_tool_exposure (tool_name, expose_mcp, show_in_ui, updated_at)
+        values (#{toolName}, true, true, now()) on conflict (tool_name) do nothing
+    </insert>
+
+    <update id="update">
+        update lego_local_builtin_tool_exposure
+        set expose_mcp = #{exposeMcp},
+            show_in_ui = #{showInUi},
+            updated_at = now()
+        where tool_name = #{toolName}
+    </update>
+</mapper>

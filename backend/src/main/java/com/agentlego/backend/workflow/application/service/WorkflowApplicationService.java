@@ -31,6 +31,10 @@ public class WorkflowApplicationService {
     private static final String DEF_MODE = "mode";
     private static final String DEF_AGENT_ID = "agentId";
     private static final String DEF_MODEL_ID = "modelId";
+    /**
+     * 可选：与 RunAgentRequest.memoryNamespace 一致，用于单策略下会话/用户隔离
+     */
+    private static final String DEF_MEMORY_NAMESPACE = "memoryNamespace";
     private static final String MODE_SEQUENTIAL = "sequential";
     private static final String MODE_PARALLEL = "parallel";
 
@@ -194,14 +198,19 @@ public class WorkflowApplicationService {
         if (agentId.isBlank() || modelId.isBlank()) {
             throw new ApiException("INVALID_WORKFLOW_DEF", "definition 必须包含 steps[] 或 agentId/modelId", HttpStatus.BAD_REQUEST);
         }
-        RunAgentResponse agentResp = agentApplicationService.runAgent(agentId, AgentRunRequests.of(modelId, req.getInput()));
+        String ns = JsonMaps.getString(def, DEF_MEMORY_NAMESPACE, null);
+        RunAgentResponse agentResp = agentApplicationService.runAgent(
+                agentId,
+                AgentRunRequests.of(modelId, req.getInput(), ns)
+        );
         return Map.of("output", agentResp.getOutput());
     }
 
     private String runOneStep(Map<String, Object> step, String input) {
         String agentId = JsonMaps.getString(step, DEF_AGENT_ID, "");
         String modelId = JsonMaps.getString(step, DEF_MODEL_ID, "");
-        return agentApplicationService.runAgent(agentId, AgentRunRequests.of(modelId, input)).getOutput();
+        String ns = JsonMaps.getString(step, DEF_MEMORY_NAMESPACE, null);
+        return agentApplicationService.runAgent(agentId, AgentRunRequests.of(modelId, input, ns)).getOutput();
     }
 
     public WorkflowRunDto getRun(String runId) {

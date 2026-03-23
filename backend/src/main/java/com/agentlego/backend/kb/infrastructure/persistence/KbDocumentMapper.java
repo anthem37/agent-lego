@@ -33,4 +33,6 @@ public interface KbDocumentMapper {
     List<KbDocumentDO> listByCollectionId(@Param("collectionId") String collectionId);
 
     int deleteById(@Param("id") String id);
+
+    long countDocumentsReferencingToolId(@Param("toolId") String toolId);
 }

@@ -5,6 +5,7 @@ import {Alert, Button, Checkbox, Input, message, Modal, Space, Table, Typography
 import type {ColumnsType} from "antd/es/table";
 import React from "react";
 
+import {DEFAULT_REQUEST_TIMEOUT_MS} from "@/lib/api/request";
 import {ApiError} from "@/lib/api/types";
 import {batchImportMcpTools, fetchRemoteMcpTools} from "@/lib/tools/api";
 import {PLATFORM_TOOL_NAME_PATTERN, sanitizePlatformToolName} from "@/lib/tools/mcp-platform-name";
@@ -73,7 +74,7 @@ export function McpBatchImportModal(props: Props) {
         }
         setLoadingList(true);
         try {
-            const list = await fetchRemoteMcpTools(ep, refresh);
+            const list = await fetchRemoteMcpTools(ep, refresh, {timeoutMs: DEFAULT_REQUEST_TIMEOUT_MS});
             setRows(list);
             setSelected(list.map((r) => r.name));
             const pref = namePrefix.trim();
@@ -94,7 +95,7 @@ export function McpBatchImportModal(props: Props) {
     async function runImport(body: Parameters<typeof batchImportMcpTools>[0]) {
         setImporting(true);
         try {
-            const resp = await batchImportMcpTools(body);
+            const resp = await batchImportMcpTools(body, {timeoutMs: DEFAULT_REQUEST_TIMEOUT_MS});
             const c = resp.created?.length ?? 0;
             const s = resp.skipped?.length ?? 0;
             const nc = resp.nameConflicts?.length ?? 0;

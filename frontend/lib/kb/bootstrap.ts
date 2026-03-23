@@ -2,7 +2,7 @@
  * 知识库控制台首屏/刷新所需并行数据。
  */
 
-import {listKbChunkStrategies, listKbCollections} from "@/lib/kb/api";
+import {type KbFetchOpts, listKbChunkStrategies, listKbCollections} from "@/lib/kb/api";
 import type {KbChunkStrategyMetaDto, KbCollectionDto} from "@/lib/kb/types";
 import {listVectorStoreProfiles} from "@/lib/vector-store/api";
 import type {VectorStoreProfileDto} from "@/lib/vector-store/types";
@@ -13,11 +13,11 @@ export type KbBootstrapResources = {
     vectorProfiles: VectorStoreProfileDto[];
 };
 
-export async function loadKbBootstrapResources(): Promise<KbBootstrapResources> {
+export async function loadKbBootstrapResources(opts?: KbFetchOpts): Promise<KbBootstrapResources> {
     const [collections, chunkStrategies, vectorProfiles] = await Promise.all([
-        listKbCollections(),
-        listKbChunkStrategies().catch(() => [] as KbChunkStrategyMetaDto[]),
-        listVectorStoreProfiles().catch(() => [] as VectorStoreProfileDto[]),
+        listKbCollections(opts),
+        listKbChunkStrategies(opts).catch(() => [] as KbChunkStrategyMetaDto[]),
+        listVectorStoreProfiles(opts).catch(() => [] as VectorStoreProfileDto[]),
     ]);
     return {collections, chunkStrategies, vectorProfiles};
 }

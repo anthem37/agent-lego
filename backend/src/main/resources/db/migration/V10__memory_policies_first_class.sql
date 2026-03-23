@@ -69,7 +69,8 @@ ON (trim (a.memory_policy ->> 'ownerScope'))
     CASE
     WHEN lower (trim (coalesce (a.memory_policy ->> 'writeBackOnDuplicate', 'skip'))) = 'upsert' THEN 'upsert'
     ELSE 'skip'
-END,
+END
+,
     now(),
     now()
 FROM lego_agents a

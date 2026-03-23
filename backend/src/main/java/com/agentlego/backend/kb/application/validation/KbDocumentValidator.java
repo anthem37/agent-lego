@@ -263,6 +263,8 @@ public class KbDocumentValidator {
         for (String id : linked) {
             linkedLc.add(id.toLowerCase(Locale.ROOT));
         }
+        Map<String, ToolAggregate> toolsByLinkedIdLc =
+                KbKnowledgeInlineToolSyntax.loadToolsByLinkedIds(linked, toolRepository);
         Matcher m = TOOL_FIELD_TOKEN_IN_BODY.matcher(body);
         Set<String> checkedToolRefs = new HashSet<>();
         while (m.find()) {
@@ -275,7 +277,7 @@ public class KbDocumentValidator {
                 continue;
             }
             Optional<ToolAggregate> agg = KbKnowledgeInlineToolSyntax.resolveLinkedTool(
-                    toolRef, linked, linkedLc, toolRepository);
+                    toolRef, linked, linkedLc, toolsByLinkedIdLc);
             if (agg.isEmpty()) {
                 throw new ApiException(
                         "VALIDATION_ERROR",

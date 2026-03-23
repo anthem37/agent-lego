@@ -6,9 +6,12 @@ import type {ColumnsType} from "antd/es/table";
 import Link from "next/link";
 import React from "react";
 
+import {isAbortError} from "@/lib/api/isAbortError";
+import {DEFAULT_REQUEST_TIMEOUT_MS} from "@/lib/api/request";
 import {AppLayout} from "@/components/AppLayout";
 import {ErrorAlert} from "@/components/ErrorAlert";
 import {DeleteToolLink} from "@/components/tools/DeleteToolPopconfirm";
+import {LocalBuiltinExposureModal} from "@/components/tools/LocalBuiltinExposureModal";
 import {McpBatchImportModal} from "@/components/tools/McpBatchImportModal";
 import {ToolFormDrawer} from "@/components/tools/ToolFormDrawer";
 import {PageHeaderBlock} from "@/components/PageHeaderBlock";
@@ -47,6 +50,7 @@ export default function ToolsPage() {
     const [editing, setEditing] = React.useState<ToolDto | null>(null);
     const [deletingId, setDeletingId] = React.useState<string | null>(null);
     const [mcpBulkOpen, setMcpBulkOpen] = React.useState(false);
+    const [builtinExposureOpen, setBuiltinExposureOpen] = React.useState(false);
 
     React.useEffect(() => {
         const t = window.setTimeout(() => {
@@ -59,76 +63,85 @@ export default function ToolsPage() {
 
     /** 类型元数据、内置清单仅在首屏拉取；刷新按钮与导入成功后再拉 */
     React.useEffect(() => {
-        let cancelled = false;
+        const ac = new AbortController();
+        const opts = {signal: ac.signal, timeoutMs: DEFAULT_REQUEST_TIMEOUT_MS};
         void (async () => {
             try {
                 const [m, cats, builtins] = await Promise.all([
-                    fetchToolTypeMeta(),
-                    fetchToolCategoryMeta().catch(() => [] as ToolCategoryMetaDto[]),
-                    fetchLocalBuiltinToolsMeta(),
+                    fetchToolTypeMeta(opts),
+                    fetchToolCategoryMeta(opts).catch(() => [] as ToolCategoryMetaDto[]),
+                    fetchLocalBuiltinToolsMeta(opts),
                 ]);
-                if (!cancelled) {
+                if (!ac.signal.aborted) {
                     setMeta(m);
                     setCategoryMeta(cats);
                     setLocalBuiltins(builtins);
                 }
             } catch (e) {
-                if (!cancelled) {
+                if (!isAbortError(e) && !ac.signal.aborted) {
                     console.error(e);
                     message.warning("工具类型元数据加载失败，新建/编辑抽屉可能缺少类型说明");
                 }
             }
         })();
         return () => {
-            cancelled = true;
+            ac.abort();
         };
     }, []);
 
     React.useEffect(() => {
-        let cancelled = false;
+        const ac = new AbortController();
+        const opts = {signal: ac.signal, timeoutMs: DEFAULT_REQUEST_TIMEOUT_MS};
         setLoading(true);
         void (async () => {
             try {
-                const pageData = await listToolsPage({
-                    page,
-                    pageSize,
-                    q: debouncedQ || undefined,
-                    toolType: filterToolType,
-                });
-                if (!cancelled) {
+                const pageData = await listToolsPage(
+                    {
+                        page,
+                        pageSize,
+                        q: debouncedQ || undefined,
+                        toolType: filterToolType,
+                    },
+                    opts,
+                );
+                if (!ac.signal.aborted) {
                     setTools(pageData.items);
                     setTotal(pageData.total);
                     setError(null);
                 }
             } catch (e) {
-                if (!cancelled) {
+                if (!isAbortError(e) && !ac.signal.aborted) {
                     setError(e);
                 }
             } finally {
-                if (!cancelled) {
+                if (!ac.signal.aborted) {
                     setLoading(false);
                 }
             }
         })();
         return () => {
-            cancelled = true;
+            ac.abort();
         };
     }, [page, pageSize, debouncedQ, filterToolType]);
 
     async function reload() {
         setError(null);
         setLoading(true);
+        const opts = {timeoutMs: DEFAULT_REQUEST_TIMEOUT_MS};
         try {
             const [pageData, m, cats, builtins] = await Promise.all([
-                listToolsPage({
-                    page,
-                    pageSize,
-                    q: debouncedQ || undefined,
-                    toolType: filterToolType,
-                }),
-                fetchToolTypeMeta(),
-                fetchToolCategoryMeta().catch(() => [] as ToolCategoryMetaDto[]),
-                fetchLocalBuiltinToolsMeta(),
+                listToolsPage(
+                    {
+                        page,
+                        pageSize,
+                        q: debouncedQ || undefined,
+                        toolType: filterToolType,
+                    },
+                    opts,
+                ),
+                fetchToolTypeMeta(opts),
+                fetchToolCategoryMeta(opts).catch(() => [] as ToolCategoryMetaDto[]),
+                fetchLocalBuiltinToolsMeta(opts),
             ]);
             setTools(pageData.items);
             setTotal(pageData.total);
@@ -178,7 +191,7 @@ export default function ToolsPage() {
         setError(null);
         setDeletingId(id);
         try {
-            await deleteTool(id);
+            await deleteTool(id, {timeoutMs: DEFAULT_REQUEST_TIMEOUT_MS});
             message.success("已删除");
             await reload();
         } catch (e) {
@@ -315,7 +328,7 @@ export default function ToolsPage() {
                     title="工具管理"
                     subtitle={
                         <Tooltip
-                            title="支持列表检索与类型筛选、新建/编辑/删除、详情页联调与 test-call；工具 name 全平台唯一（大小写不敏感）。类型说明来自 /tools/meta/tool-types。"
+                            title="支持列表检索与类型筛选、新建/编辑/删除、详情页联调与 test-call；工具 name 全平台唯一（大小写不敏感）。类型说明来自 /tools/meta/tool-types；内置 MCP/UI 暴露见「内置工具暴露」（/tools/meta/local-builtins/exposure）。"
                         >
                             <span>
                                 检索与类型筛选、CRUD、详情联调；MCP 支持批量导入。鼠标悬停查看说明。
@@ -331,6 +344,7 @@ export default function ToolsPage() {
                                 新建工具
                             </Button>
                             <Button onClick={() => setMcpBulkOpen(true)}>MCP 批量导入</Button>
+                            <Button onClick={() => setBuiltinExposureOpen(true)}>内置工具暴露</Button>
                         </Space>
                     }
                 />
@@ -436,6 +450,12 @@ export default function ToolsPage() {
                     open={mcpBulkOpen}
                     onClose={() => setMcpBulkOpen(false)}
                     onSuccess={reload}
+                />
+
+                <LocalBuiltinExposureModal
+                    open={builtinExposureOpen}
+                    onClose={() => setBuiltinExposureOpen(false)}
+                    onSaved={reload}
                 />
             </PageShell>
         </AppLayout>

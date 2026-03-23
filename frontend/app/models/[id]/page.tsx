@@ -6,6 +6,8 @@ import Link from "next/link";
 import {useRouter} from "next/navigation";
 import React from "react";
 
+import {isAbortError} from "@/lib/api/isAbortError";
+import {DEFAULT_REQUEST_TIMEOUT_MS} from "@/lib/api/request";
 import {AppLayout} from "@/components/AppLayout";
 import {ErrorAlert} from "@/components/ErrorAlert";
 import {PageHeaderBlock} from "@/components/PageHeaderBlock";
@@ -29,6 +31,13 @@ export default function ModelDetailPage(props: { params: Promise<{ id: string }>
     const [testMaxTokens, setTestMaxTokens] = React.useState<number | null>(null);
     const [testMaxStreamChunks, setTestMaxStreamChunks] = React.useState<number | null>(null);
 
+    const testAbortRef = React.useRef<AbortController | null>(null);
+    React.useEffect(() => {
+        return () => {
+            testAbortRef.current?.abort();
+        };
+    }, []);
+
     React.useEffect(() => {
         let cancelled = false;
         void props.params.then(({id}) => {
@@ -45,27 +54,28 @@ export default function ModelDetailPage(props: { params: Promise<{ id: string }>
         if (!modelId) {
             return;
         }
-        let cancelled = false;
+        const ac = new AbortController();
         setLoading(true);
         setError(null);
         void (async () => {
             try {
-                const data = await getModel(modelId);
-                if (!cancelled) {
-                    setModel(data);
-                }
+                const data = await getModel(modelId, {
+                    signal: ac.signal,
+                    timeoutMs: DEFAULT_REQUEST_TIMEOUT_MS,
+                });
+                setModel(data);
             } catch (e) {
-                if (!cancelled) {
+                if (!isAbortError(e)) {
                     setError(e);
                 }
             } finally {
-                if (!cancelled) {
+                if (!ac.signal.aborted) {
                     setLoading(false);
                 }
             }
         })();
         return () => {
-            cancelled = true;
+            ac.abort();
         };
     }, [modelId]);
 
@@ -80,6 +90,9 @@ export default function ModelDetailPage(props: { params: Promise<{ id: string }>
         }
         setError(null);
         setTesting(true);
+        testAbortRef.current?.abort();
+        const runAc = new AbortController();
+        testAbortRef.current = runAc;
         try {
             const body: Record<string, unknown> = {};
             if (testPrompt.trim()) {
@@ -91,12 +104,18 @@ export default function ModelDetailPage(props: { params: Promise<{ id: string }>
             if (testMaxStreamChunks != null && testMaxStreamChunks > 0) {
                 body.maxStreamChunks = testMaxStreamChunks;
             }
-            const data = await testModel(model.id, body);
+            const data = await testModel(model.id, body, {signal: runAc.signal});
             setTestResult(data);
         } catch (e) {
-            setError(e);
+            if (!isAbortError(e)) {
+                setError(e);
+            }
         } finally {
-            setTesting(false);
+            const stillThisRun = testAbortRef.current === runAc;
+            if (stillThisRun) {
+                testAbortRef.current = null;
+                setTesting(false);
+            }
         }
     }
 
@@ -107,7 +126,7 @@ export default function ModelDetailPage(props: { params: Promise<{ id: string }>
         setError(null);
         setDeleting(true);
         try {
-            await deleteModel(model.id);
+            await deleteModel(model.id, {timeoutMs: DEFAULT_REQUEST_TIMEOUT_MS});
             router.push("/models");
         } catch (e) {
             setError(e);

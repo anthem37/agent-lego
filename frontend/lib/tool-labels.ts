@@ -14,7 +14,7 @@ export function toolTypeDisplayName(code: string): string {
 
 /** 新建工具时可选项（与后端 ToolType 一致） */
 export const TOOL_TYPE_OPTIONS = [
-    {value: "LOCAL", label: "本地内置（echo / now）"},
+    {value: "LOCAL", label: "本地内置（进程内 @Tool）"},
     {value: "HTTP", label: "HTTP 请求（可联调）"},
     {value: "MCP", label: "MCP 外部（SSE + 可选入参 Schema）"},
     {value: "WORKFLOW", label: "工作流（可联调，同步执行）"},

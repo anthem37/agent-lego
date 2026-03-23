@@ -35,5 +35,10 @@ public class CreateEvaluationRequest {
      */
     @NotEmpty
     private List<EvalCaseDto> cases;
+
+    /**
+     * 可选：调用智能体时传入的 memoryNamespace（写入评测 config，整次运行共用）。
+     */
+    private String memoryNamespace;
 }
 

@@ -22,6 +22,16 @@ public class VectorStoreCollectionBindingRepositoryImpl implements VectorStoreCo
     }
 
     @Override
+    public void insertMemoryPolicy(String profileId, String physicalCollectionName, String memoryPolicyId) {
+        mapper.insertMemoryPolicy(profileId, physicalCollectionName, memoryPolicyId);
+    }
+
+    @Override
+    public int deleteByMemoryPolicyId(String memoryPolicyId) {
+        return mapper.deleteByMemoryPolicyId(memoryPolicyId);
+    }
+
+    @Override
     public Optional<CollectionBinding> findByProfileAndPhysicalName(String profileId, String physicalCollectionName) {
         VectorStoreCollectionBindingDO row = mapper.findByProfileAndPhysicalName(profileId, physicalCollectionName);
         if (row == null || row.getKbCollectionId() == null) {

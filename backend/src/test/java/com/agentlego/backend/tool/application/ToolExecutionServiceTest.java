@@ -7,9 +7,9 @@ import com.agentlego.backend.tool.domain.ToolAggregate;
 import com.agentlego.backend.tool.domain.ToolType;
 import com.agentlego.backend.tool.http.HttpToolRequestExecutor;
 import com.agentlego.backend.tool.local.LocalBuiltinToolCatalog;
+import com.agentlego.backend.tool.local.LocalBuiltinTools;
 import com.agentlego.backend.workflow.application.dto.RunWorkflowRequest;
 import com.agentlego.backend.workflow.application.service.WorkflowApplicationService;
-import io.agentscope.core.message.ContentBlock;
 import io.agentscope.core.message.TextBlock;
 import io.agentscope.core.message.ToolResultBlock;
 import io.agentscope.core.tool.AgentTool;
@@ -19,7 +19,6 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
-import java.time.Instant;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -31,9 +30,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 /**
- * ToolExecutionService 单元测试。
- * <p>
- * 说明：本组测试覆盖 LOCAL 工具（echo/now）调用的最小闭环与异常分支。
+ * ToolExecutionService 单元测试（LOCAL 内置工具与 HTTP/MCP/WORKFLOW）。
  */
 @ExtendWith(MockitoExtension.class)
 class ToolExecutionServiceTest {
@@ -48,77 +45,12 @@ class ToolExecutionServiceTest {
     private HttpToolRequestExecutor httpToolRequestExecutor;
 
     private static LocalBuiltinToolCatalog catalog() {
-        try {
-            return new LocalBuiltinToolCatalog();
-        } catch (ClassNotFoundException e) {
-            throw new RuntimeException(e);
-        }
+        return LocalBuiltinToolCatalog.forTests(LocalBuiltinTools.class);
     }
 
     private ToolExecutionService service() {
         return new ToolExecutionService(
                 workflowApplicationService, catalog(), mcpClientRegistry, httpToolRequestExecutor, 120);
-    }
-
-    @Test
-    void executeLocalTool_echo_shouldEchoText() {
-        ToolResultBlock result = service().executeLocalTool(
-                        "echo",
-                        Map.of("content", "hello")
-                )
-                .block();
-
-        assertNotNull(result);
-
-        List<ContentBlock> output = result.getOutput();
-        assertNotNull(output);
-
-        String echoed = output.stream()
-                .filter(b -> b instanceof TextBlock)
-                .map(b -> ((TextBlock) b).getText())
-                .findFirst()
-                .orElse(null);
-
-        assertEquals("hello", echoed);
-    }
-
-    @Test
-    void executeLocalTool_formatLine_shouldReplacePlaceholders() {
-        ToolResultBlock result = service().executeLocalTool(
-                        "format_line",
-                        Map.of(
-                                "template", "{who} 说：{what}",
-                                "who", "演示用户",
-                                "what", "多入参本地工具 OK"
-                        )
-                )
-                .block();
-
-        assertNotNull(result);
-        String text = result.getOutput().stream()
-                .filter(b -> b instanceof TextBlock)
-                .map(b -> ((TextBlock) b).getText())
-                .findFirst()
-                .orElse("");
-        assertEquals("演示用户 说：多入参本地工具 OK", text);
-    }
-
-    @Test
-    void executeLocalTool_now_shouldReturnIsoInstant() {
-        ToolResultBlock result = service().executeLocalTool("now", Map.of())
-                .block();
-
-        assertNotNull(result);
-
-        String text = result.getOutput().stream()
-                .filter(b -> b instanceof TextBlock)
-                .map(b -> ((TextBlock) b).getText())
-                .findFirst()
-                .orElse("");
-
-        assertFalse(text.isBlank());
-        // LocalNowTool uses Instant#toString which should be parseable.
-        assertDoesNotThrow(() -> Instant.parse(text));
     }
 
     @Test
@@ -128,6 +60,32 @@ class ToolExecutionServiceTest {
         );
 
         assertEquals("UNSUPPORTED_LOCAL_TOOL", ex.getCode());
+    }
+
+    @Test
+    void executeLocalTool_timeNow_shouldReturnText() {
+        ToolResultBlock block = service().executeLocalTool("time_now", Map.of()).block();
+        assertNotNull(block);
+        String text = block.getOutput().stream()
+                .filter(b -> b instanceof TextBlock)
+                .map(b -> ((TextBlock) b).getText())
+                .findFirst()
+                .orElse("");
+        assertTrue(text.contains("utcInstant="));
+        assertTrue(text.contains("epochSeconds="));
+    }
+
+    @Test
+    void executeLocalTool_hashSha256_shouldReturnHex() {
+        ToolResultBlock block = service().executeLocalTool("hash_sha256", Map.of("text", "hello")).block();
+        assertNotNull(block);
+        String text = block.getOutput().stream()
+                .filter(b -> b instanceof TextBlock)
+                .map(b -> ((TextBlock) b).getText())
+                .findFirst()
+                .orElse("");
+        assertEquals(64, text.length());
+        assertTrue(text.matches("[0-9a-f]{64}"));
     }
 
     @Test

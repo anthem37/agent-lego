@@ -1,51 +1,47 @@
 package com.agentlego.backend.tool.local;
 
-import com.agentlego.backend.tool.application.dto.LocalBuiltinToolMetaDto;
+import com.agentlego.backend.api.ApiException;
 import org.junit.jupiter.api.Test;
 
-import java.util.Optional;
-import java.util.Set;
-import java.util.stream.Collectors;
+import java.util.Map;
 
-import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class LocalBuiltinToolCatalogTest {
 
+    private static final int BUILTIN_COUNT = 5;
+
     @Test
-    void listMeta_shouldIncludeEchoAndNow() throws Exception {
-        LocalBuiltinToolCatalog catalog = new LocalBuiltinToolCatalog();
-        Set<String> names = catalog.listMeta().stream()
-                .map(m -> m.getName().toLowerCase())
-                .collect(Collectors.toSet());
-        assertTrue(names.contains("echo"));
-        assertTrue(names.contains("now"));
-        assertTrue(names.contains("format_line"));
-        assertNotNull(catalog.newInstance("echo"));
-        assertNotNull(catalog.newInstance("NOW"));
+    void listMeta_shouldExposeBuiltins() {
+        LocalBuiltinToolCatalog catalog = LocalBuiltinToolCatalog.forTests(LocalBuiltinTools.class);
+        assertEquals(BUILTIN_COUNT, catalog.listMeta().size());
+        assertTrue(catalog.findMetaByCanonicalName("time_now").isPresent());
+        assertTrue(catalog.findMetaByCanonicalName("hash_sha256").isPresent());
+    }
 
-        Optional<LocalBuiltinToolMetaDto> echo = catalog.listMeta().stream()
-                .filter(m -> "echo".equalsIgnoreCase(m.getName()))
-                .findFirst();
-        assertTrue(echo.isPresent());
-        assertEquals(1, echo.get().getInputParameters().size());
-        assertEquals("content", echo.get().getInputParameters().get(0).getName());
-        assertTrue(echo.get().getInputParameters().get(0).isRequired());
-        assertEquals("String", echo.get().getOutputJavaType());
-        assertFalse(echo.get().getOutputDescription().isBlank());
+    @Test
+    void plainTextBuiltin_outputSchema_shouldBeStringNotPseudoObject() {
+        LocalBuiltinToolCatalog catalog = LocalBuiltinToolCatalog.forTests(LocalBuiltinTools.class);
+        var meta = catalog.findMetaByCanonicalName("json_format").orElseThrow();
+        Map<String, Object> out = meta.getOutputSchema();
+        assertEquals("string", out.get("type"));
+        String desc = String.valueOf(out.get("description"));
+        assertTrue(desc.contains("纯文本") || desc.contains("ToolResultBlock"));
+        assertTrue(out.get("properties") == null);
+    }
 
-        Optional<LocalBuiltinToolMetaDto> now = catalog.listMeta().stream()
-                .filter(m -> "now".equalsIgnoreCase(m.getName()))
-                .findFirst();
-        assertTrue(now.isPresent());
-        assertEquals(1, now.get().getInputParameters().size());
-        assertFalse(now.get().getInputParameters().get(0).isRequired());
+    @Test
+    void newInstance_known_shouldReturnHost() {
+        LocalBuiltinToolCatalog catalog = LocalBuiltinToolCatalog.forTests(LocalBuiltinTools.class);
+        assertNotNull(catalog.newInstance("time_now"));
+    }
 
-        Optional<LocalBuiltinToolMetaDto> fmt = catalog.listMeta().stream()
-                .filter(m -> "format_line".equalsIgnoreCase(m.getName()))
-                .findFirst();
-        assertTrue(fmt.isPresent());
-        assertEquals(3, fmt.get().getInputParameters().size());
-        assertTrue(fmt.get().getInputParameters().stream().anyMatch(p -> "template".equals(p.getName()) && p.isRequired()));
-        assertTrue(fmt.get().getInputParameters().stream().anyMatch(p -> "what".equals(p.getName()) && !p.isRequired()));
+    @Test
+    void newInstance_unknown_shouldThrow() {
+        LocalBuiltinToolCatalog catalog = LocalBuiltinToolCatalog.forTests(LocalBuiltinTools.class);
+        assertThrows(ApiException.class, () -> catalog.newInstance("anything"));
     }
 }

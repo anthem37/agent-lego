@@ -10,6 +10,7 @@ import {ErrorAlert} from "@/components/ErrorAlert";
 import {PageHeaderBlock} from "@/components/PageHeaderBlock";
 import {PageShell} from "@/components/PageShell";
 import {SectionCard} from "@/components/SectionCard";
+import {DEFAULT_REQUEST_TIMEOUT_MS} from "@/lib/api/request";
 import {createAgent} from "@/lib/agents/api";
 import {buildUpsertAgentRequestBody} from "@/lib/agents/build-policy";
 import {filterMemoryPolicySelectOption, filterModelSelectOption,} from "@/lib/agents/form-options";
@@ -43,7 +44,9 @@ export default function AgentsPage() {
         try {
             const kind = values.runtimeKind ?? AGENT_RUNTIME.REACT;
             const reactRuntime = kind === AGENT_RUNTIME.REACT;
-            const id = await createAgent(buildUpsertAgentRequestBody(values, reactRuntime));
+            const id = await createAgent(buildUpsertAgentRequestBody(values, reactRuntime), {
+                timeoutMs: DEFAULT_REQUEST_TIMEOUT_MS,
+            });
             setCreatedId(id);
             message.success("智能体创建成功");
         } catch (e) {

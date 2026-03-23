@@ -5,6 +5,8 @@ import {Button, Col, Form, message, Row,} from "antd";
 import dynamic from "next/dynamic";
 import React from "react";
 
+import {isAbortError} from "@/lib/api/isAbortError";
+import {DEFAULT_REQUEST_TIMEOUT_MS} from "@/lib/api/request";
 import {AppLayout} from "@/components/AppLayout";
 import {PageShell} from "@/components/PageShell";
 import {ErrorAlert} from "@/components/ErrorAlert";
@@ -47,6 +49,9 @@ import type {VectorStoreProfileDto} from "@/lib/vector-store/types";
 
 import "@/components/kb/kb-quill-knowledge.css";
 import kbShell from "@/components/kb/kb-shell.module.css";
+
+/** 知识库 API 统一超时（与 `DEFAULT_REQUEST_TIMEOUT_MS` 一致）；需取消时与 `signal` 合并传入。 */
+const KB_REQ = {timeoutMs: DEFAULT_REQUEST_TIMEOUT_MS};
 
 const KbIngestDocumentDrawer = dynamic(
     () =>
@@ -102,6 +107,14 @@ export default function KnowledgeBasePage() {
         React.useState<KbCollectionDocumentsValidationResponse | null>(null);
     const [collectionValidateIncludeIssues, setCollectionValidateIncludeIssues] = React.useState(false);
     const [chunkMeta, setChunkMeta] = React.useState<KbChunkStrategyMetaDto[]>([]);
+
+    const bootstrapAbortRef = React.useRef<AbortController | null>(null);
+    React.useEffect(() => {
+        return () => {
+            bootstrapAbortRef.current?.abort();
+        };
+    }, []);
+
     /** 查看文档抽屉：解析 linkedToolIds 展示名称 */
     const [viewToolById, setViewToolById] = React.useState<Record<string, ToolDto>>({});
     /** 渲染测试 / 下拉：按需 getTool 合并完整 definition（含 outputSchema / parameters） */
@@ -183,36 +196,41 @@ export default function KnowledgeBasePage() {
         if (!retrieveModalOpen) {
             return;
         }
-        let cancelled = false;
+        const ac = new AbortController();
+        const fetchOpts = {signal: ac.signal, ...KB_REQ};
         setAgentKbSummariesLoading(true);
-        void listAgentKbPolicySummaries()
+        void listAgentKbPolicySummaries(fetchOpts)
             .then((rows) => {
-                if (!cancelled) {
+                if (!ac.signal.aborted) {
                     setAgentKbSummaries(rows);
                 }
             })
             .catch(() => {
-                if (!cancelled) {
+                if (!ac.signal.aborted) {
                     setAgentKbSummaries([]);
                 }
             })
             .finally(() => {
-                if (!cancelled) {
+                if (!ac.signal.aborted) {
                     setAgentKbSummariesLoading(false);
                 }
             });
         return () => {
-            cancelled = true;
+            ac.abort();
         };
     }, [retrieveModalOpen]);
 
     const reloadBootstrap = React.useCallback(async (opts?: { toast?: boolean }) => {
+        bootstrapAbortRef.current?.abort();
+        const ac = new AbortController();
+        bootstrapAbortRef.current = ac;
+        const fetchOpts = {signal: ac.signal, ...KB_REQ};
         setRefreshing(true);
         setLoadingCollections(true);
         setError(null);
         try {
             const {collections: cols, chunkStrategies: meta, vectorProfiles: profiles} =
-                await loadKbBootstrapResources();
+                await loadKbBootstrapResources(fetchOpts);
             setCollections(cols);
             setChunkMeta(meta);
             setVectorProfiles(profiles);
@@ -220,10 +238,15 @@ export default function KnowledgeBasePage() {
                 message.success("列表已刷新");
             }
         } catch (e) {
-            setError(e);
+            if (!isAbortError(e)) {
+                setError(e);
+            }
         } finally {
-            setRefreshing(false);
-            setLoadingCollections(false);
+            if (bootstrapAbortRef.current === ac) {
+                bootstrapAbortRef.current = null;
+                setRefreshing(false);
+                setLoadingCollections(false);
+            }
         }
     }, []);
 
@@ -254,14 +277,17 @@ export default function KnowledgeBasePage() {
         let cancelled = false;
         setLoadingDocs(true);
         setError(null);
-        void listKbDocuments(selectedCollectionId, ac.signal)
+        void listKbDocuments(selectedCollectionId, {
+            signal: ac.signal,
+            ...KB_REQ,
+        })
             .then((d) => {
                 if (!cancelled) {
                     setDocuments(d);
                 }
             })
             .catch((e) => {
-                if (!cancelled && !ac.signal.aborted) {
+                if (!cancelled && !ac.signal.aborted && !isAbortError(e)) {
                     setError(e);
                 }
             })
@@ -300,16 +326,17 @@ export default function KnowledgeBasePage() {
         if (ids.length === 0) {
             return;
         }
-        let cancelled = false;
+        const ac = new AbortController();
+        const opts = {signal: ac.signal, ...KB_REQ};
         void Promise.all(
             ids.map((id) =>
-                getTool(id).then(
+                getTool(id, opts).then(
                     (t) => t,
                     () => null,
                 ),
             ),
         ).then((list) => {
-            if (cancelled) {
+            if (ac.signal.aborted) {
                 return;
             }
             setRenderTestToolById((prev) => {
@@ -323,8 +350,10 @@ export default function KnowledgeBasePage() {
             });
         });
         return () => {
-            cancelled = true;
+            ac.abort();
         };
+        // viewDocLinkedToolIdsKey 已覆盖 linkedToolIds 内容变化
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [viewDocOpen, viewDocDetail?.id, viewDocLinkedToolIdsKey]);
 
     /** 打开文档详情时拉取工具列表，供正文解析名与「渲染测试」下工具/出参下拉 */
@@ -334,11 +363,12 @@ export default function KnowledgeBasePage() {
             setLoadingViewTools(false);
             return;
         }
-        let cancelled = false;
+        const ac = new AbortController();
+        const opts = {signal: ac.signal, ...KB_REQ};
         setLoadingViewTools(true);
-        void listToolsPage({page: 1, pageSize: 200})
+        void listToolsPage({page: 1, pageSize: 200}, opts)
             .then((p) => {
-                if (cancelled) {
+                if (ac.signal.aborted) {
                     return;
                 }
                 const next: Record<string, ToolDto> = {};
@@ -348,17 +378,17 @@ export default function KnowledgeBasePage() {
                 setViewToolById(next);
             })
             .catch(() => {
-                if (!cancelled) {
+                if (!ac.signal.aborted) {
                     setViewToolById({});
                 }
             })
             .finally(() => {
-                if (!cancelled) {
+                if (!ac.signal.aborted) {
                     setLoadingViewTools(false);
                 }
             });
         return () => {
-            cancelled = true;
+            ac.abort();
         };
     }, [viewDocOpen, viewDocDetail?.id, viewDocLinkedToolIdsKey]);
 
@@ -412,14 +442,17 @@ export default function KnowledgeBasePage() {
                 chunkParams.overlap = 0;
             }
             const override = (values.collectionNameOverride ?? "").trim();
-            const created = await createKbCollection({
-                name: values.name,
-                description: values.description ?? "",
-                vectorStoreProfileId: values.vectorStoreProfileId,
-                ...(override ? {vectorStoreConfig: {collectionName: override}} : {}),
-                chunkStrategy: values.chunkStrategy,
-                chunkParams,
-            });
+            const created = await createKbCollection(
+                {
+                    name: values.name,
+                    description: values.description ?? "",
+                    vectorStoreProfileId: values.vectorStoreProfileId,
+                    ...(override ? {vectorStoreConfig: {collectionName: override}} : {}),
+                    chunkStrategy: values.chunkStrategy,
+                    chunkParams,
+                },
+                KB_REQ,
+            );
             message.success("集合已创建");
             collectionForm.resetFields();
             setCollections((prev) => [created, ...prev.filter((c) => c.id !== created.id)]);
@@ -445,7 +478,7 @@ export default function KnowledgeBasePage() {
         setDocRenderedMd(null);
         setError(null);
         try {
-            const d = await getKbDocument(selectedCollectionId, docId);
+            const d = await getKbDocument(selectedCollectionId, docId, KB_REQ);
             setViewDocDetail(d);
         } catch (e) {
             setError(e);
@@ -462,7 +495,7 @@ export default function KnowledgeBasePage() {
         setDocValidateLoading(true);
         setError(null);
         try {
-            const r = await validateKbDocument(selectedCollectionId, viewDocDetail.id);
+            const r = await validateKbDocument(selectedCollectionId, viewDocDetail.id, KB_REQ);
             setDocValidation(r);
             const err = (r.issues ?? []).filter((i) => i.severity === "ERROR").length;
             if (err > 0) {
@@ -486,13 +519,16 @@ export default function KnowledgeBasePage() {
         setDocRetrieveLoading(true);
         setError(null);
         try {
-            const r = await previewKbRetrieveMulti({
-                collectionIds: [cid],
-                query: docRetrieveQuery.trim(),
-                topK: docRetrieveTopK,
-                scoreThreshold: docRetrieveTh,
-                renderSnippets: docRetrieveRender,
-            });
+            const r = await previewKbRetrieveMulti(
+                {
+                    collectionIds: [cid],
+                    query: docRetrieveQuery.trim(),
+                    topK: docRetrieveTopK,
+                    scoreThreshold: docRetrieveTh,
+                    renderSnippets: docRetrieveRender,
+                },
+                KB_REQ,
+            );
             setDocRetrieveHits(r.hits ?? []);
             message.success(`召回 ${(r.hits ?? []).length} 条`);
         } catch (e) {
@@ -514,13 +550,16 @@ export default function KnowledgeBasePage() {
         setCollRetrieveLoading(true);
         setError(null);
         try {
-            const r = await previewKbRetrieveMulti({
-                collectionIds: collRetrieveCollectionIds,
-                query: collRetrieveQuery.trim(),
-                topK: collRetrieveTopK,
-                scoreThreshold: collRetrieveTh,
-                renderSnippets: collRetrieveRender,
-            });
+            const r = await previewKbRetrieveMulti(
+                {
+                    collectionIds: collRetrieveCollectionIds,
+                    query: collRetrieveQuery.trim(),
+                    topK: collRetrieveTopK,
+                    scoreThreshold: collRetrieveTh,
+                    renderSnippets: collRetrieveRender,
+                },
+                KB_REQ,
+            );
             setCollRetrieveHits(r.hits ?? []);
             message.success(`召回 ${(r.hits ?? []).length} 条（${collRetrieveCollectionIds.length} 个集合）`);
         } catch (e) {
@@ -537,9 +576,13 @@ export default function KnowledgeBasePage() {
         setCollectionValidateLoading(true);
         setError(null);
         try {
-            const r = await validateKbCollectionDocuments(selectedCollectionId, {
-                includeIssues: collectionValidateIncludeIssues,
-            });
+            const r = await validateKbCollectionDocuments(
+                selectedCollectionId,
+                {
+                    includeIssues: collectionValidateIncludeIssues,
+                },
+                KB_REQ,
+            );
             setCollectionValidateResult(r);
             const bad = r.documentsWithErrors ?? 0;
             if (bad > 0) {
@@ -572,7 +615,7 @@ export default function KnowledgeBasePage() {
         setDocRenderLoading(true);
         setError(null);
         try {
-            const r = await renderKbDocument(selectedCollectionId, viewDocDetail.id, {toolOutputs});
+            const r = await renderKbDocument(selectedCollectionId, viewDocDetail.id, {toolOutputs}, KB_REQ);
             setDocRenderedMd(r.renderedBody ?? "");
             message.success("渲染完成");
         } catch (e) {
@@ -586,7 +629,7 @@ export default function KnowledgeBasePage() {
         setDeletingCollectionId(collectionId);
         setError(null);
         try {
-            const del = await deleteKbCollection(collectionId);
+            const del = await deleteKbCollection(collectionId, KB_REQ);
             const n = typeof del?.agentsPolicyUpdated === "number" ? del.agentsPolicyUpdated : 0;
             message.success(
                 n > 0
@@ -611,7 +654,7 @@ export default function KnowledgeBasePage() {
         setDeletingDocumentId(documentId);
         setError(null);
         try {
-            await deleteKbDocument(selectedCollectionId, documentId);
+            await deleteKbDocument(selectedCollectionId, documentId, KB_REQ);
             message.success("已删除文档");
             setDocuments((prev) => prev.filter((d) => d.id !== documentId));
         } catch (e) {

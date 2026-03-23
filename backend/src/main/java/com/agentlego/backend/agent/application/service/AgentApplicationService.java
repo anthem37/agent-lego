@@ -16,6 +16,9 @@ import com.agentlego.backend.memorypolicy.domain.MemoryPolicyRepository;
 import com.agentlego.backend.memorypolicy.infrastructure.persistence.MemoryItemDO;
 import com.agentlego.backend.memorypolicy.infrastructure.persistence.MemoryPolicyDO;
 import com.agentlego.backend.memorypolicy.runtime.LegoLongTermMemory;
+import com.agentlego.backend.memorypolicy.runtime.MemoryVectorIndexService;
+import com.agentlego.backend.memorypolicy.support.MemoryPolicySemantic;
+import com.agentlego.backend.memorypolicy.support.MemoryRoughSummary;
 import com.agentlego.backend.model.domain.ModelAggregate;
 import com.agentlego.backend.model.domain.ModelProvider;
 import com.agentlego.backend.model.domain.ModelRepository;
@@ -60,6 +63,7 @@ public class AgentApplicationService {
     private final KbRagKnowledgeFactory kbRagKnowledgeFactory;
     private final MemoryPolicyRepository memoryPolicyRepository;
     private final MemoryItemRepository memoryItemRepository;
+    private final MemoryVectorIndexService memoryVectorIndexService;
     private final AgentDtoMapper agentDtoMapper;
 
     public AgentApplicationService(
@@ -71,6 +75,7 @@ public class AgentApplicationService {
             KbRagKnowledgeFactory kbRagKnowledgeFactory,
             MemoryPolicyRepository memoryPolicyRepository,
             MemoryItemRepository memoryItemRepository,
+            MemoryVectorIndexService memoryVectorIndexService,
             AgentDtoMapper agentDtoMapper
     ) {
         this.agentRepository = agentRepository;
@@ -81,6 +86,7 @@ public class AgentApplicationService {
         this.kbRagKnowledgeFactory = kbRagKnowledgeFactory;
         this.memoryPolicyRepository = memoryPolicyRepository;
         this.memoryItemRepository = memoryItemRepository;
+        this.memoryVectorIndexService = memoryVectorIndexService;
         this.agentDtoMapper = agentDtoMapper;
     }
 
@@ -260,6 +266,11 @@ public class AgentApplicationService {
 
         int maxIters = resolveMaxReactIters(agentAgg, chatOnly);
 
+        String memoryNs = req.getMemoryNamespace() == null ? null : req.getMemoryNamespace().trim();
+        if (memoryNs != null && memoryNs.isEmpty()) {
+            memoryNs = null;
+        }
+
         LongTermMemory longTermMemory = null;
         MemoryPolicyDO policyForMemory = null;
         int memTopK = 5;
@@ -267,16 +278,14 @@ public class AgentApplicationService {
             policyForMemory = memoryPolicyRepository.findById(agentAgg.getMemoryPolicyId().trim())
                     .orElseThrow(() -> new ApiException("NOT_FOUND", "记忆策略未找到", HttpStatus.NOT_FOUND));
             memTopK = policyForMemory.getTopK() == null ? 5 : policyForMemory.getTopK();
+            int roughCap = MemoryRoughSummary.resolveMaxChars(policyForMemory.getRoughSummaryMaxChars());
             longTermMemory = new LegoLongTermMemory(
                     memoryItemRepository,
-                    policyForMemory.getId(),
-                    policyForMemory.getOwnerScope(),
-                    policyForMemory.getStrategyKind(),
-                    memTopK,
-                    policyForMemory.getRetrievalMode(),
-                    policyForMemory.getWriteMode(),
-                    policyForMemory.getWriteBackOnDuplicate(),
-                    agentAgg.getId()
+                    policyForMemory,
+                    memoryVectorIndexService,
+                    agentAgg.getId(),
+                    memoryNs,
+                    roughCap
             );
         }
 
@@ -315,8 +324,27 @@ public class AgentApplicationService {
             mem.setOwnerScope(policyForMemory.getOwnerScope());
             mem.setRetrievalMode(policyForMemory.getRetrievalMode());
             mem.setWriteMode(policyForMemory.getWriteMode());
+            mem.setMemoryNamespace(memoryNs);
+            mem.setRoughSummaryMaxCharsResolved(
+                    MemoryRoughSummary.resolveMaxChars(policyForMemory.getRoughSummaryMaxChars())
+            );
+            mem.setImplementationWarnings(
+                    MemoryPolicySemantic.implementationWarnings(
+                            policyForMemory.getRetrievalMode(),
+                            policyForMemory.getWriteMode(),
+                            MemoryPolicySemantic.isVectorLinkConfigured(policyForMemory)
+                    )
+            );
             String q = req.getInput() == null ? "" : req.getInput();
-            List<MemoryItemDO> previewHits = memoryItemRepository.searchByKeyword(policyForMemory.getId(), q, memTopK);
+            mem.setKeywordPreviewSort(q.isBlank() ? "RECENCY" : "TRGM_WORD_SIMILARITY");
+            List<MemoryItemDO> previewHits = memoryItemRepository.searchByKeyword(
+                    policyForMemory.getId(),
+                    q,
+                    memTopK,
+                    memoryNs,
+                    policyForMemory.getStrategyKind(),
+                    !q.isBlank()
+            );
             mem.setPreviewHitCount(previewHits.size());
             mem.setPreviewText(buildMemoryPreviewText(previewHits));
             resp.setMemory(mem);

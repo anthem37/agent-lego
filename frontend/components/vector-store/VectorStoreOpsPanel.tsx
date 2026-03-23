@@ -32,6 +32,7 @@ import {
 import Link from "next/link";
 import React from "react";
 
+import {DEFAULT_REQUEST_TIMEOUT_MS} from "@/lib/api/request";
 import {ErrorAlert} from "@/components/ErrorAlert";
 import {modelNameForId, type ModelOptionRow} from "@/lib/model-select-options";
 import {
@@ -54,6 +55,8 @@ import type {
     VectorStoreProfileDto,
     VectorStoreUsageDto,
 } from "@/lib/vector-store/types";
+
+const VS_REQ = {timeoutMs: DEFAULT_REQUEST_TIMEOUT_MS};
 
 function maskConfig(raw?: Record<string, unknown>): Record<string, unknown> {
     if (!raw) {
@@ -173,7 +176,7 @@ export function VectorStoreOpsPanel({
         setInternalListLoading(true);
         setError(null);
         try {
-            const list = await listVectorStoreProfiles();
+            const list = await listVectorStoreProfiles(VS_REQ);
             setInternalRows(list);
         } catch (e) {
             setError(e);
@@ -194,7 +197,7 @@ export function VectorStoreOpsPanel({
     async function loadUsage(pid: string) {
         setUsageLoading(true);
         try {
-            const u = await getVectorStoreUsage(pid);
+            const u = await getVectorStoreUsage(pid, VS_REQ);
             setUsage(u);
         } catch (e) {
             setError(e);
@@ -218,7 +221,7 @@ export function VectorStoreOpsPanel({
         setProbing(true);
         setProbeResult(null);
         try {
-            const r = await probeVectorStoreProfile(pid);
+            const r = await probeVectorStoreProfile(pid, VS_REQ);
             setProbeResult(r);
             if (r.ok) {
                 message.success(`探测成功，耗时 ${r.latencyMs} ms`);
@@ -235,7 +238,7 @@ export function VectorStoreOpsPanel({
     async function refreshCollections(pid: string) {
         setCollectionsLoading(true);
         try {
-            const list = await listVectorStoreCollections(pid);
+            const list = await listVectorStoreCollections(pid, VS_REQ);
             setCollections(list);
             message.success(`已加载 ${list.length} 个 collection`);
         } catch (e) {
@@ -250,7 +253,7 @@ export function VectorStoreOpsPanel({
         setStatsData(null);
         setStatsLoading(true);
         try {
-            const s = await getVectorStoreCollectionStats(pid, name);
+            const s = await getVectorStoreCollectionStats(pid, name, VS_REQ);
             setStatsData(s);
         } catch (e) {
             setError(e);
@@ -262,7 +265,7 @@ export function VectorStoreOpsPanel({
 
     async function runLoad(pid: string, name: string) {
         try {
-            await loadVectorStoreCollection(pid, name);
+            await loadVectorStoreCollection(pid, name, VS_REQ);
             message.success("已触发 loadCollection");
         } catch (e) {
             setError(e);
@@ -278,10 +281,14 @@ export function VectorStoreOpsPanel({
     async function runDrop(pid: string) {
         try {
             const v = await dropForm.validateFields();
-            await dropVectorStoreCollection(pid, {
-                collectionName: v.name.trim(),
-                confirmCollectionName: v.confirm.trim(),
-            });
+            await dropVectorStoreCollection(
+                pid,
+                {
+                    collectionName: v.name.trim(),
+                    confirmCollectionName: v.confirm.trim(),
+                },
+                VS_REQ,
+            );
             message.success("已删除物理 collection");
             setDropOpen(false);
             await refreshCollections(pid);
@@ -297,7 +304,7 @@ export function VectorStoreOpsPanel({
         setEmbedLoading(true);
         setEmbedResult(null);
         try {
-            const r = await embeddingProbeVectorStore(pid, embedText.trim() || "hi");
+            const r = await embeddingProbeVectorStore(pid, embedText.trim() || "hi", VS_REQ);
             setEmbedResult(r);
             if (r.ok && r.dimensionMatchesProfile) {
                 message.success("嵌入维度与 profile 一致");
@@ -329,10 +336,15 @@ export function VectorStoreOpsPanel({
     ) {
         setPointsPreviewLoading(true);
         try {
-            const d = await previewVectorStorePoints(pid, collectionName, {
-                limit: 20,
-                cursor: cursor ?? undefined,
-            });
+            const d = await previewVectorStorePoints(
+                pid,
+                collectionName,
+                {
+                    limit: 20,
+                    cursor: cursor ?? undefined,
+                },
+                VS_REQ,
+            );
             setPointsPreviewHint(d.hint ?? null);
             if (append) {
                 setPointsPreviewRows((prev) => [...prev, ...d.rows]);

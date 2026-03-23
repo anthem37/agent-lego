@@ -20,6 +20,8 @@ public interface AgentMapper {
 
     List<String> listAgentIdsByToolId(@Param("toolId") String toolId);
 
+    List<AgentToolRefRow> listAgentToolReferencesWithCount(@Param("toolId") String toolId);
+
     List<String> listAgentIdsReferencingKbCollection(@Param("collectionId") String collectionId);
 
     List<AgentDO> listKbPolicyPicker();

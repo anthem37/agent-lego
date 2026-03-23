@@ -6,9 +6,9 @@ import com.agentlego.backend.tool.application.service.ToolApplicationService;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
-import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
 import java.time.Instant;
@@ -22,14 +22,14 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-@WebMvcTest(controllers = ToolController.class)
+@WebMvcTest(controllers = {ToolController.class, ToolMetaController.class})
 @Import(GlobalExceptionHandler.class)
 class ToolControllerWebTest {
 
     @Autowired
     private MockMvc mockMvc;
 
-    @MockBean
+    @MockitoBean
     private ToolApplicationService toolApplicationService;
 
     @Test
@@ -37,7 +37,7 @@ class ToolControllerWebTest {
         mockMvc.perform(post("/tools")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
-                                {"name":"echo","definition":{}}
+                                {"name":"my_tool","definition":{}}
                                 """))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value("VALIDATION_ERROR"));
@@ -50,7 +50,7 @@ class ToolControllerWebTest {
         mockMvc.perform(post("/tools")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
-                                {"toolType":"LOCAL","name":"echo","definition":{}}
+                                {"toolType":"LOCAL","name":"my_tool","definition":{}}
                                 """))
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.code").value("OK"))
@@ -63,7 +63,7 @@ class ToolControllerWebTest {
         ToolDto dto = new ToolDto();
         dto.setId("t1");
         dto.setToolType("LOCAL");
-        dto.setName("echo");
+        dto.setName("my_tool");
         dto.setDefinition(Map.of());
         dto.setCreatedAt(Instant.parse("2020-01-01T00:00:00Z"));
 
@@ -120,8 +120,8 @@ class ToolControllerWebTest {
     void localBuiltinsMeta_ok_shouldReturnList() throws Exception {
         when(toolApplicationService.listLocalBuiltins()).thenReturn(List.of(
                 LocalBuiltinToolMetaDto.builder()
-                        .name("echo")
-                        .label("echo")
+                        .name("t1")
+                        .label("t1")
                         .description("d")
                         .usageHint("h")
                         .build()
@@ -130,7 +130,7 @@ class ToolControllerWebTest {
         mockMvc.perform(get("/tools/meta/local-builtins"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value("OK"))
-                .andExpect(jsonPath("$.data[0].name").value("echo"));
+                .andExpect(jsonPath("$.data[0].name").value("t1"));
     }
 
     @Test
@@ -177,7 +177,7 @@ class ToolControllerWebTest {
         mockMvc.perform(put("/tools/t1")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
-                                {"toolType":"LOCAL","name":"echo","definition":{}}
+                                {"toolType":"LOCAL","name":"my_tool","definition":{}}
                                 """))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value("OK"));
@@ -199,13 +199,15 @@ class ToolControllerWebTest {
         ToolReferencesDto dto = new ToolReferencesDto();
         dto.setReferencingAgentCount(1);
         dto.setReferencingAgentIds(List.of("agent-1"));
+        dto.setReferencingKbDocumentCount(3L);
         when(toolApplicationService.getToolReferences("t1")).thenReturn(dto);
 
         mockMvc.perform(get("/tools/t1/references"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value("OK"))
                 .andExpect(jsonPath("$.data.referencingAgentCount").value(1))
-                .andExpect(jsonPath("$.data.referencingAgentIds[0]").value("agent-1"));
+                .andExpect(jsonPath("$.data.referencingAgentIds[0]").value("agent-1"))
+                .andExpect(jsonPath("$.data.referencingKbDocumentCount").value(3));
     }
 }
 

@@ -61,6 +61,22 @@
         where id = #{id}
     </select>
 
+    <select id="findByIds" resultMap="ToolDOMap">
+        select id,
+        tool_type,
+        tool_category,
+        name,
+        display_label,
+        description,
+        cast(definition as text) as definition_json,
+        created_at
+        from lego_tools
+        where id in
+        <foreach collection="ids" item="id" open="(" separator="," close=")">
+            #{id}
+        </foreach>
+    </select>
+
     <select id="findAll" resultMap="ToolDOMap">
         select id,
                tool_type,

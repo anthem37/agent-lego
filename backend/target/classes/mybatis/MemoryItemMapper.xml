@@ -32,18 +32,73 @@
         updated_at
         from lego_memory_items
         where policy_id = #{policyId}
+        <if test="memoryNamespace != null and memoryNamespace != ''">
+            and coalesce(metadata->>'memoryNamespace','') = #{memoryNamespace}
+        </if>
+        <if test="strategyKind != null and strategyKind != ''">
+            and (metadata->>'strategyKind' is null or metadata->>'strategyKind' = #{strategyKind})
+        </if>
         <if test="q != null and q != ''">
             and content ilike '%' || #{q} || '%'
         </if>
-        order by coalesce(updated_at, created_at) desc, created_at desc
+        order by
+        <choose>
+            <when test="orderByTrgm != null and orderByTrgm and q != null and q != ''">
+                word_similarity(#{q}, content) desc nulls last,
+                coalesce(updated_at, created_at) desc nulls last,
+                created_at desc
+            </when>
+            <otherwise>
+                coalesce(updated_at, created_at) desc, created_at desc
+            </otherwise>
+        </choose>
         limit #{limit}
+    </select>
+
+    <select id="findByIds" resultMap="MemoryItemDOMap">
+        select id,
+        policy_id,
+        content,
+        cast(metadata as text) as metadata_json,
+        created_at,
+        updated_at
+        from lego_memory_items
+        where policy_id = #{policyId}
+        and id in
+        <foreach collection="ids" item="id" open="(" separator="," close=")">
+            #{id}
+        </foreach>
+    </select>
+
+    <select id="listByPolicyId" resultMap="MemoryItemDOMap">
+        select id,
+               policy_id,
+               content,
+               cast(metadata as text) as metadata_json,
+               created_at,
+               updated_at
+        from lego_memory_items
+        where policy_id = #{policyId}
+        order by created_at asc
     </select>
 
     <select id="findIdByPolicyIdAndContent" resultType="java.lang.String">
         select id
         from lego_memory_items
         where policy_id = #{policyId}
-          and content = #{content} limit 1
+        and content = #{content}
+        <choose>
+            <when test="memoryNamespace != null and memoryNamespace != ''">
+                and coalesce(metadata->>'memoryNamespace','') = #{memoryNamespace}
+            </when>
+            <otherwise>
+                and (metadata->>'memoryNamespace' is null or btrim(metadata->>'memoryNamespace') = '')
+            </otherwise>
+        </choose>
+        <if test="strategyKind != null and strategyKind != ''">
+            and (metadata->>'strategyKind' is null or metadata->>'strategyKind' = #{strategyKind})
+        </if>
+        limit 1
     </select>
 
     <update id="touchUpdatedAt">

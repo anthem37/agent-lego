@@ -33,6 +33,8 @@ import {useRouter, useSearchParams} from "next/navigation";
 import React, {Suspense} from "react";
 
 import kbShell from "@/components/kb/kb-shell.module.css";
+import {isAbortError} from "@/lib/api/isAbortError";
+import {DEFAULT_REQUEST_TIMEOUT_MS} from "@/lib/api/request";
 import {AppLayout} from "@/components/AppLayout";
 import {VectorStoreOpsPanel} from "@/components/vector-store/VectorStoreOpsPanel";
 import {ErrorAlert} from "@/components/ErrorAlert";
@@ -88,6 +90,13 @@ function VectorStorePageBody() {
     const [quickProbeId, setQuickProbeId] = React.useState<string | null>(null);
     const [profileQuery, setProfileQuery] = React.useState("");
 
+    const refreshAbortRef = React.useRef<AbortController | null>(null);
+    React.useEffect(() => {
+        return () => {
+            refreshAbortRef.current?.abort();
+        };
+    }, []);
+
     const pushProfile = React.useCallback(
         (id: string | undefined) => {
             setSelectedProfileId(id);
@@ -124,35 +133,45 @@ function VectorStorePageBody() {
     }, [rows, profileQuery, embeddingRows]);
 
     async function refresh() {
+        refreshAbortRef.current?.abort();
+        const ac = new AbortController();
+        refreshAbortRef.current = ac;
         setLoading(true);
         setError(null);
+        const opts = {signal: ac.signal, timeoutMs: DEFAULT_REQUEST_TIMEOUT_MS};
         try {
-            const list = await listVectorStoreProfiles();
+            const list = await listVectorStoreProfiles(opts);
             setRows(list);
         } catch (e) {
-            setError(e);
-            setRows([]);
+            if (!isAbortError(e)) {
+                setError(e);
+                setRows([]);
+            }
         } finally {
-            setLoading(false);
+            if (refreshAbortRef.current === ac) {
+                refreshAbortRef.current = null;
+                setLoading(false);
+            }
         }
     }
 
     React.useEffect(() => {
-        let cancelled = false;
+        const ac = new AbortController();
+        const opts = {signal: ac.signal, timeoutMs: DEFAULT_REQUEST_TIMEOUT_MS};
         void (async () => {
             try {
-                const models = await listModelsAsSelectRows();
-                if (!cancelled) {
+                const models = await listModelsAsSelectRows(opts);
+                if (!ac.signal.aborted) {
                     setModelRows(models);
                 }
             } catch {
-                if (!cancelled) {
+                if (!ac.signal.aborted) {
                     setModelRows([]);
                 }
             }
         })();
         return () => {
-            cancelled = true;
+            ac.abort();
         };
     }, []);
 
@@ -184,12 +203,15 @@ function VectorStorePageBody() {
         try {
             const kind = values.vectorStoreKind;
             const vectorStoreConfig = buildVectorStoreConnectionConfig(kind, values);
-            const created = await createVectorStoreProfile({
-                name: values.name.trim(),
-                vectorStoreKind: kind,
-                embeddingModelId: values.embeddingModelId,
-                vectorStoreConfig,
-            });
+            const created = await createVectorStoreProfile(
+                {
+                    name: values.name.trim(),
+                    vectorStoreKind: kind,
+                    embeddingModelId: values.embeddingModelId,
+                    vectorStoreConfig,
+                },
+                {timeoutMs: DEFAULT_REQUEST_TIMEOUT_MS},
+            );
             message.success("已创建向量库配置");
             setModalOpen(false);
             await refresh();
@@ -209,7 +231,7 @@ function VectorStorePageBody() {
             okType: "danger",
             onOk: async () => {
                 try {
-                    await deleteVectorStoreProfile(id);
+                    await deleteVectorStoreProfile(id, {timeoutMs: DEFAULT_REQUEST_TIMEOUT_MS});
                     message.success("已删除");
                     if (selectedProfileId === id) {
                         setSelectedProfileId(undefined);
@@ -226,7 +248,7 @@ function VectorStorePageBody() {
     async function runQuickProbe(pid: string) {
         setQuickProbeId(pid);
         try {
-            const r = await probeVectorStoreProfile(pid);
+            const r = await probeVectorStoreProfile(pid, {timeoutMs: DEFAULT_REQUEST_TIMEOUT_MS});
             if (r.ok) {
                 message.success(`探测成功，耗时 ${r.latencyMs} ms`);
             } else {

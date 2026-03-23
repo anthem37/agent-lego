@@ -5,7 +5,6 @@ import com.agentlego.backend.mcp.support.McpJsonSchemas;
 import com.agentlego.backend.mcp.support.McpPlatformResponses;
 import com.agentlego.backend.tool.application.dto.LocalBuiltinToolMetaDto;
 import com.agentlego.backend.tool.application.service.ToolExecutionService;
-import com.agentlego.backend.tool.local.LocalBuiltinToolCatalog;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.agentscope.core.tool.mcp.McpClientBuilder;
 import io.agentscope.core.tool.mcp.McpClientWrapper;
@@ -21,8 +20,12 @@ import reactor.core.publisher.Mono;
 
 import java.time.Duration;
 import java.util.HashMap;
+import java.util.HashSet;
+import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 @Service
 public class McpAdapter {
@@ -47,12 +50,12 @@ public class McpAdapter {
             ObjectMapper objectMapper,
             String sseEndpointBase,
             ToolExecutionService toolExecutionService,
-            LocalBuiltinToolCatalog catalog
+            List<LocalBuiltinToolMetaDto> localToolsForMcp
     ) {
         Objects.requireNonNull(objectMapper, "objectMapper");
         Objects.requireNonNull(sseEndpointBase, "sseEndpointBase");
         Objects.requireNonNull(toolExecutionService, "toolExecutionService");
-        Objects.requireNonNull(catalog, "catalog");
+        Objects.requireNonNull(localToolsForMcp, "localToolsForMcp");
 
         String base = normalizeMcpBasePath(sseEndpointBase);
         WebMvcSseServerTransportProvider transport = WebMvcSseServerTransportProvider.builder()
@@ -70,26 +73,69 @@ public class McpAdapter {
                 .capabilities(capabilities)
                 .build();
 
-        for (LocalBuiltinToolMetaDto meta : catalog.listMeta()) {
-            String toolName = meta.getName();
-            McpSchema.JsonSchema inputSchema = McpJsonSchemas.fromBuiltinParams(meta.getInputParameters());
-            server.addTool(
-                    McpServerFeatures.SyncToolSpecification.builder()
-                            .tool(McpSchema.Tool.builder()
-                                    .name(toolName)
-                                    .description(meta.getDescription() != null && !meta.getDescription().isBlank()
-                                            ? meta.getDescription()
-                                            : toolName)
-                                    .inputSchema(inputSchema)
-                                    .build())
-                            .callHandler((McpSyncServerExchange exchange, McpSchema.CallToolRequest req) ->
-                                    handleLocalBuiltinTool(toolExecutionService, toolName, exchange, req))
-                            .build()
-            );
+        for (LocalBuiltinToolMetaDto meta : localToolsForMcp) {
+            addLocalBuiltinTool(server, toolExecutionService, meta);
         }
 
         server.notifyToolsListChanged();
         return new PlatformMcpServerBundle(transport, server);
+    }
+
+    /**
+     * 与 {@link #buildPlatformMcpServerBundle} 启动时注册的工具列表对齐：按当前应暴露的内置元数据增删 MCP tools，
+     * 并通知已连接的客户端刷新 tools/list（例如用户变更「内置工具是否暴露到 MCP」后）。
+     */
+    public void syncLocalBuiltinTools(
+            McpSyncServer server,
+            ToolExecutionService toolExecutionService,
+            List<LocalBuiltinToolMetaDto> exposedMetas
+    ) {
+        Objects.requireNonNull(server, "server");
+        Objects.requireNonNull(toolExecutionService, "toolExecutionService");
+        Objects.requireNonNull(exposedMetas, "exposedMetas");
+
+        Set<String> desired = exposedMetas.stream()
+                .map(m -> m.getName().trim())
+                .collect(Collectors.toCollection(HashSet::new));
+
+        Set<String> current = server.listTools().stream()
+                .map(McpSchema.Tool::name)
+                .collect(Collectors.toCollection(HashSet::new));
+
+        for (String name : current) {
+            if (!desired.contains(name)) {
+                server.removeTool(name);
+            }
+        }
+        for (LocalBuiltinToolMetaDto meta : exposedMetas) {
+            String toolName = meta.getName().trim();
+            if (!current.contains(toolName)) {
+                addLocalBuiltinTool(server, toolExecutionService, meta);
+            }
+        }
+        server.notifyToolsListChanged();
+    }
+
+    private void addLocalBuiltinTool(
+            McpSyncServer server,
+            ToolExecutionService toolExecutionService,
+            LocalBuiltinToolMetaDto meta
+    ) {
+        String toolName = meta.getName();
+        McpSchema.JsonSchema inputSchema = McpJsonSchemas.fromBuiltinParams(meta.getInputParameters());
+        server.addTool(
+                McpServerFeatures.SyncToolSpecification.builder()
+                        .tool(McpSchema.Tool.builder()
+                                .name(toolName)
+                                .description(meta.getDescription() != null && !meta.getDescription().isBlank()
+                                        ? meta.getDescription()
+                                        : toolName)
+                                .inputSchema(inputSchema)
+                                .build())
+                        .callHandler((McpSyncServerExchange exchange, McpSchema.CallToolRequest req) ->
+                                handleLocalBuiltinTool(toolExecutionService, toolName, exchange, req))
+                        .build()
+        );
     }
 
     private McpSchema.CallToolResult handleLocalBuiltinTool(

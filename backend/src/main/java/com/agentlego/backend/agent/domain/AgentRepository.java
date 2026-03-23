@@ -30,6 +30,11 @@ public interface AgentRepository {
     List<String> listAgentIdsByToolId(String toolId);
 
     /**
+     * 一次查询返回：引用该工具的智能体总数 + 样本 id（按创建时间倒序，条数有上限），供工具管理引用面板使用。
+     */
+    AgentToolReferenceSnapshot findToolReferencesByToolId(String toolId);
+
+    /**
      * {@code knowledge_base_policy.collectionIds} 中包含指定知识库集合 id 的智能体。
      */
     List<String> listAgentIdsReferencingKbCollection(String collectionId);

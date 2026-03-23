@@ -25,7 +25,7 @@ class A2AGatewayServiceTest {
     void delegateLocal_missingAgentId_shouldThrowValidationError() {
         A2AGatewayService service = new A2AGatewayService(agentApplicationService);
 
-        ApiException ex = assertThrows(ApiException.class, () -> service.delegateLocal("", "m1", "hi"));
+        ApiException ex = assertThrows(ApiException.class, () -> service.delegateLocal("", "m1", "hi", null));
         assertEquals("VALIDATION_ERROR", ex.getCode());
     }
 
@@ -37,7 +37,7 @@ class A2AGatewayServiceTest {
         agentResp.setOutput("agent-out");
         when(agentApplicationService.runAgent(eq("a1"), any(RunAgentRequest.class))).thenReturn(agentResp);
 
-        String out = service.delegateLocal("a1", "m1", "hi");
+        String out = service.delegateLocal("a1", "m1", "hi", null);
         assertEquals("agent-out", out);
     }
 }

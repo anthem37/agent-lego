@@ -9,6 +9,10 @@ public interface VectorStoreCollectionBindingRepository {
 
     void insertKb(String profileId, String physicalCollectionName, String kbCollectionId);
 
+    void insertMemoryPolicy(String profileId, String physicalCollectionName, String memoryPolicyId);
+
+    int deleteByMemoryPolicyId(String memoryPolicyId);
+
     Optional<CollectionBinding> findByProfileAndPhysicalName(String profileId, String physicalCollectionName);
 
     record CollectionBinding(String kbCollectionId) {

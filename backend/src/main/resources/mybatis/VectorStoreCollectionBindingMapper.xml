@@ -17,6 +17,17 @@
         values (#{profileId}, #{physicalCollectionName}, #{kbCollectionId})
     </insert>
 
+    <insert id="insertMemoryPolicy">
+        insert into lego_vector_store_collection_bindings (profile_id, physical_collection_name, memory_policy_id)
+        values (#{profileId}, #{physicalCollectionName}, #{memoryPolicyId})
+    </insert>
+
+    <delete id="deleteByMemoryPolicyId">
+        delete
+        from lego_vector_store_collection_bindings
+        where memory_policy_id = #{memoryPolicyId}
+    </delete>
+
     <select id="findByProfileAndPhysicalName" resultMap="Map">
         select profile_id,
                physical_collection_name,

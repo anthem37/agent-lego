@@ -13,12 +13,21 @@ public interface MemoryItemMapper {
     List<MemoryItemDO> searchByKeyword(
             @Param("policyId") String policyId,
             @Param("q") String q,
-            @Param("limit") int limit
+            @Param("limit") int limit,
+            @Param("memoryNamespace") String memoryNamespace,
+            @Param("strategyKind") String strategyKind,
+            @Param("orderByTrgm") Boolean orderByTrgm
     );
+
+    List<MemoryItemDO> findByIds(@Param("policyId") String policyId, @Param("ids") List<String> ids);
+
+    List<MemoryItemDO> listByPolicyId(@Param("policyId") String policyId);
 
     String findIdByPolicyIdAndContent(
             @Param("policyId") String policyId,
-            @Param("content") String content
+            @Param("content") String content,
+            @Param("memoryNamespace") String memoryNamespace,
+            @Param("strategyKind") String strategyKind
     );
 
     int touchUpdatedAt(@Param("id") String id);

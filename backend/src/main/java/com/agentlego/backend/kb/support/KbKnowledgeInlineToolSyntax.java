@@ -63,6 +63,34 @@ public final class KbKnowledgeInlineToolSyntax {
     }
 
     /**
+     * 将 {@code linkedToolIds} 对应工具一次性加载为 Map（key 为工具 id 的小写），供正文解析循环复用，避免逐条 {@link ToolRepository#findById(String)}。
+     */
+    public static Map<String, ToolAggregate> loadToolsByLinkedIds(
+            List<String> linkedToolIds,
+            ToolRepository toolRepository
+    ) {
+        Map<String, ToolAggregate> byIdLc = new HashMap<>();
+        if (linkedToolIds == null || linkedToolIds.isEmpty() || toolRepository == null) {
+            return byIdLc;
+        }
+        List<String> ids = linkedToolIds.stream()
+                .filter(Objects::nonNull)
+                .map(String::trim)
+                .filter(s -> !s.isEmpty())
+                .distinct()
+                .toList();
+        if (ids.isEmpty()) {
+            return byIdLc;
+        }
+        for (ToolAggregate agg : toolRepository.findByIds(ids)) {
+            if (agg != null && agg.getId() != null && !agg.getId().isBlank()) {
+                byIdLc.put(agg.getId().trim().toLowerCase(Locale.ROOT), agg);
+            }
+        }
+        return byIdLc;
+    }
+
+    /**
      * 将 {@code {{tool:…}}} 展开为可读文案；仅解析<strong>本条知识已绑定</strong>的工具。
      *
      * @param linkedToolIds 文档绑定的工具 ID 列表（库中原始大小写）
@@ -84,6 +112,7 @@ public final class KbKnowledgeInlineToolSyntax {
                 linkedLc.add(id.trim().toLowerCase(Locale.ROOT));
             }
         }
+        Map<String, ToolAggregate> byIdLc = loadToolsByLinkedIds(linkedToolIds, toolRepository);
         Matcher m = TOOL_MENTION.matcher(body);
         StringBuffer sb = new StringBuffer();
         while (m.find()) {
@@ -92,8 +121,8 @@ public final class KbKnowledgeInlineToolSyntax {
             if (token.isEmpty() || token.length() > MAX_TOKEN_LEN) {
                 repl = "〔无效的工具引用〕";
             } else {
-                Optional<ToolAggregate> agg = resolveLinkedTool(token, linkedToolIds, linkedLc, toolRepository);
-                repl = agg.map(KbKnowledgeInlineToolSyntax::formatDisplayLabel)
+                Optional<ToolAggregate> resolved = resolveLinkedTool(token, linkedToolIds, linkedLc, byIdLc);
+                repl = resolved.map(KbKnowledgeInlineToolSyntax::formatDisplayLabel)
                         .orElseGet(() -> "〔工具未绑定或不存在：" + token + "〕");
             }
             m.appendReplacement(sb, Matcher.quoteReplacement(repl));
@@ -115,15 +144,20 @@ public final class KbKnowledgeInlineToolSyntax {
 
     /**
      * 在已绑定列表内按 token 解析工具：纯数字 → id；否则按 name（忽略大小写）。
+     * <p>
+     * 推荐传入 {@link #loadToolsByLinkedIds(List, ToolRepository)} 预加载的 Map，避免循环内重复查库。
      */
     public static Optional<ToolAggregate> resolveLinkedTool(
             String token,
             List<String> linkedToolIds,
             Set<String> linkedIdsLowercase,
-            ToolRepository toolRepository
+            Map<String, ToolAggregate> toolsByLinkedIdLowercase
     ) {
         if (token == null || token.isBlank()) {
             return Optional.empty();
+        }
+        if (toolsByLinkedIdLowercase == null) {
+            toolsByLinkedIdLowercase = Map.of();
         }
         String t = token.trim();
         if (looksLikeNumericToolId(t)) {
@@ -131,7 +165,7 @@ public final class KbKnowledgeInlineToolSyntax {
             if (!linkedIdsLowercase.contains(lc)) {
                 return Optional.empty();
             }
-            return toolRepository.findById(t);
+            return Optional.ofNullable(toolsByLinkedIdLowercase.get(lc));
         }
         for (String id : linkedToolIds) {
             if (id == null || id.isBlank()) {
@@ -141,16 +175,30 @@ public final class KbKnowledgeInlineToolSyntax {
             if (!linkedIdsLowercase.contains(idLc)) {
                 continue;
             }
-            Optional<ToolAggregate> o = toolRepository.findById(id.trim());
-            if (o.isEmpty()) {
+            ToolAggregate agg = toolsByLinkedIdLowercase.get(idLc);
+            if (agg == null) {
                 continue;
             }
-            String n = o.get().getName();
+            String n = agg.getName();
             if (n != null && n.trim().equalsIgnoreCase(t)) {
-                return o;
+                return Optional.of(agg);
             }
         }
         return Optional.empty();
+    }
+
+    /**
+     * 单次解析：内部会批量加载绑定工具；若在循环中调用请改用 {@link #loadToolsByLinkedIds(List, ToolRepository)} +
+     * {@link #resolveLinkedTool(String, List, Set, Map)}。
+     */
+    public static Optional<ToolAggregate> resolveLinkedTool(
+            String token,
+            List<String> linkedToolIds,
+            Set<String> linkedIdsLowercase,
+            ToolRepository toolRepository
+    ) {
+        Map<String, ToolAggregate> byIdLc = loadToolsByLinkedIds(linkedToolIds, toolRepository);
+        return resolveLinkedTool(token, linkedToolIds, linkedIdsLowercase, byIdLc);
     }
 
     private static String formatDisplayLabel(ToolAggregate agg) {
@@ -177,19 +225,23 @@ public final class KbKnowledgeInlineToolSyntax {
             ToolRepository toolRepository
     ) {
         List<String> errors = new ArrayList<>();
+        if (linkedToolIds == null) {
+            linkedToolIds = List.of();
+        }
         Set<String> linkedLc = new LinkedHashSet<>();
         for (String id : linkedToolIds) {
             if (id != null && !id.isBlank()) {
                 linkedLc.add(id.trim().toLowerCase(Locale.ROOT));
             }
         }
+        Map<String, ToolAggregate> byIdLc = loadToolsByLinkedIds(linkedToolIds, toolRepository);
         for (String raw : extractToolMentionTokens(body)) {
             String token = raw.trim();
             if (token.isEmpty()) {
                 continue;
             }
-            Optional<ToolAggregate> agg = resolveLinkedTool(token, linkedToolIds, linkedLc, toolRepository);
-            if (agg.isEmpty()) {
+            Optional<ToolAggregate> resolved = resolveLinkedTool(token, linkedToolIds, linkedLc, byIdLc);
+            if (resolved.isEmpty()) {
                 errors.add(token);
             }
         }

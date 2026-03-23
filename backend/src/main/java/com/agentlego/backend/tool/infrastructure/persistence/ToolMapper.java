@@ -20,6 +20,8 @@ public interface ToolMapper {
 
     ToolDO findById(@Param("id") String id);
 
+    List<ToolDO> findByIds(@Param("ids") List<String> ids);
+
     List<ToolDO> findAll();
 
     long countByQuery(@Param("q") String q, @Param("toolType") String toolType);

@@ -16,29 +16,41 @@
         <result property="topK" column="top_k"/>
         <result property="writeMode" column="write_mode"/>
         <result property="writeBackOnDuplicate" column="write_back_on_duplicate"/>
+        <result property="roughSummaryMaxChars" column="rough_summary_max_chars"/>
+        <result property="vectorStoreProfileId" column="vector_store_profile_id"/>
+        <result property="vectorStoreConfigJson" column="vector_store_config_json"/>
+        <result property="vectorMinScore" column="vector_min_score"/>
         <result property="createdAt" column="created_at"/>
         <result property="updatedAt" column="updated_at"/>
     </resultMap>
 
     <insert id="insert" parameterType="com.agentlego.backend.memorypolicy.infrastructure.persistence.MemoryPolicyDO">
         insert into lego_memory_policies (id, name, description, owner_scope, strategy_kind, scope_kind, retrieval_mode,
-                                          top_k, write_mode, write_back_on_duplicate, created_at, updated_at)
+                                          top_k, write_mode, write_back_on_duplicate, rough_summary_max_chars,
+                                          vector_store_profile_id, vector_store_config_json, vector_min_score,
+                                          created_at, updated_at)
         values (#{id}, #{name}, #{description}, #{ownerScope}, #{strategyKind}, #{scopeKind}, #{retrievalMode},
-                #{topK}, #{writeMode}, #{writeBackOnDuplicate}, #{createdAt}, #{updatedAt})
+                #{topK}, #{writeMode}, #{writeBackOnDuplicate}, #{roughSummaryMaxChars},
+                #{vectorStoreProfileId}, cast(#{vectorStoreConfigJson} as jsonb), #{vectorMinScore},
+                #{createdAt}, #{updatedAt})
     </insert>
 
     <update id="update" parameterType="com.agentlego.backend.memorypolicy.infrastructure.persistence.MemoryPolicyDO">
         update lego_memory_policies
-        set name                    = #{name},
-            description             = #{description},
-            owner_scope             = #{ownerScope},
-            strategy_kind           = #{strategyKind},
-            scope_kind              = #{scopeKind},
-            retrieval_mode          = #{retrievalMode},
-            top_k                   = #{topK},
-            write_mode              = #{writeMode},
-            write_back_on_duplicate = #{writeBackOnDuplicate},
-            updated_at              = #{updatedAt}
+        set name                     = #{name},
+            description              = #{description},
+            owner_scope              = #{ownerScope},
+            strategy_kind            = #{strategyKind},
+            scope_kind               = #{scopeKind},
+            retrieval_mode           = #{retrievalMode},
+            top_k                    = #{topK},
+            write_mode               = #{writeMode},
+            write_back_on_duplicate  = #{writeBackOnDuplicate},
+            rough_summary_max_chars  = #{roughSummaryMaxChars},
+            vector_store_profile_id  = #{vectorStoreProfileId},
+            vector_store_config_json = cast(#{vectorStoreConfigJson} as jsonb),
+            vector_min_score         = #{vectorMinScore},
+            updated_at               = #{updatedAt}
         where id = #{id}
     </update>
 
@@ -53,6 +65,10 @@
                top_k,
                write_mode,
                write_back_on_duplicate,
+               rough_summary_max_chars,
+               vector_store_profile_id,
+               vector_store_config_json,
+               vector_min_score,
                created_at,
                updated_at
         from lego_memory_policies
@@ -70,6 +86,10 @@
                top_k,
                write_mode,
                write_back_on_duplicate,
+               rough_summary_max_chars,
+               vector_store_profile_id,
+               vector_store_config_json,
+               vector_min_score,
                created_at,
                updated_at
         from lego_memory_policies

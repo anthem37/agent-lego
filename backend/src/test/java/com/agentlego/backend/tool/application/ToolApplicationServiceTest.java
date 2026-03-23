@@ -1,7 +1,9 @@
 package com.agentlego.backend.tool.application;
 
 import com.agentlego.backend.agent.domain.AgentRepository;
+import com.agentlego.backend.agent.domain.AgentToolReferenceSnapshot;
 import com.agentlego.backend.api.ApiException;
+import com.agentlego.backend.kb.domain.KbDocumentRepository;
 import com.agentlego.backend.mcp.client.McpClientRegistry;
 import com.agentlego.backend.mcp.properties.McpClientProperties;
 import com.agentlego.backend.tool.application.dto.CreateToolRequest;
@@ -9,12 +11,14 @@ import com.agentlego.backend.tool.application.dto.TestToolCallRequest;
 import com.agentlego.backend.tool.application.dto.TestToolCallResponse;
 import com.agentlego.backend.tool.application.dto.UpdateToolRequest;
 import com.agentlego.backend.tool.application.mapper.ToolDtoMapper;
-import com.agentlego.backend.tool.application.service.ToolApplicationService;
-import com.agentlego.backend.tool.application.service.ToolExecutionService;
+import com.agentlego.backend.tool.application.service.*;
+import com.agentlego.backend.tool.application.support.LocalToolResponseEnricher;
+import com.agentlego.backend.tool.application.support.ToolWriteSupport;
 import com.agentlego.backend.tool.domain.ToolAggregate;
 import com.agentlego.backend.tool.domain.ToolRepository;
 import com.agentlego.backend.tool.domain.ToolType;
 import com.agentlego.backend.tool.local.LocalBuiltinToolCatalog;
+import com.agentlego.backend.tool.local.LocalBuiltinTools;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.agentscope.core.message.ToolResultBlock;
 import org.junit.jupiter.api.Test;
@@ -22,6 +26,8 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mapstruct.factory.Mappers;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.mockito.junit.jupiter.MockitoSettings;
+import org.mockito.quality.Strictness;
 import reactor.core.publisher.Mono;
 
 import java.util.List;
@@ -33,17 +39,16 @@ import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 
 /**
- * ToolApplicationService 单元测试。
+ * {@link com.agentlego.backend.tool.application.service.ToolApplicationService} 单元测试。
  * <p>
- * 覆盖点：
- * - createTool 的参数校验（toolType 缺失/非法）
- * - getTool not found
- * - testToolCall（LOCAL / HTTP / MCP / WORKFLOW 等分支）
+ * 覆盖：createTool 参数校验、getTool 缺失、testToolCall 各类型分支、删除/引用等。
  */
 @ExtendWith(MockitoExtension.class)
+@MockitoSettings(strictness = Strictness.LENIENT)
 class ToolApplicationServiceTest {
 
     private static final ToolDtoMapper TOOL_DTO_MAPPER = Mappers.getMapper(ToolDtoMapper.class);
+    private static final LocalBuiltinToolCatalog CATALOG = LocalBuiltinToolCatalog.forTests(LocalBuiltinTools.class);
     @Mock
     private ToolRepository toolRepository;
     @Mock
@@ -51,27 +56,34 @@ class ToolApplicationServiceTest {
     @Mock
     private AgentRepository agentRepository;
     @Mock
+    private KbDocumentRepository kbDocumentRepository;
+    @Mock
     private McpClientRegistry mcpClientRegistry;
-
-    private static LocalBuiltinToolCatalog localCatalog() {
-        try {
-            return new LocalBuiltinToolCatalog();
-        } catch (ClassNotFoundException e) {
-            throw new RuntimeException(e);
-        }
-    }
+    @Mock
+    private LocalBuiltinExposureApplicationService localBuiltinExposureApplicationService;
 
     private ToolApplicationService service() {
         McpClientProperties mcpClientProperties = new McpClientProperties();
+        ToolWriteSupport write = new ToolWriteSupport(toolRepository);
+        ToolCreationService creation = new ToolCreationService(toolRepository, CATALOG, write);
+        when(localBuiltinExposureApplicationService.listMetasForUi()).thenAnswer(inv -> CATALOG.listMeta());
+        ToolConsoleMetaService meta = new ToolConsoleMetaService(CATALOG, localBuiltinExposureApplicationService);
+        McpToolDiscoveryService mcp = new McpToolDiscoveryService(
+                mcpClientRegistry, mcpClientProperties, new ObjectMapper(), toolRepository, creation);
+        LocalToolResponseEnricher enricher = new LocalToolResponseEnricher(CATALOG);
         return new ToolApplicationService(
                 toolRepository,
                 toolExecutionService,
                 agentRepository,
-                localCatalog(),
-                mcpClientRegistry,
-                new ObjectMapper(),
-                mcpClientProperties,
-                TOOL_DTO_MAPPER
+                CATALOG,
+                TOOL_DTO_MAPPER,
+                kbDocumentRepository,
+                write,
+                creation,
+                meta,
+                mcp,
+                enricher,
+                localBuiltinExposureApplicationService
         );
     }
 
@@ -113,7 +125,7 @@ class ToolApplicationServiceTest {
         ToolAggregate tool = new ToolAggregate();
         tool.setId("tool1");
         tool.setToolType(ToolType.LOCAL);
-        tool.setName("echo");
+        tool.setName("local_t");
 
         when(toolRepository.findById("tool1")).thenReturn(Optional.of(tool));
         when(toolExecutionService.executeTool(eq(tool), anyMap()))
@@ -240,13 +252,13 @@ class ToolApplicationServiceTest {
 
     @Test
     void createTool_duplicateName_shouldThrowConflict() {
-        when(toolRepository.existsOtherWithNameIgnoreCase("echo", null)).thenReturn(true);
+        when(toolRepository.existsOtherWithNameIgnoreCase("dup_http", null)).thenReturn(true);
         ToolApplicationService service = service();
 
         CreateToolRequest req = new CreateToolRequest();
-        req.setToolType("LOCAL");
-        req.setName("echo");
-        req.setDefinition(Map.of());
+        req.setToolType("HTTP");
+        req.setName("dup_http");
+        req.setDefinition(Map.of("url", "https://example.com", "method", "GET"));
 
         ApiException ex = assertThrows(ApiException.class, () -> service.createTool(req));
         assertEquals("CONFLICT", ex.getCode());
@@ -268,21 +280,6 @@ class ToolApplicationServiceTest {
         assertEquals("CONFLICT", ex.getCode());
         assertTrue(ex.getMessage().contains("全平台唯一"));
         verify(toolRepository, never()).save(any());
-    }
-
-    @Test
-    void createTool_local_ok_shouldSave() {
-        when(toolRepository.existsOtherWithNameIgnoreCase("echo", null)).thenReturn(false);
-        when(toolRepository.save(any(ToolAggregate.class))).thenAnswer(inv -> inv.getArgument(0, ToolAggregate.class).getId());
-
-        CreateToolRequest req = new CreateToolRequest();
-        req.setToolType("LOCAL");
-        req.setName("echo");
-        req.setDefinition(Map.of());
-
-        String id = service().createTool(req);
-        assertNotNull(id);
-        verify(toolRepository).save(any(ToolAggregate.class));
     }
 
     @Test
@@ -357,12 +354,29 @@ class ToolApplicationServiceTest {
         ToolAggregate tool = new ToolAggregate();
         tool.setId("t1");
         tool.setToolType(ToolType.LOCAL);
-        tool.setName("echo");
+        tool.setName("local_t");
         when(toolRepository.findById("t1")).thenReturn(Optional.of(tool));
-        when(agentRepository.countByToolId("t1")).thenReturn(1);
+        when(agentRepository.findToolReferencesByToolId("t1"))
+                .thenReturn(new AgentToolReferenceSnapshot(1, List.of("a1")));
 
         ToolApplicationService service = service();
         ApiException ex = assertThrows(ApiException.class, () -> service.deleteTool("t1"));
+        assertEquals("CONFLICT", ex.getCode());
+        verify(toolRepository, never()).deleteById(any());
+    }
+
+    @Test
+    void deleteTool_whenReferencedByKb_shouldThrowConflict() {
+        ToolAggregate tool = new ToolAggregate();
+        tool.setId("t1");
+        tool.setToolType(ToolType.HTTP);
+        tool.setName("api");
+        when(toolRepository.findById("t1")).thenReturn(Optional.of(tool));
+        when(agentRepository.findToolReferencesByToolId("t1"))
+                .thenReturn(new AgentToolReferenceSnapshot(0, List.of()));
+        when(kbDocumentRepository.countDocumentsReferencingToolId("t1")).thenReturn(2L);
+
+        ApiException ex = assertThrows(ApiException.class, () -> service().deleteTool("t1"));
         assertEquals("CONFLICT", ex.getCode());
         verify(toolRepository, never()).deleteById(any());
     }
@@ -372,12 +386,14 @@ class ToolApplicationServiceTest {
         ToolAggregate tool = new ToolAggregate();
         tool.setId("t1");
         when(toolRepository.findById("t1")).thenReturn(Optional.of(tool));
-        when(agentRepository.countByToolId("t1")).thenReturn(2);
-        when(agentRepository.listAgentIdsByToolId("t1")).thenReturn(List.of("a1", "a2"));
+        when(agentRepository.findToolReferencesByToolId("t1"))
+                .thenReturn(new AgentToolReferenceSnapshot(2, List.of("a1", "a2")));
+        when(kbDocumentRepository.countDocumentsReferencingToolId("t1")).thenReturn(5L);
 
         var dto = service().getToolReferences("t1");
         assertEquals(2, dto.getReferencingAgentCount());
         assertEquals(List.of("a1", "a2"), dto.getReferencingAgentIds());
+        assertEquals(5L, dto.getReferencingKbDocumentCount());
     }
 
     @Test

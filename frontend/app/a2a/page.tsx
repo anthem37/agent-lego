@@ -4,6 +4,7 @@ import {TeamOutlined} from "@ant-design/icons";
 import {Button, Form, Input, message, Typography} from "antd";
 import React from "react";
 
+import {isAbortError} from "@/lib/api/isAbortError";
 import {AppLayout} from "@/components/AppLayout";
 import {ErrorAlert} from "@/components/ErrorAlert";
 import {PageHeaderBlock} from "@/components/PageHeaderBlock";
@@ -15,6 +16,7 @@ type A2ADelegateForm = {
     agentId: string;
     modelId: string;
     input: string;
+    memoryNamespace?: string;
 };
 
 export default function A2APage() {
@@ -23,18 +25,43 @@ export default function A2APage() {
     const [error, setError] = React.useState<unknown>(null);
     const [form] = Form.useForm<A2ADelegateForm>();
 
+    const delegateAbortRef = React.useRef<AbortController | null>(null);
+    React.useEffect(() => {
+        return () => {
+            delegateAbortRef.current?.abort();
+        };
+    }, []);
+
     async function onDelegate(values: A2ADelegateForm) {
         setError(null);
         setOutput(null);
         setCalling(true);
+        delegateAbortRef.current?.abort();
+        const runAc = new AbortController();
+        delegateAbortRef.current = runAc;
         try {
-            const out = await delegateA2a(values);
+            const body: Record<string, unknown> = {
+                agentId: values.agentId,
+                modelId: values.modelId,
+                input: values.input,
+            };
+            const ns = values.memoryNamespace?.trim();
+            if (ns) {
+                body.memoryNamespace = ns;
+            }
+            const out = await delegateA2a(body, {signal: runAc.signal});
             setOutput(out);
             message.success("A2A 委派执行完成");
         } catch (e) {
-            setError(e);
+            if (!isAbortError(e)) {
+                setError(e);
+            }
         } finally {
-            setCalling(false);
+            const stillThisRun = delegateAbortRef.current === runAc;
+            if (stillThisRun) {
+                delegateAbortRef.current = null;
+                setCalling(false);
+            }
         }
     }
 
@@ -59,6 +86,13 @@ export default function A2APage() {
                         </Form.Item>
                         <Form.Item name="input" label="input" rules={[{required: true, message: "请输入 input"}]}>
                             <Input.TextArea rows={4}/>
+                        </Form.Item>
+                        <Form.Item
+                            name="memoryNamespace"
+                            label="memoryNamespace（可选）"
+                            extra="与智能体 run 一致，用于记忆策略下隔离命名空间。"
+                        >
+                            <Input allowClear placeholder="可选"/>
                         </Form.Item>
                         <Form.Item>
                             <Button type="primary" htmlType="submit" loading={calling}>

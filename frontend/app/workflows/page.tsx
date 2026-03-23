@@ -5,6 +5,7 @@ import {Button, Form, Input, message, Radio, Space, Typography} from "antd";
 import Link from "next/link";
 import React from "react";
 
+import {DEFAULT_REQUEST_TIMEOUT_MS} from "@/lib/api/request";
 import {AppLayout} from "@/components/AppLayout";
 import {ErrorAlert} from "@/components/ErrorAlert";
 import {PageHeaderBlock} from "@/components/PageHeaderBlock";
@@ -12,7 +13,7 @@ import {PageShell} from "@/components/PageShell";
 import {SectionCard} from "@/components/SectionCard";
 import {createWorkflow} from "@/lib/workflows/api";
 
-type StepRow = { agentId: string; modelId: string };
+type StepRow = { agentId: string; modelId: string; memoryNamespace?: string };
 
 type CreateWorkflowForm = {
     name: string;
@@ -20,6 +21,8 @@ type CreateWorkflowForm = {
     orchestration: "single" | "steps";
     singleAgentId?: string;
     singleModelId?: string;
+    /** 可选：与后端 RunAgentRequest.memoryNamespace 一致 */
+    singleMemoryNamespace?: string;
     stepMode?: "sequential" | "parallel";
     steps?: StepRow[];
 };
@@ -31,15 +34,29 @@ function buildDefinition(values: CreateWorkflowForm): Record<string, unknown> | 
         if (!agentId || !modelId) {
             return undefined;
         }
-        return {agentId, modelId};
+        const ns = (values.singleMemoryNamespace ?? "").trim();
+        const def: Record<string, unknown> = {agentId, modelId};
+        if (ns) {
+            def.memoryNamespace = ns;
+        }
+        return def;
     }
     const raw = values.steps ?? [];
     const steps = raw
-        .map((s) => ({
-            agentId: (s.agentId ?? "").trim(),
-            modelId: (s.modelId ?? "").trim(),
-        }))
-        .filter((s) => s.agentId && s.modelId);
+        .map((s) => {
+            const agentId = (s.agentId ?? "").trim();
+            const modelId = (s.modelId ?? "").trim();
+            const memNs = (s.memoryNamespace ?? "").trim();
+            if (!agentId || !modelId) {
+                return null;
+            }
+            const step: Record<string, unknown> = {agentId, modelId};
+            if (memNs) {
+                step.memoryNamespace = memNs;
+            }
+            return step;
+        })
+        .filter((s): s is Record<string, unknown> => s != null);
     if (steps.length === 0) {
         return undefined;
     }
@@ -61,10 +78,13 @@ export default function WorkflowsPage() {
         setCreating(true);
         try {
             const definition = buildDefinition(values);
-            const id = await createWorkflow({
-                name: values.name,
-                definition,
-            });
+            const id = await createWorkflow(
+                {
+                    name: values.name,
+                    definition,
+                },
+                {timeoutMs: DEFAULT_REQUEST_TIMEOUT_MS},
+            );
             setCreatedId(id);
             message.success("工作流创建成功");
         } catch (e) {
@@ -100,7 +120,7 @@ export default function WorkflowsPage() {
                         initialValues={{
                             orchestration: "single",
                             stepMode: "sequential",
-                            steps: [{agentId: "", modelId: ""}],
+                            steps: [{agentId: "", modelId: "", memoryNamespace: ""}],
                         }}
                     >
                         <Form.Item name="name" label="名称" rules={[{required: true, message: "请输入名称"}]}>
@@ -129,6 +149,13 @@ export default function WorkflowsPage() {
                                     rules={[{required: true, message: "请填写模型 ID"}]}
                                 >
                                     <Input placeholder="从「模型」页创建后复制"/>
+                                </Form.Item>
+                                <Form.Item
+                                    name="singleMemoryNamespace"
+                                    label="记忆命名空间（可选）"
+                                    extra="若智能体绑定了记忆策略，可填会话/用户 ID；会写入 definition.memoryNamespace。"
+                                >
+                                    <Input allowClear placeholder="例如 session-abc"/>
                                 </Form.Item>
                             </>
                         ) : (
@@ -172,12 +199,27 @@ export default function WorkflowsPage() {
                                                     >
                                                         <Input placeholder="modelId" style={{width: 220}}/>
                                                     </Form.Item>
+                                                    <Form.Item
+                                                        {...restField}
+                                                        name={[name, "memoryNamespace"]}
+                                                        label={name === 0 ? "memoryNamespace（可选）" : undefined}
+                                                    >
+                                                        <Input
+                                                            allowClear
+                                                            placeholder="命名空间"
+                                                            style={{width: 160}}
+                                                        />
+                                                    </Form.Item>
                                                     <Button type="link" onClick={() => remove(name)}>
                                                         删除本步
                                                     </Button>
                                                 </Space>
                                             ))}
-                                            <Button type="dashed" onClick={() => add({agentId: "", modelId: ""})} block>
+                                            <Button
+                                                type="dashed"
+                                                onClick={() => add({agentId: "", modelId: "", memoryNamespace: ""})}
+                                                block
+                                            >
                                                 添加一步
                                             </Button>
                                         </>

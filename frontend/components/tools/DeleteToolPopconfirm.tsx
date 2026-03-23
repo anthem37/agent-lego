@@ -3,6 +3,7 @@
 import {Button, Popconfirm, Typography} from "antd";
 import React from "react";
 
+import {DEFAULT_REQUEST_TIMEOUT_MS} from "@/lib/api/request";
 import {fetchToolReferences} from "@/lib/tools/api";
 import type {ToolReferencesDto} from "@/lib/tools/types";
 
@@ -15,7 +16,7 @@ type Props = {
 };
 
 /**
- * 打开时拉取 /tools/{id}/references，有智能体引用则禁止确认删除。
+ * 打开时拉取 /tools/{id}/references，有智能体或知识库文档引用则禁止确认删除。
  */
 export function DeleteToolPopconfirm(props: Props) {
     const {toolId, deleting, onConfirm, trigger} = props;
@@ -26,7 +27,7 @@ export function DeleteToolPopconfirm(props: Props) {
         setLoadingRefs(true);
         setRefs(null);
         try {
-            const r = await fetchToolReferences(toolId);
+            const r = await fetchToolReferences(toolId, {timeoutMs: DEFAULT_REQUEST_TIMEOUT_MS});
             setRefs(r);
         } catch {
             setRefs(null);
@@ -35,16 +36,26 @@ export function DeleteToolPopconfirm(props: Props) {
         }
     }
 
-    const blocked = refs != null && refs.referencingAgentCount > 0;
+    const kbCount = refs?.referencingKbDocumentCount ?? 0;
+    const blocked =
+        refs != null && (refs.referencingAgentCount > 0 || kbCount > 0);
     const desc = loadingRefs ? (
-        <Typography.Text type="secondary">正在检查智能体引用…</Typography.Text>
+        <Typography.Text type="secondary">正在检查引用…</Typography.Text>
     ) : refs == null ? (
-        <Typography.Text type="secondary">打开时将检查是否仍被智能体 toolIds 引用。</Typography.Text>
+        <Typography.Text type="secondary">打开时将检查是否仍被智能体或知识库文档引用。</Typography.Text>
     ) : blocked ? (
         <span>
-            <Typography.Text type="danger">
-                无法删除：仍有 {refs.referencingAgentCount} 个智能体在 toolIds 中引用此工具。
-            </Typography.Text>
+            {refs.referencingAgentCount > 0 ? (
+                <Typography.Text type="danger">
+                    无法删除：仍有 {refs.referencingAgentCount} 个智能体在 toolIds 中引用此工具。
+                </Typography.Text>
+            ) : null}
+            {kbCount > 0 ? (
+                <Typography.Text type="danger"
+                                 style={{display: "block", marginTop: refs.referencingAgentCount > 0 ? 8 : 0}}>
+                    无法删除：仍有 {kbCount} 篇知识库文档在「绑定工具」中引用此工具。
+                </Typography.Text>
+            ) : null}
             {refs.referencingAgentIds.length > 0 ? (
                 <div style={{marginTop: 8}}>
                     <Typography.Text type="secondary" style={{fontSize: 12}}>
@@ -56,7 +67,7 @@ export function DeleteToolPopconfirm(props: Props) {
             ) : null}
         </span>
     ) : (
-        <Typography.Text>未被智能体引用。删除后不可恢复。</Typography.Text>
+        <Typography.Text>未被智能体或知识库文档引用。删除后不可恢复。</Typography.Text>
     );
 
     return (

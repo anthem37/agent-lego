@@ -17,8 +17,40 @@ public class MemoryItemRepositoryImpl implements MemoryItemRepository {
     }
 
     @Override
-    public List<MemoryItemDO> searchByKeyword(String policyId, String queryText, int limit) {
-        List<MemoryItemDO> rows = mapper.searchByKeyword(policyId, queryText == null ? "" : queryText, limit);
+    public List<MemoryItemDO> searchByKeyword(
+            String policyId,
+            String queryText,
+            int limit,
+            String memoryNamespace,
+            String strategyKind,
+            boolean orderByTrgm
+    ) {
+        List<MemoryItemDO> rows = mapper.searchByKeyword(
+                policyId,
+                queryText == null ? "" : queryText,
+                limit,
+                memoryNamespace,
+                strategyKind,
+                orderByTrgm
+        );
+        return rows == null ? List.of() : rows;
+    }
+
+    @Override
+    public List<MemoryItemDO> findByIds(String policyId, List<String> ids) {
+        if (ids == null || ids.isEmpty()) {
+            return List.of();
+        }
+        List<MemoryItemDO> rows = mapper.findByIds(policyId, ids);
+        return rows == null ? List.of() : rows;
+    }
+
+    @Override
+    public List<MemoryItemDO> listByPolicyId(String policyId) {
+        if (policyId == null || policyId.isBlank()) {
+            return List.of();
+        }
+        List<MemoryItemDO> rows = mapper.listByPolicyId(policyId.trim());
         return rows == null ? List.of() : rows;
     }
 
@@ -28,8 +60,8 @@ public class MemoryItemRepositoryImpl implements MemoryItemRepository {
     }
 
     @Override
-    public String findIdByPolicyIdAndContent(String policyId, String content) {
-        return mapper.findIdByPolicyIdAndContent(policyId, content);
+    public String findIdByPolicyIdAndContent(String policyId, String content, String memoryNamespace, String strategyKind) {
+        return mapper.findIdByPolicyIdAndContent(policyId, content, memoryNamespace, strategyKind);
     }
 
     @Override

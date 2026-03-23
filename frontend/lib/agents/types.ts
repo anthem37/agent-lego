@@ -41,6 +41,8 @@ export type AgentDto = {
 
 export type RunAgentForm = {
     modelId?: string;
+    /** 可选：与后端 memoryNamespace 对齐，用于单策略下多用户/会话隔离 */
+    memoryNamespace?: string;
     input: string;
     temperature?: number;
     maxTokens?: number;
@@ -53,6 +55,12 @@ export type AgentRunMemoryDebug = {
     ownerScope?: string;
     retrievalMode?: string;
     writeMode?: string;
+    memoryNamespace?: string | null;
+    /** 策略 roughSummaryMaxChars 解析后的实际上限（ASSISTANT_SUMMARY 写回时使用） */
+    roughSummaryMaxCharsResolved?: number;
+    implementationWarnings?: string[];
+    /** RECENCY | TRGM_WORD_SIMILARITY */
+    keywordPreviewSort?: string;
     previewHitCount?: number;
     previewText?: string;
 };

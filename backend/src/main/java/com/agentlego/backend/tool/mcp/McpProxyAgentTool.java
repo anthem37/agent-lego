@@ -1,7 +1,9 @@
 package com.agentlego.backend.tool.mcp;
 
 import com.agentlego.backend.mcp.client.McpClientRegistry;
+import com.agentlego.backend.tool.ParameterAliases;
 import com.agentlego.backend.tool.domain.ToolAggregate;
+import com.agentlego.backend.tool.schema.ToolOutputSchemaDescription;
 import io.agentscope.core.message.ToolResultBlock;
 import io.agentscope.core.tool.AgentTool;
 import io.agentscope.core.tool.ToolCallParam;
@@ -32,6 +34,7 @@ public final class McpProxyAgentTool implements AgentTool {
     private final String description;
     private final Map<String, Object> definition;
     private final McpClientRegistry registry;
+    private final Map<String, String> parameterAliases;
 
     private volatile Map<String, Object> parametersResolved;
 
@@ -46,14 +49,19 @@ public final class McpProxyAgentTool implements AgentTool {
         this.sseEndpoint = Objects.requireNonNull(McpToolSpec.readEndpoint(definition), "endpoint");
         this.remoteToolName = McpToolSpec.readRemoteToolName(definition, aggregate.getName());
         this.description = resolveDescription(definition, sseEndpoint, remoteToolName);
+        this.parameterAliases = ParameterAliases.parse(definition);
     }
 
     private static String resolveDescription(Map<String, Object> def, String endpoint, String remoteName) {
+        StringBuilder sb = new StringBuilder();
         Object d = def.get("description");
         if (d != null && !String.valueOf(d).isBlank()) {
-            return String.valueOf(d).trim();
+            sb.append(String.valueOf(d).trim());
+        } else {
+            sb.append("MCP tool → ").append(remoteName).append(" @ ").append(endpoint);
         }
-        return "MCP tool → " + remoteName + " @ " + endpoint;
+        ToolOutputSchemaDescription.appendToDescription(sb, def.get("outputSchema"));
+        return sb.toString();
     }
 
     @SuppressWarnings("unchecked")
@@ -113,9 +121,10 @@ public final class McpProxyAgentTool implements AgentTool {
     @Override
     public Mono<ToolResultBlock> callAsync(ToolCallParam toolCallParam) {
         Map<String, Object> input = toolCallParam.getInput() == null ? Map.of() : toolCallParam.getInput();
+        Map<String, Object> wire = ParameterAliases.toWireInput(parameterAliases, input);
         return Mono.fromCallable(() -> registry.getOrCreate(sseEndpoint))
                 .subscribeOn(Schedulers.boundedElastic())
-                .flatMap(client -> client.callTool(remoteToolName, input))
+                .flatMap(client -> client.callTool(remoteToolName, wire))
                 .map(McpContentConverter::convertCallToolResult)
                 .timeout(CALL_TIMEOUT);
     }

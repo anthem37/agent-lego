@@ -56,13 +56,22 @@ public class MemoryPolicyController {
         return ApiResponse.ok();
     }
 
+    /**
+     * 为策略下全部条目重新写入外置向量（运维/补数据）。
+     */
+    @PostMapping("/{id}/reindex-vectors")
+    public ApiResponse<MemoryReindexVectorsResultDto> reindexVectors(@PathVariable("id") String id) {
+        return ApiResponse.ok(memoryPolicyApplicationService.reindexVectors(id));
+    }
+
     @GetMapping("/{id}/items")
     public ApiResponse<List<MemoryItemDto>> listItems(
             @PathVariable("id") String id,
             @RequestParam(value = "q", required = false) String q,
-            @RequestParam(value = "limit", required = false) Integer limit
+            @RequestParam(value = "limit", required = false) Integer limit,
+            @RequestParam(value = "orderByTrgm", required = false) Boolean orderByTrgm
     ) {
-        return ApiResponse.ok(memoryPolicyApplicationService.listItems(id, q, limit));
+        return ApiResponse.ok(memoryPolicyApplicationService.listItems(id, q, limit, orderByTrgm));
     }
 
     @PostMapping("/{id}/items")

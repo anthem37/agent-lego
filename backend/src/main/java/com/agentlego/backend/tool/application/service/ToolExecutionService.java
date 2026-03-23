@@ -10,6 +10,7 @@ import com.agentlego.backend.tool.domain.ToolAggregate;
 import com.agentlego.backend.tool.http.HttpProxyAgentTool;
 import com.agentlego.backend.tool.http.HttpToolRequestExecutor;
 import com.agentlego.backend.tool.local.LocalBuiltinToolCatalog;
+import com.agentlego.backend.tool.local.LocalPlatformAgentTool;
 import com.agentlego.backend.tool.mcp.McpProxyAgentTool;
 import com.agentlego.backend.tool.workflow.WorkflowProxyAgentTool;
 import com.agentlego.backend.workflow.application.service.WorkflowApplicationService;
@@ -103,7 +104,21 @@ public class ToolExecutionService {
 
         for (ToolAggregate t : tools) {
             switch (t.getToolType()) {
-                case LOCAL -> toolkit.registerTool(resolveLocalTool(t.getName()));
+                case LOCAL -> {
+                    Object bean = resolveLocalTool(t.getName());
+                    Toolkit tmp = new Toolkit();
+                    tmp.registerTool(bean);
+                    AgentTool inner = tmp.getTool(t.getName());
+                    if (inner == null) {
+                        throw new ApiException(
+                                "LOCAL_TOOL_REGISTER",
+                                "无法注册本地工具：" + t.getName(),
+                                HttpStatus.INTERNAL_SERVER_ERROR
+                        );
+                    }
+                    Map<String, Object> def = t.getDefinition() == null ? Map.of() : t.getDefinition();
+                    toolkit.registerAgentTool(new LocalPlatformAgentTool(inner, def));
+                }
                 case HTTP -> toolkit.registerAgentTool(
                         wrapForKbRecording(
                                 new HttpProxyAgentTool(t, om, httpToolRequestExecutor),
@@ -238,7 +253,7 @@ public class ToolExecutionService {
      * - 本地工具在做参数校验时，会把 ToolUseBlock.content 作为“主输入”；
      * - 因此这里必须是一个 JSON object（表示工具参数），否则会触发 JSON Schema 校验失败。
      * <p>
-     * 示例：echo 工具：{"content":"hello"}
+     * 示例：{"content":"hello"}（具体键名以该工具 {@code @ToolParam} 为准）
      */
     private String buildToolUseContentJson(Map<String, Object> input) {
         try {

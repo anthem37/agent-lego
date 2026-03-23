@@ -1,7 +1,9 @@
-import {request} from "@/lib/api/request";
+import {request, type RequestOptions} from "@/lib/api/request";
 
 import type {WorkflowRunDto} from "@/lib/runs/types";
 
-export async function getWorkflowRun(runId: string, signal?: AbortSignal): Promise<WorkflowRunDto> {
-    return request<WorkflowRunDto>(`/runs/${encodeURIComponent(runId)}`, {signal});
+export type WorkflowRunFetchOpts = Pick<RequestOptions, "signal" | "timeoutMs">;
+
+export async function getWorkflowRun(runId: string, opts?: WorkflowRunFetchOpts): Promise<WorkflowRunDto> {
+    return request<WorkflowRunDto>(`/runs/${encodeURIComponent(runId)}`, {...opts});
 }

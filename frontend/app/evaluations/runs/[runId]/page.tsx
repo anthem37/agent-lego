@@ -9,6 +9,8 @@ import {ErrorAlert} from "@/components/ErrorAlert";
 import {PageHeaderBlock} from "@/components/PageHeaderBlock";
 import {PageShell} from "@/components/PageShell";
 import {SectionCard} from "@/components/SectionCard";
+import {isAbortError} from "@/lib/api/isAbortError";
+import {DEFAULT_REQUEST_TIMEOUT_MS} from "@/lib/api/request";
 import {stringifyPretty} from "@/lib/json";
 import {getEvaluationRun} from "@/lib/evaluations/api";
 import type {RunEvaluationDto} from "@/lib/evaluations/types";
@@ -18,16 +20,34 @@ export default function EvaluationRunDetailPage(props: { params: Promise<{ runId
     const [loading, setLoading] = React.useState(false);
     const [error, setError] = React.useState<unknown>(null);
 
+    const reloadAbortRef = React.useRef<AbortController | null>(null);
+    React.useEffect(() => {
+        return () => {
+            reloadAbortRef.current?.abort();
+        };
+    }, []);
+
     async function reload(runId: string) {
+        reloadAbortRef.current?.abort();
+        const ac = new AbortController();
+        reloadAbortRef.current = ac;
         setError(null);
         setLoading(true);
         try {
-            const data = await getEvaluationRun(runId);
+            const data = await getEvaluationRun(runId, {
+                signal: ac.signal,
+                timeoutMs: DEFAULT_REQUEST_TIMEOUT_MS,
+            });
             setRun(data);
         } catch (e) {
-            setError(e);
+            if (!isAbortError(e)) {
+                setError(e);
+            }
         } finally {
-            setLoading(false);
+            if (reloadAbortRef.current === ac) {
+                reloadAbortRef.current = null;
+                setLoading(false);
+            }
         }
     }
 

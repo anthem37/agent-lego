@@ -43,4 +43,9 @@ public interface KbDocumentRepository {
     List<KbDocumentRow> listByCollectionId(String collectionId);
 
     void deleteById(String id);
+
+    /**
+     * 统计 {@code linked_tool_ids} JSON 数组中含指定工具主键的文档数（工具删除/引用提示）。
+     */
+    long countDocumentsReferencingToolId(String toolId);
 }

@@ -24,6 +24,7 @@ import kbShell from "@/components/kb/kb-shell.module.css";
 
 import {KbKnowledgeBodyEditor} from "@/components/kb/KbKnowledgeBodyEditor";
 import type {KbRichTextFieldHandle} from "@/components/kb/KbRichTextField";
+import {DEFAULT_REQUEST_TIMEOUT_MS} from "@/lib/api/request";
 import {getKbDocument, ingestKbDocument, updateKbDocument} from "@/lib/kb/api";
 import {formatKbToolFieldChipDisplay} from "@/lib/kb/kb-rich-tag-labels";
 import type {KbDocumentDto} from "@/lib/kb/types";
@@ -34,6 +35,8 @@ import {resolveHttpOutputFieldDescription} from "@/lib/tools/http-output-field-d
 import {httpOutputRowsToCascaderOptions} from "@/lib/tools/tool-output-cascader";
 import type {HttpParameterRow, ToolDto} from "@/lib/tools/types";
 import {toolTypeDisplayName} from "@/lib/tool-labels";
+
+const KB_REQ = {timeoutMs: DEFAULT_REQUEST_TIMEOUT_MS};
 
 const MAX_SIMILAR_QUERIES = 32;
 const MAX_SIMILAR_QUERY_CHARS = 512;
@@ -205,7 +208,7 @@ export function KbIngestDocumentDrawer({
         }
         let cancelled = false;
         setLoadingEditDoc(true);
-        void getKbDocument(collectionId, editDocumentId)
+        void getKbDocument(collectionId, editDocumentId, {timeoutMs: DEFAULT_REQUEST_TIMEOUT_MS})
             .then((d) => {
                 if (cancelled) {
                     return;
@@ -346,8 +349,8 @@ export function KbIngestDocumentDrawer({
                 ...(linked.length > 0 ? {linkedToolIds: linked} : {}),
             };
             const doc = isEdit && editDocumentId
-                ? await updateKbDocument(collectionId, editDocumentId, payload)
-                : await ingestKbDocument(collectionId, payload);
+                ? await updateKbDocument(collectionId, editDocumentId, payload, KB_REQ)
+                : await ingestKbDocument(collectionId, payload, KB_REQ);
             message.success(
                 doc.status === "FAILED"
                     ? isEdit
@@ -387,7 +390,7 @@ export function KbIngestDocumentDrawer({
             return;
         }
         if (fieldCascaderOptions.length === 0) {
-            message.warning("该工具暂无可级联的出参结构，请先在工具管理配置 HTTP 出参（outputSchema）");
+            message.warning("该工具暂无可级联的出参结构，请先在工具管理为该工具配置出参（definition.outputSchema）");
             return;
         }
         if (fieldPathCascader.length === 0) {
@@ -773,7 +776,7 @@ export function KbIngestDocumentDrawer({
                             <div>
                                 <Typography.Text type="secondary"
                                                  style={{fontSize: 12, display: "block", marginBottom: 4}}>
-                                    出参路径（须级联选择到底层字段，与工具管理 HTTP 出参表一致）
+                                    出参路径（须级联选择到底层字段，与工具管理出参表一致）
                                 </Typography.Text>
                                 <Cascader
                                     style={{width: "100%"}}
@@ -820,7 +823,7 @@ export function KbIngestDocumentDrawer({
                                 {loadingFieldTool
                                     ? "正在加载工具详情…"
                                     : fieldToolId
-                                        ? "当前工具没有可用的表格化 outputSchema（常见于未配置 HTTP 出参或非 HTTP 工具）。请先到「工具管理」为该工具配置出参结构后，再使用级联选择插入字段。"
+                                        ? "当前工具没有可用的表格化 outputSchema（常见于尚未在工具管理中配置出参）。请先到「工具管理」为该工具配置 definition.outputSchema 后，再使用级联选择插入字段。"
                                         : "请先选择工具。"}
                             </Typography.Paragraph>
                         )}

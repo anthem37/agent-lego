@@ -11,6 +11,7 @@ import org.springframework.stereotype.Repository;
 
 import java.util.Collections;
 import java.util.List;
+import java.util.Objects;
 import java.util.Optional;
 
 /**
@@ -84,6 +85,27 @@ public class ToolRepositoryImpl implements ToolRepository {
         agg.setDefinition(JsonMaps.parseObject(toolDO.getDefinitionJson()));
         agg.setCreatedAt(toolDO.getCreatedAt());
         return Optional.of(agg);
+    }
+
+    @Override
+    public List<ToolAggregate> findByIds(List<String> ids) {
+        if (ids == null || ids.isEmpty()) {
+            return Collections.emptyList();
+        }
+        List<String> cleaned = ids.stream()
+                .filter(Objects::nonNull)
+                .map(String::trim)
+                .filter(s -> !s.isEmpty())
+                .distinct()
+                .toList();
+        if (cleaned.isEmpty()) {
+            return Collections.emptyList();
+        }
+        List<ToolDO> rows = mapper.findByIds(cleaned);
+        if (rows == null || rows.isEmpty()) {
+            return Collections.emptyList();
+        }
+        return rows.stream().map(this::toAggregate).toList();
     }
 
     @Override

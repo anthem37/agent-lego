@@ -4,8 +4,8 @@ import com.agentlego.backend.mcp.adapter.McpAdapter;
 import com.agentlego.backend.mcp.adapter.PlatformMcpServerBundle;
 import com.agentlego.backend.mcp.properties.McpClientProperties;
 import com.agentlego.backend.mcp.properties.McpServerProperties;
+import com.agentlego.backend.tool.application.service.LocalBuiltinExposureApplicationService;
 import com.agentlego.backend.tool.application.service.ToolExecutionService;
-import com.agentlego.backend.tool.local.LocalBuiltinToolCatalog;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
@@ -27,15 +27,29 @@ public class McpServerSpringConfiguration {
             McpAdapter mcpAdapter,
             ObjectMapper objectMapper,
             ToolExecutionService toolExecutionService,
-            LocalBuiltinToolCatalog localBuiltinToolCatalog,
+            LocalBuiltinExposureApplicationService localBuiltinExposureApplicationService,
             McpServerProperties props
     ) {
         return mcpAdapter.buildPlatformMcpServerBundle(
                 objectMapper,
                 props.getSsePath(),
                 toolExecutionService,
-                localBuiltinToolCatalog
+                localBuiltinExposureApplicationService.listMetasForMcp()
         );
+    }
+
+    /**
+     * 必须与 {@link #platformMcpServerBundle} 同配置类且声明在其后，保证 {@link PlatformMcpServerBundle} 已存在后再注册，
+     * 否则 {@link LocalBuiltinExposureApplicationService} 更新暴露策略时无法同步 tools/list。
+     */
+    @Bean
+    @ConditionalOnBean(PlatformMcpServerBundle.class)
+    public McpBuiltinToolsSynchronizer mcpBuiltinToolsSynchronizer(
+            PlatformMcpServerBundle bundle,
+            McpAdapter mcpAdapter,
+            ToolExecutionService toolExecutionService
+    ) {
+        return new McpBuiltinToolsSynchronizer(bundle, mcpAdapter, toolExecutionService);
     }
 
     @Bean

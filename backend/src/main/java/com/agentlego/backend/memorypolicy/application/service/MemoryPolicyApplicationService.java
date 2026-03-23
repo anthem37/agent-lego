@@ -10,12 +10,16 @@ import com.agentlego.backend.memorypolicy.domain.MemoryItemRepository;
 import com.agentlego.backend.memorypolicy.domain.MemoryPolicyRepository;
 import com.agentlego.backend.memorypolicy.infrastructure.persistence.MemoryItemDO;
 import com.agentlego.backend.memorypolicy.infrastructure.persistence.MemoryPolicyDO;
+import com.agentlego.backend.memorypolicy.runtime.MemoryVectorIndexService;
 import com.agentlego.backend.memorypolicy.support.MemoryPolicySemantic;
+import com.agentlego.backend.memorypolicy.support.MemoryPolicyVectorConfigService;
+import com.agentlego.backend.memorypolicy.support.MemoryRoughSummary;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -25,15 +29,21 @@ public class MemoryPolicyApplicationService {
     private final MemoryPolicyRepository memoryPolicyRepository;
     private final MemoryItemRepository memoryItemRepository;
     private final AgentRepository agentRepository;
+    private final MemoryPolicyVectorConfigService memoryPolicyVectorConfigService;
+    private final MemoryVectorIndexService memoryVectorIndexService;
 
     public MemoryPolicyApplicationService(
             MemoryPolicyRepository memoryPolicyRepository,
             MemoryItemRepository memoryItemRepository,
-            AgentRepository agentRepository
+            AgentRepository agentRepository,
+            MemoryPolicyVectorConfigService memoryPolicyVectorConfigService,
+            MemoryVectorIndexService memoryVectorIndexService
     ) {
         this.memoryPolicyRepository = memoryPolicyRepository;
         this.memoryItemRepository = memoryItemRepository;
         this.agentRepository = agentRepository;
+        this.memoryPolicyVectorConfigService = memoryPolicyVectorConfigService;
+        this.memoryVectorIndexService = memoryVectorIndexService;
     }
 
     private static void requireNonEmptyOwnerScope(String scope) {
@@ -56,6 +66,16 @@ public class MemoryPolicyApplicationService {
         return "skip";
     }
 
+    /**
+     * 落库前规范化：null 保持 null（表示运行时默认 480）；非 null 则夹在 16～8192（与 DB CHECK 一致）。
+     */
+    private static Integer normalizeRoughSummaryMaxChars(Integer v) {
+        if (v == null) {
+            return null;
+        }
+        return MemoryRoughSummary.resolveMaxChars(v);
+    }
+
     private static MemoryPolicyDto toPolicyDto(MemoryPolicyDO r) {
         MemoryPolicyDto dto = new MemoryPolicyDto();
         dto.setId(r.getId());
@@ -68,8 +88,24 @@ public class MemoryPolicyApplicationService {
         dto.setTopK(r.getTopK());
         dto.setWriteMode(r.getWriteMode());
         dto.setWriteBackOnDuplicate(r.getWriteBackOnDuplicate());
+        dto.setRoughSummaryMaxChars(r.getRoughSummaryMaxChars());
+        dto.setVectorStoreProfileId(r.getVectorStoreProfileId());
+        dto.setVectorStoreConfig(JsonMaps.parseObject(r.getVectorStoreConfigJson()));
+        dto.setVectorMinScore(r.getVectorMinScore());
+        if (MemoryPolicySemantic.isVectorRetrieval(r.getRetrievalMode())) {
+            dto.setVectorLinkConfigured(MemoryPolicySemantic.isVectorLinkConfigured(r));
+        } else {
+            dto.setVectorLinkConfigured(null);
+        }
         dto.setCreatedAt(r.getCreatedAt());
         dto.setUpdatedAt(r.getUpdatedAt());
+        dto.setImplementationWarnings(
+                MemoryPolicySemantic.implementationWarnings(
+                        r.getRetrievalMode(),
+                        r.getWriteMode(),
+                        MemoryPolicySemantic.isVectorLinkConfigured(r)
+                )
+        );
         return dto;
     }
 
@@ -132,10 +168,15 @@ public class MemoryPolicyApplicationService {
         row.setTopK(topK);
         row.setWriteMode(MemoryPolicySemantic.normalizeWriteMode(req.getWriteMode()));
         row.setWriteBackOnDuplicate(wdup);
+        row.setRoughSummaryMaxChars(normalizeRoughSummaryMaxChars(req.getRoughSummaryMaxChars()));
+        row.setVectorMinScore(0.15d);
+        row.setVectorStoreConfigJson("{}");
+        memoryPolicyVectorConfigService.applyVectorFieldsForCreate(req, row);
         Instant now = Instant.now();
         row.setCreatedAt(now);
         row.setUpdatedAt(now);
         memoryPolicyRepository.save(row);
+        memoryPolicyVectorConfigService.syncBindingAfterSave(row);
         return row.getId();
     }
 
@@ -165,12 +206,19 @@ public class MemoryPolicyApplicationService {
         if (req.getWriteBackOnDuplicate() != null) {
             row.setWriteBackOnDuplicate(normalizeWriteBackDup(req.getWriteBackOnDuplicate()));
         }
+        if (Boolean.TRUE.equals(req.getClearRoughSummaryMaxChars())) {
+            row.setRoughSummaryMaxChars(null);
+        } else if (req.getRoughSummaryMaxChars() != null) {
+            row.setRoughSummaryMaxChars(normalizeRoughSummaryMaxChars(req.getRoughSummaryMaxChars()));
+        }
+        memoryPolicyVectorConfigService.applyVectorFieldsForUpdate(req, row);
         row.setUpdatedAt(Instant.now());
         memoryPolicyRepository.update(row);
+        memoryPolicyVectorConfigService.syncBindingAfterSave(row);
     }
 
     public void deletePolicy(String id) {
-        requirePolicy(id);
+        MemoryPolicyDO pol = requirePolicy(id);
         int n = agentRepository.countByMemoryPolicyId(id);
         if (n > 0) {
             throw new ApiException(
@@ -179,13 +227,53 @@ public class MemoryPolicyApplicationService {
                     HttpStatus.CONFLICT
             );
         }
+        memoryVectorIndexService.purgeAllVectorsForPolicy(pol);
         memoryPolicyRepository.deleteById(id);
     }
 
-    public List<MemoryItemDto> listItems(String policyId, String q, Integer limit) {
-        requirePolicy(policyId);
+    /**
+     * 为策略下已有条目补写/刷新外置向量（启用 VECTOR/HYBRID 后或换 embedding 模型后使用）。
+     */
+    public MemoryReindexVectorsResultDto reindexVectors(String policyId) {
+        MemoryPolicyDO pol = requirePolicy(policyId);
+        if (!MemoryPolicySemantic.isVectorRetrieval(pol.getRetrievalMode())) {
+            throw new ApiException(
+                    "INVALID_MEMORY_POLICY",
+                    "仅 retrievalMode 为 VECTOR 或 HYBRID 时可重索引",
+                    HttpStatus.BAD_REQUEST
+            );
+        }
+        if (!MemoryPolicySemantic.isVectorLinkConfigured(pol)) {
+            throw new ApiException(
+                    "INVALID_MEMORY_POLICY",
+                    "向量链路未配置完整（vectorStoreProfileId + collectionName），无法重索引",
+                    HttpStatus.BAD_REQUEST
+            );
+        }
+        List<MemoryItemDO> rows = memoryItemRepository.listByPolicyId(policyId);
+        int indexed = 0;
+        for (MemoryItemDO row : rows) {
+            memoryVectorIndexService.indexMemoryItem(pol, row);
+            indexed++;
+        }
+        MemoryReindexVectorsResultDto out = new MemoryReindexVectorsResultDto();
+        out.setIndexedCount(indexed);
+        return out;
+    }
+
+    public List<MemoryItemDto> listItems(String policyId, String q, Integer limit, Boolean orderByTrgm) {
+        MemoryPolicyDO pol = requirePolicy(policyId);
         int lim = limit == null ? 20 : Math.min(Math.max(limit, 1), 100);
-        List<MemoryItemDO> rows = memoryItemRepository.searchByKeyword(policyId, q == null ? "" : q, lim);
+        String qq = q == null ? "" : q;
+        boolean trgm = Boolean.TRUE.equals(orderByTrgm) && !qq.isBlank();
+        List<MemoryItemDO> rows = memoryItemRepository.searchByKeyword(
+                policyId,
+                qq,
+                lim,
+                null,
+                pol.getStrategyKind(),
+                trgm
+        );
         List<MemoryItemDto> out = new ArrayList<>(rows.size());
         for (MemoryItemDO row : rows) {
             out.add(toItemDto(row));
@@ -194,12 +282,18 @@ public class MemoryPolicyApplicationService {
     }
 
     public String createItem(String policyId, CreateMemoryItemRequest req) {
-        requirePolicy(policyId);
+        MemoryPolicyDO pol = requirePolicy(policyId);
         String content = req.getContent() == null ? "" : req.getContent().trim();
         if (content.isEmpty()) {
             throw new ApiException("INVALID_MEMORY_ITEM", "content 不能为空", HttpStatus.BAD_REQUEST);
         }
-        Map<String, Object> meta = req.getMetadata() == null ? Map.of() : req.getMetadata();
+        Map<String, Object> meta = new LinkedHashMap<>();
+        if (req.getMetadata() != null) {
+            meta.putAll(req.getMetadata());
+        }
+        if (!meta.containsKey("strategyKind") && pol.getStrategyKind() != null) {
+            meta.put("strategyKind", pol.getStrategyKind());
+        }
         MemoryItemDO row = new MemoryItemDO();
         row.setId(SnowflakeIdGenerator.nextId());
         row.setPolicyId(policyId);
@@ -208,14 +302,16 @@ public class MemoryPolicyApplicationService {
         row.setCreatedAt(Instant.now());
         row.setUpdatedAt(null);
         memoryItemRepository.insert(row);
+        memoryVectorIndexService.indexMemoryItem(pol, row);
         return row.getId();
     }
 
     public void deleteItem(String policyId, String itemId) {
-        requirePolicy(policyId);
+        MemoryPolicyDO pol = requirePolicy(policyId);
         if (itemId == null || itemId.isBlank()) {
             throw new ApiException("INVALID_MEMORY_ITEM", "id 无效", HttpStatus.BAD_REQUEST);
         }
+        memoryVectorIndexService.deleteMemoryVectors(pol, itemId.trim());
         int n = memoryItemRepository.deleteByPolicyIdAndItemId(policyId, itemId.trim());
         if (n == 0) {
             throw new ApiException("NOT_FOUND", "记忆条目未找到或不属于该策略", HttpStatus.NOT_FOUND);

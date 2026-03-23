@@ -1,8 +1,12 @@
 package com.agentlego.backend.memorypolicy.support;
 
 import com.agentlego.backend.api.ApiException;
+import com.agentlego.backend.common.JsonMaps;
+import com.agentlego.backend.memorypolicy.infrastructure.persistence.MemoryPolicyDO;
 import org.springframework.http.HttpStatus;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Set;
 
 /**
@@ -82,6 +86,61 @@ public final class MemoryPolicySemantic {
     public static boolean isWriteEnabled(String writeMode) {
         String m = writeMode == null ? WRITE_OFF : writeMode.trim().toUpperCase();
         return WRITE_ASSISTANT_RAW.equals(m) || WRITE_ASSISTANT_SUMMARY.equals(m);
+    }
+
+    public static boolean isVectorRetrieval(String retrievalMode) {
+        String r = retrievalMode == null ? "" : retrievalMode.trim().toUpperCase();
+        return RETRIEVAL_VECTOR.equals(r) || RETRIEVAL_HYBRID.equals(r);
+    }
+
+    /**
+     * VECTOR/HYBRID 且已配置向量库 profile + 物理集合名时，运行时走外置向量检索。
+     */
+    public static boolean isVectorLinkConfigured(MemoryPolicyDO r) {
+        if (r == null) {
+            return false;
+        }
+        if (!isVectorRetrieval(r.getRetrievalMode())) {
+            return true;
+        }
+        if (r.getVectorStoreProfileId() == null || r.getVectorStoreProfileId().isBlank()) {
+            return false;
+        }
+        String json = r.getVectorStoreConfigJson();
+        if (json == null || json.isBlank()) {
+            return false;
+        }
+        String cn = JsonMaps.getString(JsonMaps.parseObject(json), "collectionName", "");
+        return !cn.isBlank();
+    }
+
+    /**
+     * 供 API / 控制台展示：当前实现与配置字面值可能不一致时的说明（避免静默预期落差）。
+     */
+    public static List<String> implementationWarnings(String retrievalMode, String writeMode) {
+        return implementationWarnings(retrievalMode, writeMode, false);
+    }
+
+    /**
+     * @param vectorLinkConfigured VECTOR/HYBRID 时是否已配置可检索的外置向量链路（profile + collectionName）
+     */
+    public static List<String> implementationWarnings(String retrievalMode, String writeMode, boolean vectorLinkConfigured) {
+        List<String> w = new ArrayList<>();
+        String r = retrievalMode == null ? "" : retrievalMode.trim().toUpperCase();
+        if (RETRIEVAL_VECTOR.equals(r)) {
+            if (!vectorLinkConfigured) {
+                w.add("检索模式 VECTOR：未配置完整向量链路，运行时降级为 KEYWORD。");
+            }
+        } else if (RETRIEVAL_HYBRID.equals(r)) {
+            if (!vectorLinkConfigured) {
+                w.add("检索模式 HYBRID：未配置完整向量链路，混合检索中的向量侧不可用，关键词侧仍生效。");
+            }
+        }
+        String wm = writeMode == null ? WRITE_OFF : writeMode.trim().toUpperCase();
+        if (WRITE_ASSISTANT_SUMMARY.equals(wm)) {
+            w.add("写入模式 ASSISTANT_SUMMARY：当前为本地粗略摘要（字数上限与句读截断），非模型语义摘要。");
+        }
+        return List.copyOf(w);
     }
 
     private static void require(boolean ok, String code, String message) {

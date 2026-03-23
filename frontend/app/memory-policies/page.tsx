@@ -1,10 +1,28 @@
 "use client";
 
 import {DatabaseOutlined, DeleteOutlined, EditOutlined, PlusOutlined} from "@ant-design/icons";
-import {Button, Card, Form, Input, InputNumber, message, Modal, Select, Space, Table, Typography,} from "antd";
+import {
+    Alert,
+    Button,
+    Card,
+    Checkbox,
+    Form,
+    Input,
+    InputNumber,
+    message,
+    Modal,
+    Select,
+    Space,
+    Table,
+    Tag,
+    Tooltip,
+    Typography,
+} from "antd";
 import Link from "next/link";
 import React from "react";
 
+import {isAbortError} from "@/lib/api/isAbortError";
+import {DEFAULT_REQUEST_TIMEOUT_MS} from "@/lib/api/request";
 import {AppLayout} from "@/components/AppLayout";
 import {ErrorAlert} from "@/components/ErrorAlert";
 import {PageHeaderBlock} from "@/components/PageHeaderBlock";
@@ -17,6 +35,8 @@ import {
     type MemoryPolicyDto,
     updateMemoryPolicy,
 } from "@/lib/memory-policies/api";
+import {listVectorStoreProfiles} from "@/lib/vector-store/api";
+import type {VectorStoreProfileDto} from "@/lib/vector-store/types";
 import {
     RETRIEVAL_OPTIONS,
     retrievalLabel,
@@ -37,6 +57,14 @@ type PolicyForm = {
     topK?: number;
     writeMode?: string;
     writeBackOnDuplicate?: "skip" | "upsert";
+    /** ASSISTANT_SUMMARY 粗略摘要字符上限；空表示未配置（默认 480） */
+    roughSummaryMaxChars?: number | null;
+    /** 仅编辑：勾选后提交时清空库中上限 */
+    clearRoughSummaryMaxChars?: boolean;
+    vectorStoreProfileId?: string;
+    vectorCollectionName?: string;
+    vectorMinScore?: number;
+    clearVectorLink?: boolean;
 };
 
 export default function MemoryPoliciesPage() {
@@ -47,23 +75,63 @@ export default function MemoryPoliciesPage() {
     const [editing, setEditing] = React.useState<MemoryPolicyDto | null>(null);
     const [saving, setSaving] = React.useState(false);
     const [form] = Form.useForm<PolicyForm>();
+    const watchedRetrieval = Form.useWatch("retrievalMode", form);
+    const watchedWrite = Form.useWatch("writeMode", form);
+    const watchedClearRough = Form.useWatch("clearRoughSummaryMaxChars", form);
+    const watchedClearVector = Form.useWatch("clearVectorLink", form);
 
-    const load = React.useCallback(async () => {
+    const [implFilter, setImplFilter] = React.useState<"all" | "warn" | "none">("all");
+    const [vectorProfiles, setVectorProfiles] = React.useState<VectorStoreProfileDto[]>([]);
+
+    React.useEffect(() => {
+        if (!modalOpen) {
+            return;
+        }
+        const ac = new AbortController();
+        void listVectorStoreProfiles({signal: ac.signal, timeoutMs: DEFAULT_REQUEST_TIMEOUT_MS})
+            .then((rows) => setVectorProfiles(Array.isArray(rows) ? rows : []))
+            .catch(() => {
+                if (!ac.signal.aborted) {
+                    setVectorProfiles([]);
+                }
+            });
+        return () => ac.abort();
+    }, [modalOpen]);
+
+    const displayedRows = React.useMemo(() => {
+        if (implFilter === "all") {
+            return rows;
+        }
+        return rows.filter((p) => {
+            const n = p.implementationWarnings?.length ?? 0;
+            if (implFilter === "warn") {
+                return n > 0;
+            }
+            return n === 0;
+        });
+    }, [rows, implFilter]);
+
+    const load = React.useCallback(async (signal?: AbortSignal) => {
         setError(null);
         setLoading(true);
+        const fetchOpts = {signal, timeoutMs: DEFAULT_REQUEST_TIMEOUT_MS};
         try {
-            const data = await listMemoryPolicies();
+            const data = await listMemoryPolicies(fetchOpts);
             setRows(Array.isArray(data) ? data : []);
         } catch (e) {
-            setError(e);
-            setRows([]);
+            if (!isAbortError(e)) {
+                setError(e);
+                setRows([]);
+            }
         } finally {
             setLoading(false);
         }
     }, []);
 
     React.useEffect(() => {
-        void load();
+        const ac = new AbortController();
+        void load(ac.signal);
+        return () => ac.abort();
     }, [load]);
 
     function openCreate() {
@@ -76,6 +144,8 @@ export default function MemoryPoliciesPage() {
             topK: 5,
             writeMode: "OFF",
             writeBackOnDuplicate: "skip",
+            clearRoughSummaryMaxChars: false,
+            clearVectorLink: false,
         });
         setModalOpen(true);
     }
@@ -92,6 +162,16 @@ export default function MemoryPoliciesPage() {
             topK: p.topK ?? 5,
             writeMode: p.writeMode ?? "OFF",
             writeBackOnDuplicate: (p.writeBackOnDuplicate === "upsert" ? "upsert" : "skip") as "skip" | "upsert",
+            roughSummaryMaxChars:
+                typeof p.roughSummaryMaxChars === "number" ? p.roughSummaryMaxChars : undefined,
+            clearRoughSummaryMaxChars: false,
+            vectorStoreProfileId: p.vectorStoreProfileId,
+            vectorCollectionName:
+                typeof p.vectorStoreConfig?.collectionName === "string"
+                    ? p.vectorStoreConfig.collectionName
+                    : undefined,
+            vectorMinScore: typeof p.vectorMinScore === "number" ? p.vectorMinScore : undefined,
+            clearVectorLink: false,
         });
         setModalOpen(true);
     }
@@ -100,7 +180,7 @@ export default function MemoryPoliciesPage() {
         setSaving(true);
         setError(null);
         try {
-            const body = {
+            const body: Parameters<typeof updateMemoryPolicy>[1] = {
                 name: values.name.trim(),
                 description: values.description?.trim(),
                 ownerScope: values.ownerScope.trim(),
@@ -111,11 +191,44 @@ export default function MemoryPoliciesPage() {
                 writeMode: values.writeMode,
                 writeBackOnDuplicate: values.writeBackOnDuplicate ?? "skip",
             };
+            const rm = values.retrievalMode ?? "KEYWORD";
             if (editing) {
-                await updateMemoryPolicy(editing.id, body);
+                if (values.clearRoughSummaryMaxChars) {
+                    body.clearRoughSummaryMaxChars = true;
+                } else if (typeof values.roughSummaryMaxChars === "number") {
+                    body.roughSummaryMaxChars = values.roughSummaryMaxChars;
+                }
+                if (values.clearVectorLink) {
+                    body.clearVectorLink = true;
+                } else {
+                    if (values.vectorStoreProfileId) {
+                        body.vectorStoreProfileId = values.vectorStoreProfileId;
+                    }
+                    if (values.vectorCollectionName?.trim()) {
+                        body.vectorStoreConfig = {collectionName: values.vectorCollectionName.trim()};
+                    }
+                    if (typeof values.vectorMinScore === "number") {
+                        body.vectorMinScore = values.vectorMinScore;
+                    }
+                }
+                await updateMemoryPolicy(editing.id, body, {timeoutMs: DEFAULT_REQUEST_TIMEOUT_MS});
                 message.success("策略已更新");
             } else {
-                await createMemoryPolicy(body);
+                if (typeof values.roughSummaryMaxChars === "number") {
+                    body.roughSummaryMaxChars = values.roughSummaryMaxChars;
+                }
+                if (rm === "VECTOR" || rm === "HYBRID") {
+                    if (values.vectorStoreProfileId) {
+                        body.vectorStoreProfileId = values.vectorStoreProfileId;
+                    }
+                    if (values.vectorCollectionName?.trim()) {
+                        body.vectorStoreConfig = {collectionName: values.vectorCollectionName.trim()};
+                    }
+                    if (typeof values.vectorMinScore === "number") {
+                        body.vectorMinScore = values.vectorMinScore;
+                    }
+                }
+                await createMemoryPolicy(body, {timeoutMs: DEFAULT_REQUEST_TIMEOUT_MS});
                 message.success("策略已创建");
             }
             setModalOpen(false);
@@ -141,16 +254,28 @@ export default function MemoryPoliciesPage() {
                 <SectionCard
                     title="策略列表"
                     extra={
-                        <Button type="primary" icon={<PlusOutlined/>} onClick={openCreate}>
-                            新建策略
-                        </Button>
+                        <Space wrap>
+                            <Select
+                                value={implFilter}
+                                onChange={(v) => setImplFilter(v)}
+                                style={{width: 148}}
+                                options={[
+                                    {value: "all", label: "全部"},
+                                    {value: "warn", label: "有实现提示"},
+                                    {value: "none", label: "无提示"},
+                                ]}
+                            />
+                            <Button type="primary" icon={<PlusOutlined/>} onClick={openCreate}>
+                                新建策略
+                            </Button>
+                        </Space>
                     }
                 >
                     <Table<MemoryPolicyDto>
                         size="small"
                         rowKey="id"
                         loading={loading}
-                        dataSource={rows}
+                        dataSource={displayedRows}
                         pagination={false}
                         scroll={{x: true}}
                         columns={[
@@ -207,6 +332,26 @@ export default function MemoryPoliciesPage() {
                                 width: 72,
                             },
                             {
+                                title: "实现提示",
+                                width: 96,
+                                render: (_, p) =>
+                                    p.implementationWarnings && p.implementationWarnings.length > 0 ? (
+                                        <Tooltip
+                                            title={
+                                                <ul style={{margin: 0, paddingLeft: 16, maxWidth: 360}}>
+                                                    {p.implementationWarnings.map((w) => (
+                                                        <li key={w}>{w}</li>
+                                                    ))}
+                                                </ul>
+                                            }
+                                        >
+                                            <Tag color="warning">{p.implementationWarnings.length} 条</Tag>
+                                        </Tooltip>
+                                    ) : (
+                                        <Typography.Text type="secondary">—</Typography.Text>
+                                    ),
+                            },
+                            {
                                 title: "操作",
                                 width: 220,
                                 render: (_, p) => (
@@ -229,7 +374,9 @@ export default function MemoryPoliciesPage() {
                                                     okButtonProps: {danger: true},
                                                     onOk: async () => {
                                                         try {
-                                                            await deleteMemoryPolicy(p.id);
+                                                            await deleteMemoryPolicy(p.id, {
+                                                                timeoutMs: DEFAULT_REQUEST_TIMEOUT_MS,
+                                                            });
                                                             message.success("已删除");
                                                             await load();
                                                         } catch (e) {
@@ -258,6 +405,34 @@ export default function MemoryPoliciesPage() {
                 >
                     <Card size="small" variant="borderless">
                         <Form<PolicyForm> form={form} layout="vertical" onFinish={onSubmit}>
+                            {modalOpen &&
+                            ((watchedRetrieval === "VECTOR" || watchedRetrieval === "HYBRID") ||
+                                watchedWrite === "ASSISTANT_SUMMARY") ? (
+                                <Alert
+                                    type="warning"
+                                    showIcon
+                                    style={{marginBottom: 16}}
+                                    message="能力提示"
+                                    description={
+                                        <ul style={{margin: 0, paddingLeft: 20}}>
+                                            {(watchedRetrieval === "VECTOR" || watchedRetrieval === "HYBRID") && (
+                                                <li key="ret">
+                                                    检索模式为 {watchedRetrieval}
+                                                    ：请配置下方<strong>公共向量库 Profile</strong>
+                                                    （与知识库相同）；向量写入/检索复用 Milvus 或 Qdrant。
+                                                    未配置完整时运行时<strong>降级为关键词</strong>检索。
+                                                </li>
+                                            )}
+                                            {watchedWrite === "ASSISTANT_SUMMARY" && (
+                                                <li key="w">
+                                                    写入模式为 ASSISTANT_SUMMARY：当前为<strong>本地粗略摘要</strong>
+                                                    （字数上限与句读截断），非 LLM 语义摘要。
+                                                </li>
+                                            )}
+                                        </ul>
+                                    }
+                                />
+                            ) : null}
                             <Form.Item name="name" label="策略名称" rules={[{required: true, message: "必填"}]}>
                                 <Input placeholder="例如：客服线统一记忆"/>
                             </Form.Item>
@@ -313,6 +488,88 @@ export default function MemoryPoliciesPage() {
                                         {value: "skip", label: "skip：完全相同则跳过"},
                                         {value: "upsert", label: "upsert：刷新 updated_at"},
                                     ]}
+                                />
+                            </Form.Item>
+                            {(watchedRetrieval === "VECTOR" || watchedRetrieval === "HYBRID") && (
+                                <>
+                                    <Form.Item
+                                        name="vectorStoreProfileId"
+                                        label="向量库 Profile（vectorStoreProfileId）"
+                                        extra="与知识库集合一致；新建 VECTOR/HYBRID 时必填。"
+                                        rules={[
+                                            {
+                                                required: !editing,
+                                                message: "请选择向量库 Profile",
+                                            },
+                                        ]}
+                                    >
+                                        <Select
+                                            allowClear
+                                            showSearch
+                                            optionFilterProp="label"
+                                            placeholder="公共向量库"
+                                            disabled={!!editing && !!watchedClearVector}
+                                            options={vectorProfiles.map((p) => ({
+                                                value: p.id,
+                                                label: `${p.name} (${p.id})`,
+                                            }))}
+                                        />
+                                    </Form.Item>
+                                    <Form.Item
+                                        name="vectorCollectionName"
+                                        label="物理集合名（可选）"
+                                        extra="覆盖 profile 中的 collectionName；留空则后端使用 mem_pol_{策略id}。"
+                                    >
+                                        <Input
+                                            disabled={!!editing && !!watchedClearVector}
+                                            placeholder="可选"
+                                        />
+                                    </Form.Item>
+                                    <Form.Item name="vectorMinScore" label="向量相似度下限（0～1）">
+                                        <InputNumber
+                                            min={0}
+                                            max={1}
+                                            step={0.05}
+                                            style={{width: "100%"}}
+                                            disabled={!!editing && !!watchedClearVector}
+                                            placeholder="默认 0.15"
+                                        />
+                                    </Form.Item>
+                                    {editing ? (
+                                        <Form.Item
+                                            name="clearVectorLink"
+                                            valuePropName="checked"
+                                            style={{marginBottom: 8}}
+                                        >
+                                            <Checkbox>清除向量库绑定与配置</Checkbox>
+                                        </Form.Item>
+                                    ) : null}
+                                </>
+                            )}
+                            {editing ? (
+                                <Form.Item
+                                    name="clearRoughSummaryMaxChars"
+                                    valuePropName="checked"
+                                    style={{marginBottom: 8}}
+                                >
+                                    <Checkbox>清除已保存的摘要上限（运行时使用平台默认 480）</Checkbox>
+                                </Form.Item>
+                            ) : null}
+                            <Form.Item
+                                name="roughSummaryMaxChars"
+                                label="粗略摘要最大字符数（roughSummaryMaxChars）"
+                                extra={
+                                    editing
+                                        ? "勾选上方「清除」则忽略本框并清空库中配置。否则填写数字则更新；留空则不修改已保存值。"
+                                        : "仅在写入模式为 ASSISTANT_SUMMARY 时生效；16～8192；留空则使用平台默认 480。"
+                                }
+                            >
+                                <InputNumber
+                                    min={16}
+                                    max={8192}
+                                    placeholder="默认 480"
+                                    style={{width: "100%"}}
+                                    disabled={!!editing && !!watchedClearRough}
                                 />
                             </Form.Item>
                             <Form.Item>

@@ -1,5 +1,6 @@
 package com.agentlego.backend.kb.support;
 
+import com.agentlego.backend.tool.domain.ToolAggregate;
 import com.agentlego.backend.tool.domain.ToolRepository;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
@@ -53,6 +54,8 @@ public final class KbRichHtmlExpansion {
         for (String id : linked) {
             linkedLc.add(id.trim().toLowerCase(Locale.ROOT));
         }
+        Map<String, ToolAggregate> toolsByLinkedIdLc =
+                KbKnowledgeInlineToolSyntax.loadToolsByLinkedIds(linked, toolRepository);
         Document doc = Jsoup.parseBodyFragment(html);
         Element body = doc.body();
         ArrayNode mappings = om.createArrayNode();
@@ -69,7 +72,7 @@ public final class KbRichHtmlExpansion {
                 el.replaceWith(new TextNode("〔无效的工具字段标签〕"));
                 continue;
             }
-            var resolved = KbKnowledgeInlineToolSyntax.resolveLinkedTool(code, linked, linkedLc, toolRepository);
+            var resolved = KbKnowledgeInlineToolSyntax.resolveLinkedTool(code, linked, linkedLc, toolsByLinkedIdLc);
             if (resolved.isEmpty()) {
                 throw new IllegalArgumentException(
                         "tool_field 无法解析工具（须为已绑定工具的运行时名称或 ID）：" + code

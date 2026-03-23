@@ -2,7 +2,7 @@ package com.agentlego.backend.tool.domain;
 
 public enum ToolType {
     /**
-     * 进程内内置工具（如 echo / now）。
+     * 进程内内置工具（由 {@code LocalBuiltinTools} 上 {@code @Tool} 定义）。
      */
     LOCAL,
     /**

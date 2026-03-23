@@ -1,6 +1,7 @@
 package com.agentlego.backend.tool.http;
 
 import com.agentlego.backend.api.ApiException;
+import com.agentlego.backend.tool.ParameterAliases;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import okhttp3.*;
@@ -136,7 +137,8 @@ public final class OkHttpHttpToolRequestExecutor implements HttpToolRequestExecu
         byte[] jsonBodyBytes = null;
         if (spec.isSendJsonBody() && wantsEntityBody(method)) {
             try {
-                jsonBodyBytes = objectMapper.writeValueAsBytes(in);
+                Map<String, Object> wire = ParameterAliases.toWireInput(spec.getParameterAliases(), in);
+                jsonBodyBytes = objectMapper.writeValueAsBytes(wire);
             } catch (JsonProcessingException e) {
                 return new HttpToolExecutionResult.Failure("Failed to serialize JSON body: " + e.getMessage());
             }

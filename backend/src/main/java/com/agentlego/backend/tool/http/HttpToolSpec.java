@@ -1,6 +1,7 @@
 package com.agentlego.backend.tool.http;
 
 import com.agentlego.backend.api.ApiException;
+import com.agentlego.backend.tool.ParameterAliases;
 import lombok.Getter;
 import org.springframework.http.HttpStatus;
 
@@ -38,12 +39,24 @@ public final class HttpToolSpec {
     private final Map<String, String> headers;
     @Getter
     private final boolean sendJsonBody;
+    /**
+     * 模型参数名 → 运行时键名（空表示不映射）。
+     */
+    @Getter
+    private final Map<String, String> parameterAliases;
 
-    private HttpToolSpec(String urlTemplate, String method, Map<String, String> headers, boolean sendJsonBody) {
+    private HttpToolSpec(
+            String urlTemplate,
+            String method,
+            Map<String, String> headers,
+            boolean sendJsonBody,
+            Map<String, String> parameterAliases
+    ) {
         this.urlTemplate = urlTemplate;
         this.method = method;
         this.headers = headers;
         this.sendJsonBody = sendJsonBody;
+        this.parameterAliases = parameterAliases;
     }
 
     public static void validateDefinition(Map<String, Object> definition) {
@@ -66,7 +79,8 @@ public final class HttpToolSpec {
         validateMethod(method);
         Map<String, String> headers = parseHeaders(definition.get("headers"));
         boolean sendJsonBody = boolField(definition, "sendJsonBody", !isMethodWithoutBody(method));
-        return new HttpToolSpec(url.trim(), method, headers, sendJsonBody);
+        Map<String, String> aliases = ParameterAliases.parse(definition);
+        return new HttpToolSpec(url.trim(), method, headers, sendJsonBody, aliases);
     }
 
     private static void validateMethod(String method) {
@@ -130,7 +144,7 @@ public final class HttpToolSpec {
         StringBuffer sb = new StringBuffer();
         while (m.find()) {
             String key = m.group(1);
-            Object val = in.get(key);
+            Object val = ParameterAliases.resolvePlaceholderValue(parameterAliases, in, key);
             String replacement = val == null ? "" : urlEncode(String.valueOf(val));
             m.appendReplacement(sb, Matcher.quoteReplacement(replacement));
         }

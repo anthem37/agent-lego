@@ -1,12 +1,10 @@
 package com.agentlego.backend.agent.infrastructure;
 
-import com.agentlego.backend.agent.domain.AgentAggregate;
-import com.agentlego.backend.agent.domain.AgentKbPolicyPickerRow;
-import com.agentlego.backend.agent.domain.AgentMemoryPolicyRefRow;
-import com.agentlego.backend.agent.domain.AgentRepository;
+import com.agentlego.backend.agent.domain.*;
 import com.agentlego.backend.agent.infrastructure.persistence.AgentDO;
 import com.agentlego.backend.agent.infrastructure.persistence.AgentMapper;
 import com.agentlego.backend.agent.infrastructure.persistence.AgentMemoryPolicyCountRow;
+import com.agentlego.backend.agent.infrastructure.persistence.AgentToolRefRow;
 import com.agentlego.backend.common.JsonMaps;
 import org.springframework.stereotype.Repository;
 import org.springframework.transaction.annotation.Transactional;
@@ -104,6 +102,17 @@ public class AgentRepositoryImpl implements AgentRepository {
     public List<String> listAgentIdsByToolId(String toolId) {
         List<String> ids = mapper.listAgentIdsByToolId(toolId);
         return ids == null ? List.of() : ids;
+    }
+
+    @Override
+    public AgentToolReferenceSnapshot findToolReferencesByToolId(String toolId) {
+        List<AgentToolRefRow> rows = mapper.listAgentToolReferencesWithCount(toolId);
+        if (rows == null || rows.isEmpty()) {
+            return new AgentToolReferenceSnapshot(0, List.of());
+        }
+        int total = rows.get(0).getTotalCount();
+        List<String> ids = rows.stream().map(AgentToolRefRow::getAgentId).toList();
+        return new AgentToolReferenceSnapshot(total, ids);
     }
 
     @Override

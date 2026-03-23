@@ -5,6 +5,8 @@ import {Button, Form, Input, message, Space, Typography} from "antd";
 import Link from "next/link";
 import React from "react";
 
+import {isAbortError} from "@/lib/api/isAbortError";
+import {DEFAULT_REQUEST_TIMEOUT_MS} from "@/lib/api/request";
 import {AppLayout} from "@/components/AppLayout";
 import {ErrorAlert} from "@/components/ErrorAlert";
 import {PageHeaderBlock} from "@/components/PageHeaderBlock";
@@ -17,6 +19,7 @@ type CreateEvaluationForm = {
     name: string;
     agentId: string;
     modelId: string;
+    memoryNamespace?: string;
     cases: EvalCaseDto[];
 };
 
@@ -27,6 +30,13 @@ export default function EvaluationsPage() {
     const [runResp, setRunResp] = React.useState<RunEvaluationResponse | null>(null);
     const [error, setError] = React.useState<unknown>(null);
     const [form] = Form.useForm<CreateEvaluationForm>();
+
+    const runAbortRef = React.useRef<AbortController | null>(null);
+    React.useEffect(() => {
+        return () => {
+            runAbortRef.current?.abort();
+        };
+    }, []);
 
     async function onCreate(values: CreateEvaluationForm) {
         setError(null);
@@ -45,12 +55,17 @@ export default function EvaluationsPage() {
                 setCreating(false);
                 return;
             }
-            const id = await createEvaluation({
-                name: values.name,
-                agentId: values.agentId,
-                modelId: values.modelId,
-                cases,
-            });
+            const ns = values.memoryNamespace?.trim();
+            const id = await createEvaluation(
+                {
+                    name: values.name,
+                    agentId: values.agentId,
+                    modelId: values.modelId,
+                    cases,
+                    ...(ns ? {memoryNamespace: ns} : {}),
+                },
+                {timeoutMs: DEFAULT_REQUEST_TIMEOUT_MS},
+            );
             setCreatedId(id);
             message.success("评测创建成功");
         } catch (e) {
@@ -67,14 +82,23 @@ export default function EvaluationsPage() {
         setError(null);
         setRunning(true);
         setRunResp(null);
+        runAbortRef.current?.abort();
+        const runAc = new AbortController();
+        runAbortRef.current = runAc;
         try {
-            const resp = await triggerEvaluationRun(createdId);
+            const resp = await triggerEvaluationRun(createdId, {signal: runAc.signal});
             setRunResp(resp);
             message.success("评测运行已触发");
         } catch (e) {
-            setError(e);
+            if (!isAbortError(e)) {
+                setError(e);
+            }
         } finally {
-            setRunning(false);
+            const stillThisRun = runAbortRef.current === runAc;
+            if (stillThisRun) {
+                runAbortRef.current = null;
+                setRunning(false);
+            }
         }
     }
 
@@ -113,6 +137,13 @@ export default function EvaluationsPage() {
                         </Form.Item>
                         <Form.Item name="modelId" label="模型 ID" rules={[{required: true, message: "请输入模型 ID"}]}>
                             <Input placeholder="从模型页创建后复制"/>
+                        </Form.Item>
+                        <Form.Item
+                            name="memoryNamespace"
+                            label="记忆命名空间（可选）"
+                            extra="若智能体绑定了记忆策略，可填用户/会话 ID 以隔离评测写入；与智能体试运行一致。"
+                        >
+                            <Input allowClear placeholder="例如 eval-case-1"/>
                         </Form.Item>
                         <Form.Item label="用例列表（cases）" required>
                             <Typography.Paragraph type="secondary" style={{marginBottom: 8, fontSize: 12}}>

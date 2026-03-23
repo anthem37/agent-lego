@@ -23,6 +23,8 @@ public class A2AController {
     @PostMapping("/delegate")
     @ResponseStatus(HttpStatus.OK)
     public ApiResponse<String> delegate(@Valid @RequestBody A2ADelegateRequest req) {
-        return ApiResponse.ok(service.delegateLocal(req.getAgentId(), req.getModelId(), req.getInput()));
+        return ApiResponse.ok(
+                service.delegateLocal(req.getAgentId(), req.getModelId(), req.getInput(), req.getMemoryNamespace())
+        );
     }
 }

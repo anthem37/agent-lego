@@ -3,6 +3,8 @@ import type {
     HttpHeaderRow,
     HttpParameterRow,
     HttpParamType,
+    LocalBuiltinToolMetaDto,
+    ParamValueSourceType,
     ToolDto,
     ToolFormValues,
     ToolTypeCode,
@@ -29,6 +31,13 @@ export const HTTP_ARRAY_ITEM_TYPE_OPTIONS = HTTP_ARRAY_ITEM_PRIMITIVE_TYPES.map(
     value: t,
     label: HTTP_PARAM_TYPE_LABELS[t] ?? t,
 }));
+
+/** 入参「值来源」说明（仅元数据，写入 x-agentlego-valueSource） */
+export const PARAM_VALUE_SOURCE_OPTIONS: { value: ParamValueSourceType; label: string }[] = [
+    {value: "CONTEXT", label: "上下文参数"},
+    {value: "MODEL", label: "模型提取"},
+    {value: "FIXED", label: "固定值"},
+];
 
 /** 与表单编辑器、校验一致的最大嵌套层数（含 object 属性与 array items 对象属性） */
 export const MAX_NESTED_HTTP_PARAM_DEPTH = 8;
@@ -59,6 +68,10 @@ const LEAF_SCHEMA_KEYS = new Set([
     "maximum",
     "minLength",
     "maxLength",
+    /** 入参值来源说明（CONTEXT / MODEL / FIXED），仅描述用 */
+    "x-agentlego-valueSource",
+    /** 固定值说明（与 FIXED 搭配），仅描述用 */
+    "x-agentlego-fixedValue",
 ]);
 
 const HTTP_METHODS_BODY = new Set(["POST", "PUT", "PATCH"]);
@@ -79,6 +92,7 @@ function buildHttpOwnedKeys(preserveParams: boolean, preserveOutput: boolean): S
         for (const k of HTTP_PARAM_SCHEMA_KEYS) {
             s.add(k);
         }
+        s.add("parameterAliases");
     }
     if (!preserveOutput) {
         for (const k of HTTP_OUTPUT_SCHEMA_KEYS) {
@@ -88,18 +102,43 @@ function buildHttpOwnedKeys(preserveParams: boolean, preserveOutput: boolean): S
     return s;
 }
 
-const WORKFLOW_OWNED_KEYS = new Set(["workflowId", "description"]);
+function buildWorkflowOwnedKeys(preserveParams: boolean, preserveOutput: boolean): Set<string> {
+    const s = new Set<string>(["workflowId", "description"]);
+    if (!preserveParams) {
+        s.add("parameters");
+        s.add("inputSchema");
+        s.add("parameterAliases");
+    }
+    if (!preserveOutput) {
+        s.add("outputSchema");
+    }
+    return s;
+}
 
-function buildMcpOwnedKeys(preserveParams: boolean): Set<string> {
+function buildMcpOwnedKeys(preserveParams: boolean, preserveOutput: boolean): Set<string> {
     const s = new Set<string>(["description", "endpoint", "mcpToolName"]);
     if (!preserveParams) {
         s.add("parameters");
         s.add("inputSchema");
     }
+    if (!preserveOutput) {
+        s.add("outputSchema");
+    }
     return s;
 }
 
-const LOCAL_OWNED_KEYS = new Set(["description"]);
+function buildLocalOwnedKeys(preserveParams: boolean, preserveOutput: boolean): Set<string> {
+    const s = new Set<string>(["description"]);
+    if (!preserveParams) {
+        s.add("parameters");
+        s.add("inputSchema");
+        s.add("parameterAliases");
+    }
+    if (!preserveOutput) {
+        s.add("outputSchema");
+    }
+    return s;
+}
 
 export type BuildDefinitionOptions = {
     /** 编辑时传入：表单未展示的 definition 键会原样保留 */
@@ -187,6 +226,8 @@ function isPropertySchemaNodeFormEditable(spec: unknown, depth: number): boolean
             "description",
             "title",
             "additionalProperties",
+            "x-agentlego-valueSource",
+            "x-agentlego-fixedValue",
         ]);
         if (Object.keys(s).some((k) => !allowed.has(k))) {
             return false;
@@ -208,7 +249,16 @@ function isPropertySchemaNodeFormEditable(spec: unknown, depth: number): boolean
         return req == null || Array.isArray(req);
     }
     if (t === "array") {
-        const allowed = new Set(["type", "items", "description", "title", "minItems", "maxItems"]);
+        const allowed = new Set([
+            "type",
+            "items",
+            "description",
+            "title",
+            "minItems",
+            "maxItems",
+            "x-agentlego-valueSource",
+            "x-agentlego-fixedValue",
+        ]);
         if (Object.keys(s).some((k) => !allowed.has(k))) {
             return false;
         }
@@ -294,9 +344,32 @@ export function shouldPreserveHttpParameterFields(def: Record<string, unknown>):
     return flags.some((ok) => !ok);
 }
 
+/**
+ * 根级 string/number 等简单出参（如 LOCAL 内置默认），无 properties，可用空表格承接，不应判为「高级保留」。
+ */
+function isScalarRootOutputSchemaForForm(raw: unknown): boolean {
+    if (raw === undefined || raw === null || typeof raw !== "object" || Array.isArray(raw)) {
+        return false;
+    }
+    const o = raw as Record<string, unknown>;
+    const ts = jsonSchemaTypeString(o.type);
+    if (!ts || !["string", "number", "integer", "boolean"].includes(ts)) {
+        return false;
+    }
+    const props = o.properties;
+    if (props != null && typeof props === "object" && !Array.isArray(props) && Object.keys(props).length > 0) {
+        return false;
+    }
+    const keys = Object.keys(o);
+    return keys.every((k) => ["type", "description", "title"].includes(k));
+}
+
 /** outputSchema 无法用表格无损表达时保留 */
 export function shouldPreserveHttpOutputFields(def: Record<string, unknown>): boolean {
     if (def.outputSchema === undefined) {
+        return false;
+    }
+    if (isScalarRootOutputSchemaForForm(def.outputSchema)) {
         return false;
     }
     return !isHttpParameterSchemaFormEditable(def.outputSchema);
@@ -305,10 +378,52 @@ export function shouldPreserveHttpOutputFields(def: Record<string, unknown>): bo
 export function defaultHttpParameterRow(): HttpParameterRow {
     return {
         paramName: "",
+        paramAlias: "",
+        valueSource: "MODEL",
+        fixedValue: "",
         paramType: "string",
         required: false,
         paramDescription: "",
     };
+}
+
+function mapJavaSimpleTypeToHttpParamType(t: string | undefined): HttpParamType {
+    const u = String(t ?? "").toLowerCase();
+    if (u.includes("int") || u === "long" || u === "short" || u === "byte") {
+        return "integer";
+    }
+    if (u === "double" || u === "float" || u === "number" || u === "bigdecimal") {
+        return "number";
+    }
+    if (u === "boolean") {
+        return "boolean";
+    }
+    return "string";
+}
+
+/**
+ * 新建 LOCAL 工具时，根据内置元数据预填「入参」表单行（与内置 inputSchema / inputParameters 对齐）。
+ */
+export function seedLocalParameterRowsFromBuiltin(meta: LocalBuiltinToolMetaDto): HttpParameterRow[] {
+    const schema = meta.inputSchema;
+    if (schema && typeof schema === "object" && !Array.isArray(schema) && Object.keys(schema as object).length > 0) {
+        const raw = rowsFromObjectSchemaRoot(schema);
+        return normalizeHttpParameterRowTree(raw.length ? raw : [defaultHttpParameterRow()]);
+    }
+    const ips = meta.inputParameters ?? [];
+    if (ips.length === 0) {
+        return [defaultHttpParameterRow()];
+    }
+    const rows: HttpParameterRow[] = ips.map((p) => ({
+        paramName: p.name ?? "",
+        paramAlias: "",
+        valueSource: "MODEL",
+        fixedValue: "",
+        paramType: mapJavaSimpleTypeToHttpParamType(p.type),
+        required: !!p.required,
+        paramDescription: typeof p.description === "string" ? p.description : "",
+    }));
+    return normalizeHttpParameterRowTree(rows);
 }
 
 /** 从 URL 模板中提取占位符名称（去重，顺序为首次出现顺序；与后端 HttpToolSpec `{param}` 一致） */
@@ -335,6 +450,13 @@ export function collectRootHttpParameterNames(rows: HttpParameterRow[] | undefin
         .filter(Boolean);
 }
 
+/** 顶层入参别名（可与 URL 占位符一致） */
+export function collectRootHttpParameterAliases(rows: HttpParameterRow[] | undefined): string[] {
+    return (rows ?? [])
+        .map((r) => (r.paramAlias ?? "").trim())
+        .filter(Boolean);
+}
+
 /**
  * URL 中每个 `{name}` 须在入参表格中有同名参数，否则模型不知道要填什么。
  */
@@ -346,13 +468,49 @@ export function validateHttpUrlPlaceholdersHaveParameterRows(
     if (placeholders.length === 0) {
         return null;
     }
-    const declared = new Set(collectRootHttpParameterNames(rows));
+    const declared = new Set([...collectRootHttpParameterNames(rows), ...collectRootHttpParameterAliases(rows)]);
     const missing = placeholders.filter((p) => !declared.has(p));
     if (missing.length === 0) {
         return null;
     }
     const show = missing.map((p) => `{${p}}`).join("、");
-    return `URL 中的占位符 ${show} 未在「调用参数」中声明同名参数；请补全表格或修改 URL。`;
+    return `URL 中的占位符 ${show} 未在「调用参数」中声明同名参数或别名；请补全表格或修改 URL。`;
+}
+
+/** 顶层入参别名：与参数名互斥冲突校验 */
+function validateRootParameterAliases(rows: HttpParameterRow[] | undefined): string | null {
+    const list = rows ?? [];
+    const wireNames = new Set<string>();
+    for (const r of list) {
+        const name = (r.paramName ?? "").trim();
+        const alias = (r.paramAlias ?? "").trim();
+        if (!name) {
+            continue;
+        }
+        if (alias && alias !== name) {
+            if (!/^[a-zA-Z0-9_]+$/.test(alias)) {
+                return `别名「${alias}」无效：仅允许字母、数字、下划线`;
+            }
+            if (wireNames.has(alias)) {
+                return `别名「${alias}」重复`;
+            }
+            wireNames.add(alias);
+        }
+    }
+    for (const r of list) {
+        const name = (r.paramName ?? "").trim();
+        const alias = (r.paramAlias ?? "").trim();
+        if (!name || !alias || alias === name) {
+            continue;
+        }
+        for (const o of list) {
+            const on = (o.paramName ?? "").trim();
+            if (on && on === alias && on !== name) {
+                return `别名「${alias}」与参数名「${on}」冲突`;
+            }
+        }
+    }
+    return null;
 }
 
 /** 保存前校验：名称合法、不重复（与后端 URL 占位符 `[a-zA-Z0-9_]+` 一致）；递归校验嵌套 */
@@ -364,13 +522,19 @@ function validateHttpParameterRowsAtLevel(rows: HttpParameterRow[] | undefined, 
     if (depth > MAX_NESTED_HTTP_PARAM_DEPTH) {
         return `参数嵌套超过 ${MAX_NESTED_HTTP_PARAM_DEPTH} 层，请简化或使用「高级入参」保留 JSON Schema`;
     }
+    if (depth === 0) {
+        const aliasErr = validateRootParameterAliases(rows);
+        if (aliasErr) {
+            return aliasErr;
+        }
+    }
     const names = (rows ?? [])
         .map((r) => (r.paramName ?? "").trim())
         .filter(Boolean);
     const seen = new Set<string>();
     for (const n of names) {
         if (!/^[a-zA-Z0-9_]+$/.test(n)) {
-            return `参数名「${n}」无效：仅允许字母、数字、下划线，且须与 URL 中 {${n}} 占位符一致`;
+            return `参数名「${n}」无效：仅允许字母、数字、下划线（可与 URL 占位符或别名对齐）`;
         }
         if (seen.has(n)) {
             return `参数名重复：${n}`;
@@ -381,6 +545,12 @@ function validateHttpParameterRowsAtLevel(rows: HttpParameterRow[] | undefined, 
         const nm = (r.paramName ?? "").trim();
         if (!nm) {
             continue;
+        }
+        if (r.valueSource === "FIXED") {
+            const fv = (r.fixedValue ?? "").trim();
+            if (!fv) {
+                return `参数「${nm}」为固定值类型时，请填写固定值`;
+            }
         }
         if (r.paramType === "object") {
             const err = validateHttpParameterRowsAtLevel(r.children, depth + 1);
@@ -460,6 +630,43 @@ function headersFromRows(rows: HttpHeaderRow[] | undefined): Record<string, stri
     return Object.keys(out).length > 0 ? out : undefined;
 }
 
+/** 从属性 schema 读取入参「值来源」元数据（缺省为 MODEL） */
+export function readValueSourceFromSchema(s: Record<string, unknown>): ParamValueSourceType {
+    const raw = s["x-agentlego-valueSource"];
+    if (raw === "CONTEXT" || raw === "MODEL" || raw === "FIXED") {
+        return raw;
+    }
+    return "MODEL";
+}
+
+/** 值来源枚举对应的中文标签（用于详情表展示） */
+export function paramValueSourceLabel(vs: ParamValueSourceType): string {
+    return PARAM_VALUE_SOURCE_OPTIONS.find((o) => o.value === vs)?.label ?? vs;
+}
+
+/** 从属性 schema 读取固定值元数据（字符串） */
+export function readFixedValueFromSchema(s: Record<string, unknown>): string {
+    const raw = s["x-agentlego-fixedValue"];
+    return typeof raw === "string" ? raw : "";
+}
+
+/** 入参值来源元数据（仅描述，不参与 HTTP 执行逻辑） */
+function applyValueSourceMeta(o: Record<string, unknown>, r: HttpParameterRow) {
+    const vs = r.valueSource ?? "MODEL";
+    o["x-agentlego-valueSource"] = vs;
+}
+
+/** 固定值说明（仅 valueSource=FIXED 时写入） */
+function applyFixedValueMeta(o: Record<string, unknown>, r: HttpParameterRow) {
+    const vs = r.valueSource ?? "MODEL";
+    if (vs === "FIXED") {
+        const v = (r.fixedValue ?? "").trim();
+        if (v) {
+            o["x-agentlego-fixedValue"] = v;
+        }
+    }
+}
+
 function buildPropertySchemaFromRow(r: HttpParameterRow): Record<string, unknown> | undefined {
     const name = (r.paramName ?? "").trim();
     if (!name) {
@@ -472,12 +679,14 @@ function buildPropertySchemaFromRow(r: HttpParameterRow): Record<string, unknown
         }
         return o;
     };
+    let out: Record<string, unknown>;
     switch (r.paramType) {
         case "string":
         case "number":
         case "integer":
         case "boolean":
-            return withDesc({type: r.paramType});
+            out = withDesc({type: r.paramType});
+            break;
         case "object": {
             const inner = parametersSchemaFromRows(r.children);
             const o: Record<string, unknown> = {type: "object"};
@@ -489,7 +698,8 @@ function buildPropertySchemaFromRow(r: HttpParameterRow): Record<string, unknown
             if (Array.isArray(inner?.required) && (inner.required as string[]).length > 0) {
                 o.required = inner.required;
             }
-            return withDesc(o);
+            out = withDesc(o);
+            break;
         }
         case "array": {
             const prim = r.arrayItemsPrimitiveType ?? "string";
@@ -508,11 +718,15 @@ function buildPropertySchemaFromRow(r: HttpParameterRow): Record<string, unknown
             } else {
                 items = {type: prim};
             }
-            return withDesc({type: "array", items});
+            out = withDesc({type: "array", items});
+            break;
         }
         default:
-            return withDesc({type: "string"});
+            out = withDesc({type: "string"});
     }
+    applyValueSourceMeta(out, r);
+    applyFixedValueMeta(out, r);
+    return out;
 }
 
 function parametersSchemaFromRows(rows: HttpParameterRow[] | undefined): Record<string, unknown> | undefined {
@@ -541,6 +755,34 @@ function parametersSchemaFromRows(rows: HttpParameterRow[] | undefined): Record<
         schema.required = required;
     }
     return schema;
+}
+
+function parameterAliasesFromRootRows(rows: HttpParameterRow[] | undefined): Record<string, string> | undefined {
+    const out: Record<string, string> = {};
+    for (const r of rows ?? []) {
+        const name = (r.paramName ?? "").trim();
+        const alias = (r.paramAlias ?? "").trim();
+        if (!name || !alias || alias === name) {
+            continue;
+        }
+        out[name] = alias;
+    }
+    return Object.keys(out).length > 0 ? out : undefined;
+}
+
+function applyParameterAliasesToRows(rows: HttpParameterRow[], aliases: unknown): HttpParameterRow[] {
+    if (!aliases || typeof aliases !== "object" || Array.isArray(aliases)) {
+        return rows;
+    }
+    const map = aliases as Record<string, unknown>;
+    return rows.map((r) => {
+        const name = (r.paramName ?? "").trim();
+        const a = map[name];
+        if (typeof a === "string" && a.trim() && a.trim() !== name) {
+            return {...r, paramAlias: a.trim()};
+        }
+        return r;
+    });
 }
 
 function mergeDefinition(
@@ -573,8 +815,14 @@ export function normalizeHttpParameterRowTree(rows: HttpParameterRow[] | undefin
 
 function normalizeHttpParameterRowOne(r: HttpParameterRow): HttpParameterRow {
     const paramType = r.paramType ?? "string";
+    const vs = r.valueSource;
+    const valueSource: ParamValueSourceType =
+        vs === "CONTEXT" || vs === "MODEL" || vs === "FIXED" ? vs : "MODEL";
     const out: HttpParameterRow = {
         paramName: r.paramName ?? "",
+        paramAlias: typeof r.paramAlias === "string" ? r.paramAlias : "",
+        valueSource,
+        fixedValue: typeof r.fixedValue === "string" ? r.fixedValue : "",
         paramType: (HTTP_PARAM_TYPES as readonly string[]).includes(paramType) ? (paramType as HttpParamType) : "string",
         required: r.required === true,
         paramDescription: typeof r.paramDescription === "string" ? r.paramDescription : "",
@@ -604,6 +852,8 @@ function rowFromPropertySchema(name: string, spec: unknown, required: Set<string
         paramName: name,
         required: required.has(name),
         paramDescription: desc,
+        valueSource: readValueSourceFromSchema(s),
+        fixedValue: readFixedValueFromSchema(s),
     };
 
     if (ty === "object") {
@@ -736,6 +986,10 @@ export function buildToolDefinition(values: ToolFormValues, options?: BuildDefin
             if (paramSchema) {
                 def.parameters = paramSchema;
             }
+            const aliases = parameterAliasesFromRootRows(values.httpParameterRows);
+            if (aliases) {
+                def.parameterAliases = aliases;
+            }
         }
         if (!preserveOutput) {
             const outSchema = parametersSchemaFromRows(values.httpOutputParameterRows);
@@ -755,7 +1009,25 @@ export function buildToolDefinition(values: ToolFormValues, options?: BuildDefin
         if (values.toolDescription?.trim()) {
             def.description = values.toolDescription.trim();
         }
-        const merged = mergeDefinition(def, existing, WORKFLOW_OWNED_KEYS);
+        const preserveParams = values.workflowParametersAdvancedPreserve === true;
+        const preserveOut = values.workflowOutputSchemaAdvancedPreserve === true;
+        if (!preserveParams) {
+            const paramSchema = parametersSchemaFromRows(values.workflowParameterRows);
+            if (paramSchema) {
+                def.parameters = paramSchema;
+            }
+            const aliases = parameterAliasesFromRootRows(values.workflowParameterRows);
+            if (aliases) {
+                def.parameterAliases = aliases;
+            }
+        }
+        if (!preserveOut) {
+            const outSchema = parametersSchemaFromRows(values.workflowOutputParameterRows);
+            if (outSchema) {
+                def.outputSchema = outSchema;
+            }
+        }
+        const merged = mergeDefinition(def, existing, buildWorkflowOwnedKeys(preserveParams, preserveOut));
         return Object.keys(merged).length > 0 ? merged : undefined;
     }
 
@@ -776,8 +1048,19 @@ export function buildToolDefinition(values: ToolFormValues, options?: BuildDefin
             if (paramSchema) {
                 def.parameters = paramSchema;
             }
+            const aliases = parameterAliasesFromRootRows(values.mcpParameterRows);
+            if (aliases) {
+                def.parameterAliases = aliases;
+            }
         }
-        const merged = mergeDefinition(def, existing, buildMcpOwnedKeys(preserveParams));
+        const preserveOut = values.mcpOutputSchemaAdvancedPreserve === true;
+        if (!preserveOut) {
+            const outSchema = parametersSchemaFromRows(values.mcpOutputParameterRows);
+            if (outSchema) {
+                def.outputSchema = outSchema;
+            }
+        }
+        const merged = mergeDefinition(def, existing, buildMcpOwnedKeys(preserveParams, preserveOut));
         return Object.keys(merged).length > 0 ? merged : undefined;
     }
 
@@ -786,7 +1069,25 @@ export function buildToolDefinition(values: ToolFormValues, options?: BuildDefin
     if (values.toolDescription?.trim()) {
         def.description = values.toolDescription.trim();
     }
-    const merged = mergeDefinition(def, existing, LOCAL_OWNED_KEYS);
+    const preserveParams = values.localParametersAdvancedPreserve === true;
+    const preserveOut = values.localOutputSchemaAdvancedPreserve === true;
+    if (!preserveParams) {
+        const paramSchema = parametersSchemaFromRows(values.localParameterRows);
+        if (paramSchema) {
+            def.parameters = paramSchema;
+        }
+        const aliases = parameterAliasesFromRootRows(values.localParameterRows);
+        if (aliases) {
+            def.parameterAliases = aliases;
+        }
+    }
+    if (!preserveOut) {
+        const outSchema = parametersSchemaFromRows(values.localOutputParameterRows);
+        if (outSchema) {
+            def.outputSchema = outSchema;
+        }
+    }
+    const merged = mergeDefinition(def, existing, buildLocalOwnedKeys(preserveParams, preserveOut));
     return Object.keys(merged).length > 0 ? merged : undefined;
 }
 
@@ -809,6 +1110,27 @@ export function toolDtoToFormValues(tool: ToolDto): Partial<ToolFormValues> {
     };
 
     if (t === "LOCAL") {
+        const preserveParams = shouldPreserveHttpParameterFields(def);
+        const preserveOut = shouldPreserveHttpOutputFields(def);
+        const localParamRowsRaw = preserveParams
+            ? [defaultHttpParameterRow()]
+            : normalizeHttpParameterRowTree(
+                  (() => {
+                      const raw = rowsFromParametersSchema(def);
+                      return raw.length ? raw : [defaultHttpParameterRow()];
+                  })(),
+              );
+        const localParamRows = preserveParams
+            ? localParamRowsRaw
+            : applyParameterAliasesToRows(localParamRowsRaw, def.parameterAliases);
+        const outRows = preserveOut
+            ? [defaultHttpParameterRow()]
+            : normalizeHttpParameterRowTree(
+                  (() => {
+                      const raw = rowsFromOutputSchema(def);
+                      return raw.length ? raw : [defaultHttpParameterRow()];
+                  })(),
+              );
         return {
             toolType: "LOCAL",
             toolCategory: cat,
@@ -816,6 +1138,10 @@ export function toolDtoToFormValues(tool: ToolDto): Partial<ToolFormValues> {
             displayLabel,
             platformDescription,
             toolDescription: desc,
+            localParameterRows: localParamRows.length ? localParamRows : [defaultHttpParameterRow()],
+            localParametersAdvancedPreserve: preserveParams,
+            localOutputParameterRows: outRows.length ? outRows : [defaultHttpParameterRow()],
+            localOutputSchemaAdvancedPreserve: preserveOut,
             httpMethod: "GET",
             sendJsonBody: true,
             httpHeaderRows: [],
@@ -825,11 +1151,23 @@ export function toolDtoToFormValues(tool: ToolDto): Partial<ToolFormValues> {
     }
     if (t === "MCP") {
         const preserveParams = shouldPreserveHttpParameterFields(def);
-        const mcpParamRows = preserveParams
+        const preserveOut = shouldPreserveHttpOutputFields(def);
+        const mcpParamRowsRaw = preserveParams
             ? [defaultHttpParameterRow()]
             : normalizeHttpParameterRowTree(
                 (() => {
                     const raw = rowsFromParametersSchema(def);
+                    return raw.length ? raw : [defaultHttpParameterRow()];
+                })(),
+            );
+        const mcpParamRows = preserveParams
+            ? mcpParamRowsRaw
+            : applyParameterAliasesToRows(mcpParamRowsRaw, def.parameterAliases);
+        const mcpOutRows = preserveOut
+            ? [defaultHttpParameterRow()]
+            : normalizeHttpParameterRowTree(
+                (() => {
+                    const raw = rowsFromOutputSchema(def);
                     return raw.length ? raw : [defaultHttpParameterRow()];
                 })(),
             );
@@ -844,6 +1182,8 @@ export function toolDtoToFormValues(tool: ToolDto): Partial<ToolFormValues> {
             mcpRemoteToolName: typeof def.mcpToolName === "string" ? def.mcpToolName : undefined,
             mcpParameterRows: mcpParamRows.length ? mcpParamRows : [defaultHttpParameterRow()],
             mcpParametersAdvancedPreserve: preserveParams,
+            mcpOutputParameterRows: mcpOutRows.length ? mcpOutRows : [defaultHttpParameterRow()],
+            mcpOutputSchemaAdvancedPreserve: preserveOut,
             httpMethod: "GET",
             sendJsonBody: true,
             httpHeaderRows: [],
@@ -854,7 +1194,7 @@ export function toolDtoToFormValues(tool: ToolDto): Partial<ToolFormValues> {
     if (t === "HTTP") {
         const preserve = shouldPreserveHttpParameterFields(def);
         const preserveOut = shouldPreserveHttpOutputFields(def);
-        const paramRows = preserve
+        const paramRowsRaw = preserve
             ? [defaultHttpParameterRow()]
             : normalizeHttpParameterRowTree(
                 (() => {
@@ -862,6 +1202,7 @@ export function toolDtoToFormValues(tool: ToolDto): Partial<ToolFormValues> {
                     return raw.length ? raw : [defaultHttpParameterRow()];
                 })(),
             );
+        const paramRows = preserve ? paramRowsRaw : applyParameterAliasesToRows(paramRowsRaw, def.parameterAliases);
         const outRows = preserveOut
             ? [defaultHttpParameterRow()]
             : normalizeHttpParameterRowTree(
@@ -888,6 +1229,27 @@ export function toolDtoToFormValues(tool: ToolDto): Partial<ToolFormValues> {
         };
     }
     if (t === "WORKFLOW") {
+        const preserveParams = shouldPreserveHttpParameterFields(def);
+        const preserveOut = shouldPreserveHttpOutputFields(def);
+        const wfParamRowsRaw = preserveParams
+            ? [defaultHttpParameterRow()]
+            : normalizeHttpParameterRowTree(
+                (() => {
+                    const raw = rowsFromParametersSchema(def);
+                    return raw.length ? raw : [defaultHttpParameterRow()];
+                })(),
+            );
+        const wfParamRows = preserveParams
+            ? wfParamRowsRaw
+            : applyParameterAliasesToRows(wfParamRowsRaw, def.parameterAliases);
+        const wfOutRows = preserveOut
+            ? [defaultHttpParameterRow()]
+            : normalizeHttpParameterRowTree(
+                (() => {
+                    const raw = rowsFromOutputSchema(def);
+                    return raw.length ? raw : [defaultHttpParameterRow()];
+                })(),
+            );
         return {
             toolType: "WORKFLOW",
             toolCategory: cat,
@@ -896,6 +1258,10 @@ export function toolDtoToFormValues(tool: ToolDto): Partial<ToolFormValues> {
             platformDescription,
             toolDescription: desc,
             workflowId: String(def.workflowId ?? ""),
+            workflowParameterRows: wfParamRows.length ? wfParamRows : [defaultHttpParameterRow()],
+            workflowParametersAdvancedPreserve: preserveParams,
+            workflowOutputParameterRows: wfOutRows.length ? wfOutRows : [defaultHttpParameterRow()],
+            workflowOutputSchemaAdvancedPreserve: preserveOut,
             httpMethod: "GET",
             sendJsonBody: true,
             httpHeaderRows: [],

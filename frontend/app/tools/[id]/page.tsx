@@ -8,6 +8,8 @@ import React from "react";
 
 import {DeleteToolPopconfirm} from "@/components/tools/DeleteToolPopconfirm";
 import {ToolDefinitionView} from "@/components/tools/ToolDefinitionView";
+import {isAbortError} from "@/lib/api/isAbortError";
+import {DEFAULT_REQUEST_TIMEOUT_MS} from "@/lib/api/request";
 import {AppLayout} from "@/components/AppLayout";
 import {ErrorAlert} from "@/components/ErrorAlert";
 import {LocalBuiltinIoPreview} from "@/components/tools/LocalBuiltinIoPreview";
@@ -119,6 +121,15 @@ export default function ToolDetailPage(props: { params: Promise<{ id: string }> 
     const [refs, setRefs] = React.useState<ToolReferencesDto | null>(null);
     const [form] = Form.useForm<TestToolCallForm>();
 
+    const loadAbortRef = React.useRef<AbortController | null>(null);
+    const testAbortRef = React.useRef<AbortController | null>(null);
+    React.useEffect(() => {
+        return () => {
+            loadAbortRef.current?.abort();
+            testAbortRef.current?.abort();
+        };
+    }, []);
+
     const typeMeta = React.useMemo(() => {
         if (!tool) {
             return undefined;
@@ -148,16 +159,23 @@ export default function ToolDetailPage(props: { params: Promise<{ id: string }> 
 
     const loadAll = React.useCallback(
         async (id: string) => {
+            loadAbortRef.current?.abort();
+            const ac = new AbortController();
+            loadAbortRef.current = ac;
+            const opts = {signal: ac.signal, timeoutMs: DEFAULT_REQUEST_TIMEOUT_MS};
             setError(null);
             setLoading(true);
             try {
                 const [data, m, cats, r, builtins] = await Promise.all([
-                    getTool(id),
-                    fetchToolTypeMeta(),
-                    fetchToolCategoryMeta().catch(() => [] as ToolCategoryMetaDto[]),
-                    fetchToolReferences(id),
-                    fetchLocalBuiltinToolsMeta(),
+                    getTool(id, opts),
+                    fetchToolTypeMeta(opts),
+                    fetchToolCategoryMeta(opts).catch(() => [] as ToolCategoryMetaDto[]),
+                    fetchToolReferences(id, opts),
+                    fetchLocalBuiltinToolsMeta(opts),
                 ]);
+                if (ac.signal.aborted) {
+                    return;
+                }
                 setTool(data);
                 setMeta(m);
                 setCategoryMeta(cats);
@@ -171,11 +189,16 @@ export default function ToolDetailPage(props: { params: Promise<{ id: string }> 
                     paramRows: buildDefaultTestCallParamRows(data, {localBuiltinMeta: localMeta}),
                 });
             } catch (e) {
-                setError(e);
-                setTool(null);
-                setRefs(null);
+                if (!isAbortError(e)) {
+                    setError(e);
+                    setTool(null);
+                    setRefs(null);
+                }
             } finally {
-                setLoading(false);
+                if (loadAbortRef.current === ac) {
+                    loadAbortRef.current = null;
+                    setLoading(false);
+                }
             }
         },
         [form],
@@ -191,6 +214,7 @@ export default function ToolDetailPage(props: { params: Promise<{ id: string }> 
         });
         return () => {
             cancelled = true;
+            loadAbortRef.current?.abort();
         };
     }, [props.params, loadAll]);
 
@@ -201,18 +225,27 @@ export default function ToolDetailPage(props: { params: Promise<{ id: string }> 
         setError(null);
         setTesting(true);
         setTestOut(null);
+        testAbortRef.current?.abort();
+        const runAc = new AbortController();
+        testAbortRef.current = runAc;
         try {
             const input = buildTestInputFromRows(values.paramRows);
-            const data = await testToolCall(tool.id, {input});
+            const data = await testToolCall(tool.id, {input}, {signal: runAc.signal});
             setTestOut({
                 output: summarizeToolResult(data?.result),
                 raw: stringifyPretty(data?.result ?? data),
             });
             message.success("调用完成");
         } catch (e) {
-            setError(e);
+            if (!isAbortError(e)) {
+                setError(e);
+            }
         } finally {
-            setTesting(false);
+            const stillThisRun = testAbortRef.current === runAc;
+            if (stillThisRun) {
+                testAbortRef.current = null;
+                setTesting(false);
+            }
         }
     }
 
@@ -223,7 +256,7 @@ export default function ToolDetailPage(props: { params: Promise<{ id: string }> 
         setDeleting(true);
         setError(null);
         try {
-            await deleteTool(tool.id);
+            await deleteTool(tool.id, {timeoutMs: DEFAULT_REQUEST_TIMEOUT_MS});
             message.success("已删除");
             router.push("/tools");
         } catch (e) {
@@ -279,7 +312,7 @@ export default function ToolDetailPage(props: { params: Promise<{ id: string }> 
                 ) : refs.referencingAgentCount === 0 ? (
                     <Typography.Text type="success">未被任何智能体 toolIds 引用</Typography.Text>
                 ) : (
-                    <Space direction="vertical" size={4} style={{width: "100%"}}>
+                    <Space orientation="vertical" size={4} style={{width: "100%"}}>
                         <Typography.Text type="warning">
                             {refs.referencingAgentCount} 个智能体仍在使用此工具 ID
                         </Typography.Text>
@@ -293,6 +326,17 @@ export default function ToolDetailPage(props: { params: Promise<{ id: string }> 
                         ) : null}
                         <Link href="/agents">去智能体管理调整 toolIds →</Link>
                     </Space>
+                )}
+            </Descriptions.Item>
+            <Descriptions.Item label="知识库引用">
+                {refs == null ? (
+                    "—"
+                ) : (refs.referencingKbDocumentCount ?? 0) === 0 ? (
+                    <Typography.Text type="success">未被知识库文档「绑定工具」引用</Typography.Text>
+                ) : (
+                    <Typography.Text type="warning">
+                        {(refs.referencingKbDocumentCount ?? 0).toString()} 篇文档的 linkedToolIds 含此工具
+                    </Typography.Text>
                 )}
             </Descriptions.Item>
             {typeMeta?.description ? (
@@ -355,7 +399,7 @@ export default function ToolDetailPage(props: { params: Promise<{ id: string }> 
             (shouldPreserveHttpParameterFields(tool.definition ?? {}) ||
                 shouldPreserveHttpOutputFields(tool.definition ?? {})) ? (
                 <Descriptions.Item label="HTTP Schema 编辑">
-                    <Space direction="vertical" size={8}>
+                    <Space orientation="vertical" size={8}>
                         {shouldPreserveHttpParameterFields(tool.definition ?? {}) ? (
                             <div>
                                 <Tag color="orange">入参高级 Schema 已保留</Tag>

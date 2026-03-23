@@ -10,6 +10,14 @@ public interface VectorStoreCollectionBindingMapper {
                  @Param("physicalCollectionName") String physicalCollectionName,
                  @Param("kbCollectionId") String kbCollectionId);
 
+    int insertMemoryPolicy(
+            @Param("profileId") String profileId,
+            @Param("physicalCollectionName") String physicalCollectionName,
+            @Param("memoryPolicyId") String memoryPolicyId
+    );
+
+    int deleteByMemoryPolicyId(@Param("memoryPolicyId") String memoryPolicyId);
+
     VectorStoreCollectionBindingDO findByProfileAndPhysicalName(
             @Param("profileId") String profileId,
             @Param("physicalCollectionName") String physicalCollectionName

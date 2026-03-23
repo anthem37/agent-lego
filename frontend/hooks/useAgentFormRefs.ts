@@ -2,6 +2,7 @@
 
 import React from "react";
 
+import {DEFAULT_REQUEST_TIMEOUT_MS} from "@/lib/api/request";
 import {
     buildCollectionSelectOptions,
     buildMemoryPolicySelectOptions,
@@ -39,37 +40,38 @@ export function useAgentFormRefs(): AgentFormRefsState {
     const [loadingRefs, setLoadingRefs] = React.useState(true);
 
     React.useEffect(() => {
-        let cancelled = false;
+        const ac = new AbortController();
+        const opts = {signal: ac.signal, timeoutMs: DEFAULT_REQUEST_TIMEOUT_MS};
         setLoadingRefs(true);
         void (async () => {
             try {
                 const [models, toolPage, cols, memPols] = await Promise.all([
-                    listModelsAsSelectRows(),
-                    listToolsPage({page: 1, pageSize: 200}),
-                    listKbCollections(),
-                    listMemoryPolicies().catch(() => [] as MemoryPolicyDto[]),
+                    listModelsAsSelectRows(opts),
+                    listToolsPage({page: 1, pageSize: 200}, opts),
+                    listKbCollections(opts),
+                    listMemoryPolicies(opts).catch(() => [] as MemoryPolicyDto[]),
                 ]);
-                if (!cancelled) {
+                if (!ac.signal.aborted) {
                     setModelRows(models);
                     setTools(Array.isArray(toolPage.items) ? toolPage.items : []);
                     setCollections(Array.isArray(cols) ? cols : []);
                     setMemoryPolicies(Array.isArray(memPols) ? memPols : []);
                 }
             } catch {
-                if (!cancelled) {
+                if (!ac.signal.aborted) {
                     setModelRows([]);
                     setTools([]);
                     setCollections([]);
                     setMemoryPolicies([]);
                 }
             } finally {
-                if (!cancelled) {
+                if (!ac.signal.aborted) {
                     setLoadingRefs(false);
                 }
             }
         })();
         return () => {
-            cancelled = true;
+            ac.abort();
         };
     }, []);
 

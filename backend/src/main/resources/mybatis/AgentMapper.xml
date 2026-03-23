@@ -81,11 +81,22 @@
         order by a.created_at desc limit 20
     </select>
 
+    <!-- 窗口函数在 LIMIT 之前计数，total_count 为全量引用数；行数为样本上限 -->
+    <select id="listAgentToolReferencesWithCount"
+            resultType="com.agentlego.backend.agent.infrastructure.persistence.AgentToolRefRow">
+        select a.id as agentId,
+               (count(*) over ()) ::int as totalCount
+        from lego_agents a
+                 inner join lego_agent_tools t on t.agent_id = a.id
+        where t.tool_id = #{toolId}
+        order by a.created_at desc limit 20
+    </select>
+
     <select id="listAgentIdsReferencingKbCollection" resultType="java.lang.String">
         select id
         from lego_agents
-        where jsonb_typeof(knowledge_base_policy - > 'collectionIds') = 'array'
-          and knowledge_base_policy - > 'collectionIds' @> jsonb_build_array(#{collectionId})
+        where jsonb_typeof(knowledge_base_policy -> 'collectionIds') = 'array'
+          and knowledge_base_policy -> 'collectionIds' @> jsonb_build_array(#{collectionId})
         order by created_at desc
     </select>
 

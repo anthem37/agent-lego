@@ -30,6 +30,7 @@ import java.util.concurrent.ForkJoinPool;
 @Service
 public class EvaluationApplicationService {
     private static final String CONFIG_MODEL_ID = "modelId";
+    private static final String CONFIG_MEMORY_NAMESPACE = "memoryNamespace";
     private static final String CONFIG_CASES = "cases";
     private static final String CASE_INPUT = "input";
     private static final String CASE_EXPECTED_OUTPUT = "expectedOutput";
@@ -75,6 +76,9 @@ public class EvaluationApplicationService {
         Map<String, Object> config = new HashMap<>();
         config.put("modelId", req.getModelId());
         config.put("cases", req.getCases());
+        if (req.getMemoryNamespace() != null && !req.getMemoryNamespace().isBlank()) {
+            config.put(CONFIG_MEMORY_NAMESPACE, req.getMemoryNamespace().trim());
+        }
 
         EvaluationAggregate agg = new EvaluationAggregate();
         agg.setId(SnowflakeIdGenerator.nextId());
@@ -109,17 +113,23 @@ public class EvaluationApplicationService {
             String agentId = eval.getAgentId();
             Map<String, Object> config = eval.getConfig() == null ? Map.of() : eval.getConfig();
             String modelId = JsonMaps.getString(config, CONFIG_MODEL_ID, "");
+            String memoryNs = JsonMaps.getString(config, CONFIG_MEMORY_NAMESPACE, null);
 
             List<Map<String, Object>> casesRaw = JsonMaps.getListOfMaps(config, CONFIG_CASES);
 
-            EvaluationRunResult result = runCases(agentId, modelId, casesRaw);
+            EvaluationRunResult result = runCases(agentId, modelId, casesRaw, memoryNs);
             evaluationRunRepository.markSucceeded(runId, result.metrics(), result.trace());
         } catch (Exception e) {
             evaluationRunRepository.markFailed(runId, Throwables.messageOrSimpleName(e));
         }
     }
 
-    private EvaluationRunResult runCases(String agentId, String modelId, List<Map<String, Object>> casesRaw) {
+    private EvaluationRunResult runCases(
+            String agentId,
+            String modelId,
+            List<Map<String, Object>> casesRaw,
+            String memoryNamespace
+    ) {
         int total = casesRaw.size();
         int passed = 0;
         java.util.ArrayList<Map<String, Object>> traceCases = new java.util.ArrayList<>();
@@ -128,7 +138,7 @@ public class EvaluationApplicationService {
             String input = JsonMaps.getString(c, CASE_INPUT, "");
             String expected = JsonMaps.getString(c, CASE_EXPECTED_OUTPUT, null);
 
-            String actual = callAgent(agentId, modelId, input);
+            String actual = callAgent(agentId, modelId, input, memoryNamespace);
             boolean ok = expected != null && actual != null && actual.trim().equals(expected.trim());
             if (ok) {
                 passed++;
@@ -147,8 +157,11 @@ public class EvaluationApplicationService {
         return new EvaluationRunResult(metrics, trace);
     }
 
-    private String callAgent(String agentId, String modelId, String input) {
-        RunAgentResponse agentResp = agentApplicationService.runAgent(agentId, AgentRunRequests.of(modelId, input));
+    private String callAgent(String agentId, String modelId, String input, String memoryNamespace) {
+        RunAgentResponse agentResp = agentApplicationService.runAgent(
+                agentId,
+                AgentRunRequests.of(modelId, input, memoryNamespace)
+        );
         return agentResp == null ? null : agentResp.getOutput();
     }
 

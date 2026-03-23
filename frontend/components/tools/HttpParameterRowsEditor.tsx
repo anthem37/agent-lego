@@ -12,8 +12,9 @@ import {
     HTTP_ARRAY_ITEM_TYPE_OPTIONS,
     HTTP_PARAM_TYPE_OPTIONS,
     MAX_NESTED_HTTP_PARAM_DEPTH,
+    PARAM_VALUE_SOURCE_OPTIONS,
 } from "@/lib/tools/form";
-import type {HttpArrayItemPrimitiveType, HttpParamType} from "@/lib/tools/types";
+import type {HttpArrayItemPrimitiveType, HttpParamType, ParamValueSourceType} from "@/lib/tools/types";
 
 /** 表单 store 中指向「当前 Form.List 绑定的数组」的完整路径 */
 export type HttpParameterListStorePath = (string | number)[];
@@ -35,6 +36,10 @@ export type HttpParameterRowsEditorProps = {
     namePlaceholder: string;
     descriptionPlaceholder?: string;
     nestedAddLabels?: { objectChildren: string; arrayItemObject: string };
+    /** 顶层入参：展示「别名」列，写入 definition.parameterAliases（HTTP/MCP 等） */
+    showParamAlias?: boolean;
+    /** 展示「值来源」列，写入各属性 schema 的 x-agentlego-valueSource（仅元数据） */
+    showValueSource?: boolean;
 };
 
 type RowFieldsProps = {
@@ -50,6 +55,8 @@ type RowFieldsProps = {
     namePlaceholder: string;
     descriptionPlaceholder: string;
     nestedAddLabels: { objectChildren: string; arrayItemObject: string };
+    showParamAlias?: boolean;
+    showValueSource?: boolean;
 };
 
 function ParameterRowFields({
@@ -65,6 +72,8 @@ function ParameterRowFields({
                                 namePlaceholder,
                                 descriptionPlaceholder,
                                 nestedAddLabels,
+                                showParamAlias,
+                                showValueSource,
                             }: RowFieldsProps) {
     const rowFullPath = React.useMemo(
         () => [...storePathToList, rowIndex] as const,
@@ -76,6 +85,11 @@ function ParameterRowFields({
         [...rowFullPath, "arrayItemsPrimitiveType"],
         form,
     ) as HttpArrayItemPrimitiveType | undefined;
+    const valueSourceWatch = Form.useWatch([...rowFullPath, "valueSource"], form) as ParamValueSourceType | undefined;
+    const valueSourceEffective: ParamValueSourceType =
+        valueSourceWatch === "CONTEXT" || valueSourceWatch === "MODEL" || valueSourceWatch === "FIXED"
+            ? valueSourceWatch
+            : "MODEL";
 
     function handleParamTypeChange(v: HttpParamType) {
         const base = [...rowFullPath];
@@ -127,9 +141,19 @@ function ParameterRowFields({
     return (
         <div style={{marginBottom: 12}}>
             <Space style={{display: "flex", flexWrap: "wrap", alignItems: "flex-start"}} align="start">
-                <Form.Item {...restField} name={[rowIndex, "paramName"]} style={{width: 140, marginBottom: 0}}>
+                <Form.Item {...restField} name={[rowIndex, "paramName"]} style={{width: 128, marginBottom: 0}}>
                     <Input placeholder={namePlaceholder}/>
                 </Form.Item>
+                {showParamAlias && depth === 0 ? (
+                    <Form.Item
+                        {...restField}
+                        name={[rowIndex, "paramAlias"]}
+                        style={{width: 120, marginBottom: 0}}
+                        tooltip="可选：下游实际键名（如 snake_case）；模型仍使用「参数名」。各类型工具均写入 definition.parameterAliases。"
+                    >
+                        <Input placeholder="别名"/>
+                    </Form.Item>
+                ) : null}
                 <Form.Item {...restField} name={[rowIndex, "paramType"]} style={{width: 128, marginBottom: 0}}>
                     <Select
                         options={typeOptions}
@@ -145,10 +169,40 @@ function ParameterRowFields({
                 >
                     <Checkbox>{requiredCheckboxLabel}</Checkbox>
                 </Form.Item>
+                {showValueSource ? (
+                    <>
+                        <Typography.Text
+                            type="secondary"
+                            style={{fontSize: 12, lineHeight: "32px", whiteSpace: "nowrap", marginRight: 4}}
+                        >
+                            值来源
+                        </Typography.Text>
+                        <Form.Item
+                            {...restField}
+                            name={[rowIndex, "valueSource"]}
+                            initialValue="MODEL"
+                            style={{width: 130, marginBottom: 0}}
+                            tooltip="仅作入参语义说明，写入 definition.parameters；不改变各类型工具运行时调用逻辑。"
+                        >
+                            <Select options={PARAM_VALUE_SOURCE_OPTIONS} placeholder="值来源"/>
+                        </Form.Item>
+                    </>
+                ) : null}
+                {showValueSource && valueSourceEffective === "FIXED" ? (
+                    <Form.Item
+                        {...restField}
+                        name={[rowIndex, "fixedValue"]}
+                        style={{width: 160, marginBottom: 0}}
+                        rules={[{required: true, message: "请填写固定值"}]}
+                        tooltip="与「固定值」来源配对；写入 x-agentlego-fixedValue（元数据说明）。"
+                    >
+                        <Input placeholder="固定值"/>
+                    </Form.Item>
+                ) : null}
                 <Form.Item
                     {...restField}
                     name={[rowIndex, "paramDescription"]}
-                    style={{flex: 1, minWidth: 160, marginBottom: 0}}
+                    style={{flex: "1 1 160px", minWidth: 120, maxWidth: 360, marginBottom: 0}}
                 >
                     <Input placeholder={descriptionPlaceholder}/>
                 </Form.Item>
@@ -190,6 +244,8 @@ function ParameterRowFields({
                         namePlaceholder={namePlaceholder}
                         descriptionPlaceholder={descriptionPlaceholder}
                         nestedAddLabels={nestedAddLabels}
+                        showParamAlias={false}
+                        showValueSource={showValueSource}
                     />
                 </div>
             ) : null}
@@ -207,6 +263,8 @@ function ParameterRowFields({
                         namePlaceholder={namePlaceholder}
                         descriptionPlaceholder={descriptionPlaceholder}
                         nestedAddLabels={nestedAddLabels}
+                        showParamAlias={false}
+                        showValueSource={showValueSource}
                     />
                 </div>
             ) : null}
@@ -227,6 +285,8 @@ export function HttpParameterRowsEditor(props: HttpParameterRowsEditorProps) {
             objectChildren: "添加嵌套属性",
             arrayItemObject: "添加元素字段",
         },
+        showParamAlias = false,
+        showValueSource = false,
     } = props;
 
     const form = Form.useFormInstance();
@@ -244,7 +304,7 @@ export function HttpParameterRowsEditor(props: HttpParameterRowsEditorProps) {
             {(fields, {add, remove}) => (
                 <>
                     {fields.map(({key, name: rowIdx, ...restField}) => (
-                        <ParameterRowFields
+                            <ParameterRowFields
                             key={key}
                             restField={restField}
                             storePathToList={storePathToList}
@@ -258,6 +318,8 @@ export function HttpParameterRowsEditor(props: HttpParameterRowsEditorProps) {
                             namePlaceholder={namePlaceholder}
                             descriptionPlaceholder={descriptionPlaceholder}
                             nestedAddLabels={nestedAddLabels}
+                            showParamAlias={showParamAlias}
+                            showValueSource={showValueSource}
                         />
                     ))}
                     <Form.Item style={{marginBottom: 0}}>

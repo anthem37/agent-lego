@@ -18,8 +18,28 @@ public final class ToolOutputSchemaDescription {
             return;
         }
         Map<String, Object> schema = (Map<String, Object>) root;
+        Object typeObj = schema.get("type");
+        String typeStr = null;
+        if (typeObj instanceof String) {
+            typeStr = ((String) typeObj).trim().toLowerCase(Locale.ROOT);
+        }
         Object propsObj = schema.get("properties");
-        if (!(propsObj instanceof Map<?, ?> propsRaw) || propsRaw.isEmpty()) {
+        boolean hasProps = propsObj instanceof Map<?, ?> pm && !((Map<?, ?>) pm).isEmpty();
+        if (!hasProps && typeStr != null
+                && ("string".equals(typeStr) || "number".equals(typeStr) || "integer".equals(typeStr) || "boolean".equals(typeStr))) {
+            sb.append("\n\n【返回说明】");
+            Object desc = schema.get("description");
+            if (desc != null && !String.valueOf(desc).isBlank()) {
+                sb.append(String.valueOf(desc).trim());
+            } else {
+                sb.append("返回类型为 ").append(typeStr).append("。");
+            }
+            return;
+        }
+        if (!(propsObj instanceof Map<?, ?> propsRaw)) {
+            return;
+        }
+        if (propsRaw.isEmpty()) {
             return;
         }
         sb.append("\n\n【返回说明】工具返回多为文本（常为 JSON）；逻辑上可包含字段：\n");

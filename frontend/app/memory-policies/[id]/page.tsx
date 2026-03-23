@@ -1,7 +1,21 @@
 "use client";
 
-import {DeleteOutlined, ReloadOutlined} from "@ant-design/icons";
-import {Button, Card, Descriptions, Form, Input, InputNumber, message, Space, Table, Typography} from "antd";
+import {DeleteOutlined, ReloadOutlined, ThunderboltOutlined} from "@ant-design/icons";
+import {
+    Alert,
+    Button,
+    Card,
+    Descriptions,
+    Form,
+    Input,
+    InputNumber,
+    message,
+    Space,
+    Table,
+    Tag,
+    Tooltip,
+    Typography
+} from "antd";
 import Link from "next/link";
 import React from "react";
 
@@ -10,6 +24,8 @@ import {ErrorAlert} from "@/components/ErrorAlert";
 import {PageHeaderBlock} from "@/components/PageHeaderBlock";
 import {PageShell} from "@/components/PageShell";
 import {SectionCard} from "@/components/SectionCard";
+import {isAbortError} from "@/lib/api/isAbortError";
+import {DEFAULT_REQUEST_TIMEOUT_MS} from "@/lib/api/request";
 import {
     type AgentRefDto,
     createMemoryItem,
@@ -19,6 +35,7 @@ import {
     listReferencingAgents,
     type MemoryItemDto,
     type MemoryPolicyDto,
+    reindexMemoryPolicyVectors,
 } from "@/lib/memory-policies/api";
 import {retrievalLabel, strategyLabel, writeModeLabel} from "@/lib/memory-policies/semantics";
 
@@ -31,12 +48,62 @@ type CreateItemForm = {
     content: string;
 };
 
+function memoryItemMetaTags(meta?: Record<string, unknown>): React.ReactNode {
+    if (!meta || Object.keys(meta).length === 0) {
+        return <Typography.Text type="secondary">—</Typography.Text>;
+    }
+    const summaryKind = meta.summaryKind;
+    const strategyKind = meta.strategyKind;
+    const ns = meta.memoryNamespace;
+    const roughMax = meta.roughSummaryMaxChars;
+    const tags: React.ReactNode[] = [];
+    if (summaryKind === "ROUGH_CHAR_CAP") {
+        tags.push(
+            <Tag key="rough" color="orange">
+                粗略摘要
+            </Tag>,
+        );
+    } else if (typeof summaryKind === "string" && summaryKind.length > 0) {
+        tags.push(
+            <Tag key="sk" color="default">
+                {summaryKind}
+            </Tag>,
+        );
+    }
+    if (typeof strategyKind === "string" && strategyKind.length > 0) {
+        tags.push(
+            <Tag key="stk" color="blue">
+                {strategyKind}
+            </Tag>,
+        );
+    }
+    if (typeof ns === "string" && ns.length > 0) {
+        tags.push(
+            <Tag key="ns" color="geekblue">
+                ns:{ns}
+            </Tag>,
+        );
+    }
+    if (typeof roughMax === "number" && Number.isFinite(roughMax)) {
+        tags.push(
+            <Tag key="rm" color="purple">
+                cap:{roughMax}
+            </Tag>,
+        );
+    }
+    if (tags.length === 0) {
+        return <Typography.Text type="secondary">—</Typography.Text>;
+    }
+    return <Space size={4} wrap>{tags}</Space>;
+}
+
 export default function MemoryPolicyDetailPage(props: { params: Promise<{ id: string }> }) {
     const [policyId, setPolicyId] = React.useState<string | null>(null);
     const [policy, setPolicy] = React.useState<MemoryPolicyDto | null>(null);
     const [refAgents, setRefAgents] = React.useState<AgentRefDto[]>([]);
     const [items, setItems] = React.useState<MemoryItemDto[]>([]);
     const [loading, setLoading] = React.useState(false);
+    const [reindexing, setReindexing] = React.useState(false);
     const [error, setError] = React.useState<unknown>(null);
     const [searchForm] = Form.useForm<SearchForm>();
     const [createForm] = Form.useForm<CreateItemForm>();
@@ -53,66 +120,67 @@ export default function MemoryPolicyDetailPage(props: { params: Promise<{ id: st
         };
     }, [props.params]);
 
-    const loadPolicy = React.useCallback(async () => {
-        if (!policyId) {
-            return;
-        }
-        setError(null);
-        try {
-            const p = await getMemoryPolicy(policyId);
-            setPolicy(p);
-        } catch (e) {
-            setError(e);
-            setPolicy(null);
-        }
-    }, [policyId]);
-
-    const loadRefAgents = React.useCallback(async () => {
-        if (!policyId) {
-            return;
-        }
-        try {
-            const rows = await listReferencingAgents(policyId);
-            setRefAgents(Array.isArray(rows) ? rows : []);
-        } catch {
-            setRefAgents([]);
-        }
-    }, [policyId]);
-
-    const loadItems = React.useCallback(async () => {
+    const loadItems = React.useCallback(async (signal?: AbortSignal) => {
         if (!policyId) {
             return;
         }
         setLoading(true);
         setError(null);
+        const fetchOpts = {signal, timeoutMs: DEFAULT_REQUEST_TIMEOUT_MS};
         try {
             const q = searchForm.getFieldValue("q")?.trim();
             const limit = searchForm.getFieldValue("limit");
-            const rows = await listMemoryItems(policyId, {
-                ...(q ? {q} : {}),
-                ...(typeof limit === "number" ? {limit} : {}),
-            });
+            const rows = await listMemoryItems(
+                policyId,
+                {
+                    ...(q ? {q, orderByTrgm: true} : {}),
+                    ...(typeof limit === "number" ? {limit} : {}),
+                },
+                fetchOpts,
+            );
             setItems(Array.isArray(rows) ? rows : []);
         } catch (e) {
-            setError(e);
-            setItems([]);
+            if (!isAbortError(e)) {
+                setError(e);
+                setItems([]);
+            }
         } finally {
             setLoading(false);
         }
     }, [policyId, searchForm]);
 
     React.useEffect(() => {
-        void loadPolicy();
-    }, [loadPolicy]);
-
-    React.useEffect(() => {
-        void loadRefAgents();
-    }, [loadRefAgents]);
-
-    React.useEffect(() => {
-        if (policyId) {
-            void loadItems();
+        if (!policyId) {
+            return;
         }
+        const ac = new AbortController();
+        const fetchOpts = {signal: ac.signal, timeoutMs: DEFAULT_REQUEST_TIMEOUT_MS};
+        setError(null);
+        void getMemoryPolicy(policyId, fetchOpts)
+            .then((p) => setPolicy(p))
+            .catch((e) => {
+                if (!isAbortError(e)) {
+                    setError(e);
+                    setPolicy(null);
+                }
+            });
+        void listReferencingAgents(policyId, fetchOpts)
+            .then((rows) => setRefAgents(Array.isArray(rows) ? rows : []))
+            .catch(() => {
+                if (!ac.signal.aborted) {
+                    setRefAgents([]);
+                }
+            });
+        return () => ac.abort();
+    }, [policyId]);
+
+    React.useEffect(() => {
+        if (!policyId) {
+            return;
+        }
+        const ac = new AbortController();
+        void loadItems(ac.signal);
+        return () => ac.abort();
     }, [policyId, loadItems]);
 
     async function onCreateItem(values: CreateItemForm) {
@@ -121,12 +189,28 @@ export default function MemoryPolicyDetailPage(props: { params: Promise<{ id: st
         }
         setError(null);
         try {
-            await createMemoryItem(policyId, {content: values.content.trim()});
+            await createMemoryItem(policyId, {content: values.content.trim()}, {timeoutMs: DEFAULT_REQUEST_TIMEOUT_MS});
             message.success("已写入条目");
             createForm.resetFields();
             await loadItems();
         } catch (e) {
             setError(e);
+        }
+    }
+
+    async function onReindexVectors() {
+        if (!policyId) {
+            return;
+        }
+        setError(null);
+        setReindexing(true);
+        try {
+            const r = await reindexMemoryPolicyVectors(policyId, {timeoutMs: DEFAULT_REQUEST_TIMEOUT_MS});
+            message.success(`向量重索引完成：${r.indexedCount} 条`);
+        } catch (e) {
+            setError(e);
+        } finally {
+            setReindexing(false);
         }
     }
 
@@ -150,6 +234,22 @@ export default function MemoryPolicyDetailPage(props: { params: Promise<{ id: st
 
                 <ErrorAlert error={error}/>
 
+                {policy?.implementationWarnings && policy.implementationWarnings.length > 0 ? (
+                    <Alert
+                        type="warning"
+                        showIcon
+                        style={{marginBottom: 16}}
+                        message="当前实现与配置说明"
+                        description={
+                            <ul style={{margin: 0, paddingLeft: 20}}>
+                                {policy.implementationWarnings.map((w) => (
+                                    <li key={w}>{w}</li>
+                                ))}
+                            </ul>
+                        }
+                    />
+                ) : null}
+
                 <SectionCard title="策略参数">
                     {policy ? (
                         <Descriptions column={1} size="small" labelStyle={{width: 160}}>
@@ -162,6 +262,28 @@ export default function MemoryPolicyDetailPage(props: { params: Promise<{ id: st
                                 label="检索模式">{retrievalLabel(policy.retrievalMode)}</Descriptions.Item>
                             <Descriptions.Item label="topK">{policy.topK ?? "—"}</Descriptions.Item>
                             <Descriptions.Item label="写入模式">{writeModeLabel(policy.writeMode)}</Descriptions.Item>
+                            <Descriptions.Item label="粗略摘要上限（字符）">
+                                {typeof policy.roughSummaryMaxChars === "number"
+                                    ? policy.roughSummaryMaxChars
+                                    : "默认 480（未单独配置）"}
+                            </Descriptions.Item>
+                            <Descriptions.Item label="向量库 Profile">
+                                {policy.vectorStoreProfileId ? (
+                                    <Typography.Text code>{policy.vectorStoreProfileId}</Typography.Text>
+                                ) : (
+                                    "—"
+                                )}
+                            </Descriptions.Item>
+                            <Descriptions.Item label="向量链路">
+                                {policy.retrievalMode === "VECTOR" || policy.retrievalMode === "HYBRID"
+                                    ? policy.vectorLinkConfigured
+                                        ? "已配置（可外置检索）"
+                                        : "未配置完整（运行时降级关键词）"
+                                    : "—"}
+                            </Descriptions.Item>
+                            <Descriptions.Item label="vectorMinScore">
+                                {typeof policy.vectorMinScore === "number" ? policy.vectorMinScore : "—"}
+                            </Descriptions.Item>
                             <Descriptions.Item label="重复正文">{policy.writeBackOnDuplicate ?? "—"}</Descriptions.Item>
                             <Descriptions.Item label="说明">{policy.description || "—"}</Descriptions.Item>
                             <Descriptions.Item label="引用智能体数">
@@ -171,6 +293,26 @@ export default function MemoryPolicyDetailPage(props: { params: Promise<{ id: st
                     ) : (
                         <Typography.Text type="secondary">未加载</Typography.Text>
                     )}
+                    {policy && (policy.retrievalMode === "VECTOR" || policy.retrievalMode === "HYBRID") ? (
+                        <div style={{marginTop: 12}}>
+                            <Tooltip
+                                title={
+                                    policy.vectorLinkConfigured
+                                        ? "对该策略下全部记忆条目重新写入外置向量索引"
+                                        : "向量链路未配置完整，后端不会写入索引（请先配置 Profile / 集合）"
+                                }
+                            >
+                                <Button
+                                    icon={<ThunderboltOutlined/>}
+                                    loading={reindexing}
+                                    disabled={!policy.vectorLinkConfigured}
+                                    onClick={() => void onReindexVectors()}
+                                >
+                                    重索引向量
+                                </Button>
+                            </Tooltip>
+                        </div>
+                    ) : null}
                 </SectionCard>
 
                 <SectionCard title="引用该策略的智能体">
@@ -196,7 +338,7 @@ export default function MemoryPolicyDetailPage(props: { params: Promise<{ id: st
                     <Form<SearchForm>
                         form={searchForm}
                         layout="inline"
-                        onFinish={loadItems}
+                        onFinish={() => void loadItems()}
                         initialValues={{limit: 20}}
                         style={{marginBottom: 16, flexWrap: "wrap", rowGap: 12}}
                     >
@@ -212,6 +354,10 @@ export default function MemoryPolicyDetailPage(props: { params: Promise<{ id: st
                             </Button>
                         </Form.Item>
                     </Form>
+                    <Typography.Paragraph type="secondary" style={{fontSize: 12, marginBottom: 12}}>
+                        填写关键词时，结果按 <Typography.Text code>word_similarity</Typography.Text>{" "}
+                        排序（与智能体运行时关键词记忆检索一致）；仅浏览不传关键词时按时间倒序。
+                    </Typography.Paragraph>
 
                     <Table<MemoryItemDto>
                         size="small"
@@ -234,6 +380,11 @@ export default function MemoryPolicyDetailPage(props: { params: Promise<{ id: st
                                 ellipsis: true,
                             },
                             {
+                                title: "元数据",
+                                width: 220,
+                                render: (_, row) => memoryItemMetaTags(row.metadata),
+                            },
+                            {
                                 title: "创建时间",
                                 dataIndex: "createdAt",
                                 width: 200,
@@ -250,7 +401,9 @@ export default function MemoryPolicyDetailPage(props: { params: Promise<{ id: st
                                             icon={<DeleteOutlined/>}
                                             onClick={async () => {
                                                 try {
-                                                    await deleteMemoryItem(policyId, row.id);
+                                                    await deleteMemoryItem(policyId, row.id, {
+                                                        timeoutMs: DEFAULT_REQUEST_TIMEOUT_MS,
+                                                    });
                                                     message.success("已删除");
                                                     await loadItems();
                                                 } catch (e) {

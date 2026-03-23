@@ -18,10 +18,15 @@ public interface ToolDtoMapper {
     )
     ToolDto toDto(ToolAggregate agg);
 
-    default ToolReferencesDto toReferencesDto(int referencingAgentCount, List<String> referencingAgentIds) {
+    default ToolReferencesDto toReferencesDto(
+            int referencingAgentCount,
+            List<String> referencingAgentIds,
+            long referencingKbDocumentCount
+    ) {
         ToolReferencesDto dto = new ToolReferencesDto();
         dto.setReferencingAgentCount(referencingAgentCount);
         dto.setReferencingAgentIds(referencingAgentIds);
+        dto.setReferencingKbDocumentCount(referencingKbDocumentCount);
         return dto;
     }
 }

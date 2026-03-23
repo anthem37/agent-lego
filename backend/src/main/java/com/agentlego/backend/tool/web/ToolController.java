@@ -7,10 +7,8 @@ import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.*;
 
-import java.util.List;
-
 /**
- * HTTP：工具注册、分页、元数据、联调 test-call。
+ * HTTP：工具 CRUD、分页、引用查询、联调 test-call。元数据与 MCP 发现见 {@link ToolMetaController}。
  */
 @RestController
 @RequestMapping("/tools")
@@ -36,36 +34,6 @@ public class ToolController {
             @RequestParam(required = false) String toolType
     ) {
         return ApiResponse.ok(toolService.listToolsPage(page, pageSize, q, toolType));
-    }
-
-    @GetMapping("/meta/tool-types")
-    public ApiResponse<List<ToolTypeMetaDto>> toolTypeMeta() {
-        return ApiResponse.ok(toolService.listToolTypeMeta());
-    }
-
-    @GetMapping("/meta/tool-categories")
-    public ApiResponse<List<ToolCategoryMetaDto>> toolCategoryMeta() {
-        return ApiResponse.ok(toolService.listToolCategoryMeta());
-    }
-
-    @GetMapping("/meta/local-builtins")
-    public ApiResponse<List<LocalBuiltinToolMetaDto>> localBuiltinsMeta() {
-        return ApiResponse.ok(toolService.listLocalBuiltins());
-    }
-
-    @GetMapping("/meta/mcp/remote-tools")
-    public ApiResponse<List<RemoteMcpToolMetaDto>> remoteMcpTools(
-            @RequestParam("endpoint") String endpoint,
-            @RequestParam(value = "refresh", defaultValue = "false") boolean refresh
-    ) {
-        return ApiResponse.ok(toolService.listRemoteMcpTools(endpoint, refresh));
-    }
-
-    @PostMapping("/meta/mcp/batch-import")
-    public ApiResponse<BatchImportMcpToolsResponse> batchImportMcpTools(
-            @Valid @RequestBody BatchImportMcpToolsRequest body
-    ) {
-        return ApiResponse.ok(toolService.batchImportMcpTools(body));
     }
 
     @GetMapping("/{id}")

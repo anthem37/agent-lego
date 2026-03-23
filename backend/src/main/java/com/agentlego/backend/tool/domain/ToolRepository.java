@@ -17,6 +17,11 @@ public interface ToolRepository {
 
     Optional<ToolAggregate> findById(String id);
 
+    /**
+     * 按主键批量加载（用于知识正文工具引用等场景，避免逐条 {@link #findById(String)}）。
+     */
+    List<ToolAggregate> findByIds(List<String> ids);
+
     List<ToolAggregate> findAll();
 
     long countByQuery(String q, String toolType);
